@@ -2,52 +2,48 @@
 node_modules/
 .pnpm-store/
 
-# Build output
+# Generated JavaScript and Next.js output
 dist/
 .next/
 .turbo/
 out/
 *.tsbuildinfo
 
-# Python
+# Python environments, caches, and build output
+.venv/
 __pycache__/
 *.py[cod]
-.venv/
 *.egg-info/
+build/
 .pytest_cache/
 .ruff_cache/
 
-# Env / secrets
+# Test coverage reports
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+
+# Local environment and secrets
 .env
 .env.*
 !.env.example
 
-# OS / editor
+# Operating system, editor, and log files
 .DS_Store
 *.log
 
-# Enterprise (commercial license) — kept out of the OSS repo.
-# Exception: frontend/packages/ee is the open-core seam STUB (inert defaults,
-# Apache-2.0) — tracked in OSS; downstream distributions replace its contents.
-ee/
-!frontend/packages/ee/
+# Enterprise-only root package; frontend/packages/ee is the OSS seam.
+/ee/
 
-# Product spec / internal design docs (kept local, not published)
-site/
+# Internal product-spec site, kept local and not published.
+/site/
 
-# Track only the scoped Claude Code import shims; guidance lives in AGENTS.md.
-CLAUDE.md
-!CLAUDE.md
-!frontend/CLAUDE.md
-!backend/CLAUDE.md
+# Supabase CLI local state (project ref and pooler URL).
+/infra/supabase/.temp/
 
-# Supabase CLI local state (project ref, pooler URL)
-infra/supabase/.temp/
+# Avatar media is local drop-in content; accepted packs ship as release assets.
+/frontend/public/avatars/
 
-# Avatar media is never committed (docs/AVATARS.md): local-dev drop-in only;
-# accepted packs are published as GitHub Release artifacts + CDN.
-frontend/public/avatars/
-
-# Local trace store (WP-12): `intervyn traces` reads this; per-run JSONL,
-# machine-local and never committed. Override location with TRACE_DIR.
+# Machine-local traces written by the agent and CLI.
 .intervyn/
