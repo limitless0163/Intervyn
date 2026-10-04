@@ -1,0 +1,41 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "tasks": {
+    "gen:schema": {
+      "outputs": ["schema/**"]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["gen:schema"]
+    },
+    "@deepinterview/agent#test": {
+      "dependsOn": ["@deepinterview/shared#gen:schema"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@deepinterview/cli#test": {
+      "dependsOn": ["gen:schema"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/cli/**"]
+    },
+    "@deepinterview/cli#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/cli/**"]
+    },
+    "@deepinterview/shared#test": {
+      "dependsOn": ["gen:schema"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/shared/**"]
+    },
+    "@deepinterview/shared#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/shared/**"]
+    }
+  }
+}
