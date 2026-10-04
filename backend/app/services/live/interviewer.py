@@ -51,6 +51,16 @@ def _wait_if_candidate_speaking(context: RunContext[InterviewUserdata]) -> None:
         raise StopResponse()
 
 
+def _wait_if_followup_pending(context: RunContext[InterviewUserdata]) -> None:
+    """Do not treat the answer before a follow-up as its answer too."""
+    if state.followup_is_pending(context.userdata):
+        log.info(
+            "interview: follow-up unanswered; deferring progression cursor=%d",
+            context.userdata.ctx.cursor,
+        )
+        raise StopResponse()
+
+
 def build_instructions(ud: InterviewUserdata) -> str:
     """Lean per-question system prompt: compact summary + current question."""
     primary = ud.ctx.plan.language_mode.primary
@@ -70,10 +80,16 @@ def build_instructions(ud: InterviewUserdata) -> str:
         f"{summary}\n\n"
         f"Primary language: {primary}.\n"
         f"Current question to ask: {question_line}\n\n"
-        "Ask this one question, listen to the full answer, then ask at most one "
-        "light follow-up. When the answer is complete, call save_answer with the "
-        "candidate's answer, then call get_next_question to proceed. Use "
-        "next_section to move to a different round, request_clarification only if "
+        "Ask one question and wait for the candidate's full answer. You may ask at "
+        "most one light follow-up. A follow-up is a separate question: after asking "
+        "it, stop immediately and wait for a new candidate answer. The answer to the "
+        "original question does not count as an answer to the follow-up. Do not call "
+        "save_answer, get_next_question, next_section, or end_interview until that "
+        "new answer arrives. When there is no unanswered follow-up, call save_answer "
+        "with the candidate's answer, then call get_next_question to proceed. Use "
+        "the question returned by get_next_question for the next prompt; do not ask "
+        "a later planned question before advancing to it. Call next_section to move "
+        "to a different round, and request_clarification only if "
         "the candidate seems confused. Never read the rubric aloud. "
         "After asking a question, STOP and wait for a new candidate answer. "
         "The wrap section contains a real final question: wait for its answer too. "
@@ -107,16 +123,68 @@ class Interviewer(Agent):
 
     async def llm_node(self, chat_ctx, tools, model_settings):
         # Filter before LiveKit fans text out to TTS, captions and chat history.
-        # Each generation (including after a tool call) gets isolated state.
+        # Each generation (including after a tool call) gets isolated state. Stop
+        # spoken output at its first question so one generation cannot ask a
+        # follow-up and then continue into the next planned question.
         reasoning = ReasoningFilter()
+        question_finished = False
+        # Follow-up gating needs the session userdata; if it is unavailable
+        # (for example in unit tests that drive ``llm_node`` directly with a
+        # stubbed self), fall through to the plain question-truncation behavior.
+        ud = getattr(getattr(self, "session", None), "userdata", None)
+        if ud is not None:
+            active_question = state.current_question(ud)
+            answered_followup_question_id = (
+                active_question.id
+                if active_question is not None and state.followup_was_asked(ud)
+                else ""
+            )
+        else:
+            active_question = None
+            answered_followup_question_id = ""
+
+        def public_text(text: str) -> str:
+            nonlocal question_finished
+            if not text or question_finished:
+                return ""
+            current = state.current_question(ud) if ud is not None else None
+            if (
+                answered_followup_question_id
+                and current is not None
+                and current.id == answered_followup_question_id
+            ):
+                # The candidate has answered the follow-up, so the model must
+                # save and advance before saying anything about the next item.
+                return ""
+            boundary = next(
+                (index for index, char in enumerate(text) if char in {"?", "？"}),
+                -1,
+            )
+            if boundary < 0:
+                return text
+
+            # If this question follows a candidate answer on the active planned
+            # question, it is a follow-up. Record the wait before tool calls from
+            # this same response can save or advance the interview.
+            if ud is not None and state.spoken_answer(ud) and state.mark_followup_pending(ud):
+                q = state.current_question(ud)
+                log.info(
+                    "interview: follow-up asked; waiting for candidate cursor=%d question=%s",
+                    ud.ctx.cursor,
+                    q.id if q is not None else "",
+                )
+            question_finished = True
+            return text[: boundary + 1]
+
         async for chunk in Agent.default.llm_node(self, chat_ctx, tools, model_settings):
             if isinstance(chunk, str):
-                text = reasoning.feed(chunk)
+                text = public_text(reasoning.feed(chunk))
                 if text:
                     yield text
             elif isinstance(chunk, llm.ChatChunk) and chunk.delta and chunk.delta.content:
+                text = public_text(reasoning.feed(chunk.delta.content))
                 delta = chunk.delta.model_copy(
-                    update={"content": reasoning.feed(chunk.delta.content) or None}
+                    update={"content": text or None}
                 )
                 # Preserve tool calls, usage and provider metadata even when
                 # this chunk's entire text was private reasoning.
@@ -175,10 +243,12 @@ class Interviewer(Agent):
     ) -> str:
         """Record the candidate's answer to the current question.
 
-        Call this once the candidate has finished answering, BEFORE
-        get_next_question. ``answer`` is the candidate's spoken answer text.
+        Call this once the candidate has finished answering the question and any
+        follow-up you asked, BEFORE get_next_question. ``answer`` is the
+        candidate's spoken answer text.
         """
         _wait_if_candidate_speaking(context)
+        _wait_if_followup_pending(context)
         ud = context.userdata
         spoken = state.spoken_answer(ud)
         if not spoken:
@@ -207,8 +277,9 @@ class Interviewer(Agent):
 
     @function_tool
     async def get_next_question(self, context: RunContext[InterviewUserdata]) -> str:
-        """Advance to the next planned question and return it (or a wrap signal)."""
+        """Advance after the answer and any follow-up reply, then return the next question."""
         _wait_if_candidate_speaking(context)
+        _wait_if_followup_pending(context)
         ud = context.userdata
         if state.is_complete(ud):
             return _wrap_signal()
@@ -233,6 +304,7 @@ class Interviewer(Agent):
     async def next_section(self, context: RunContext[InterviewUserdata]) -> str:
         """Skip to the first question of the next section (or wrap if none)."""
         _wait_if_candidate_speaking(context)
+        _wait_if_followup_pending(context)
         ud = context.userdata
         if state.is_complete(ud):
             return _wrap_signal()
@@ -286,6 +358,7 @@ class Interviewer(Agent):
         finished interview idles until the hard duration guard trips.
         """
         _wait_if_candidate_speaking(context)
+        _wait_if_followup_pending(context)
         if not state.is_complete(context.userdata):
             return "The interview still has an active question. Wait for its answer before ending."
         context.userdata.closing = True

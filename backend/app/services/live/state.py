@@ -1,17 +1,6 @@
-"""Pure, livekit-free state machine for the live interview loop.
+"""不依赖 LiveKit 的确定性面试状态操作，便于离线测试和关闭时恢复回答。
 
-This module is the testable heart of WP-5. It deliberately imports NOTHING from
-``livekit`` so it works with the optional ``livekit-agents`` extra absent — the
-worker and agent personas (``interviewer``/``handoffs``/``director``) wrap these
-functions but live in livekit-coupled modules.
-
-:class:`InterviewUserdata` is the per-session state carried through the call. The
-``InterviewContext`` it wraps owns the authoritative cursor (``ctx.cursor``) and
-answer log (``ctx.answers``); the functions below are thin, deterministic
-operations over it. The ``transcript`` field is a flat running log of turns the
-worker persists on shutdown. Timestamps are caller-supplied ISO-8601 strings
-(see :class:`app.schemas.shared_models.AnswerRecord`); nothing here reads
-the clock or uses randomness, so it is fully reproducible in tests.
+ctx 保存权威游标和答案；transcript 保留原始发言。时间戳由调用方提供。
 """
 
 from __future__ import annotations
@@ -48,17 +37,16 @@ _MIN_RECOVERED_WORDS = _THIN_WORDS
 
 @dataclass
 class InterviewUserdata:
-    """Mutable per-session state for one live interview.
-
-    ``ctx`` is the source of truth (cursor + answers live on it). ``transcript``
-    is a flat ``[{"role", "text"}]`` log the worker flushes on shutdown.
-    """
+    """单场面试的共享状态；追问标记用于阻止模型在候选人补答前保存或跳题。"""
 
     ctx: InterviewContext
     session_id: str
     transcript: list[dict] = field(default_factory=list)
     time_limit_reached: bool = False
     closing: bool = False
+    followup_pending_question_id: str = ""
+    followup_after_user_turn: int = 0
+    followup_asked_question_ids: set[str] = field(default_factory=set)
 
 
 def spoken_answer(ud: InterviewUserdata) -> str:
@@ -112,11 +100,9 @@ def save_answer(
     started_at: str,
     ended_at: str,
 ) -> AnswerRecord:
-    """Record the candidate's answer to the *current* question.
+    """追加当前题的回答并返回记录；不会去重。
 
-    Appends a new :class:`AnswerRecord` (keyed by the current question's id) to
-    ``ud.ctx.answers`` and returns it. No-ops to a synthetic record only when the
-    cursor is past the end; callers should normally have a current question.
+    游标越界时仍追加 question_id 为空的记录，由调用方负责阻止无效保存。
     """
     q = current_question(ud)
     question_id = q.id if q is not None else ""
@@ -160,40 +146,72 @@ def add_turn(ud: InterviewUserdata, role: str, text: str) -> None:
     empty ``question_id`` means the cursor was already past the planned end.
     """
     q = current_question(ud)
-    ud.transcript.append(
-        {"role": role, "text": text, "question_id": q.id if q is not None else ""}
+    question_id = q.id if q is not None else ""
+    ud.transcript.append({"role": role, "text": text, "question_id": question_id})
+    if (
+        role == "user"
+        and question_id == ud.followup_pending_question_id
+        and _user_turn_count(ud, question_id) > ud.followup_after_user_turn
+    ):
+        ud.followup_pending_question_id = ""
+        ud.followup_after_user_turn = 0
+
+
+def mark_followup_pending(ud: InterviewUserdata) -> bool:
+    """要求追问后出现新的候选人发言，避免原回答同时被当作追问答案。
+
+    应在追问流式输出时设置标记，先于同次模型响应中的保存或推进工具。
+    """
+    q = current_question(ud)
+    if q is None or not spoken_answer(ud):
+        return False
+    if ud.followup_pending_question_id == q.id:
+        return True
+    ud.followup_asked_question_ids.add(q.id)
+    ud.followup_pending_question_id = q.id
+    ud.followup_after_user_turn = _user_turn_count(ud, q.id)
+    return True
+
+
+def followup_was_asked(ud: InterviewUserdata) -> bool:
+    """Whether the current planned question already had its optional follow-up."""
+    q = current_question(ud)
+    return q is not None and q.id in ud.followup_asked_question_ids
+
+
+def followup_is_pending(ud: InterviewUserdata) -> bool:
+    """Whether the candidate still owes a response to the current follow-up."""
+    qid = ud.followup_pending_question_id
+    if not qid:
+        return False
+    q = current_question(ud)
+    if q is None or q.id != qid:
+        # 旧状态或恢复流程可能已推进游标，清除失效追问标记以免会话卡住。
+        ud.followup_pending_question_id = ""
+        ud.followup_after_user_turn = 0
+        return False
+    if _user_turn_count(ud, qid) > ud.followup_after_user_turn:
+        ud.followup_pending_question_id = ""
+        ud.followup_after_user_turn = 0
+        return False
+    return True
+
+
+def _user_turn_count(ud: InterviewUserdata, question_id: str) -> int:
+    return sum(
+        1
+        for turn in ud.transcript
+        if turn.get("role") == "user" and turn.get("question_id") == question_id
+        and (turn.get("text") or "").strip()
     )
 
 
 def reconstruct_answers(ud: InterviewUserdata) -> int:
-    """Recover unsaved answers from the verbatim transcript (shutdown fallback).
+    """关闭时按 question_id 合并候选人原话，补回尚未保存的有效回答。
 
-    ``ctx.answers`` is normally filled by the model calling the ``save_answer``
-    tool — but the model can forget, and the candidate can hang up mid-question
-    before the tool ever fires. Both used to silently drop everything the
-    candidate said, flipping the session to ``no_answers`` ("no report") even
-    though the transcript held real answers.
-
-    For every question id that has user speech in the transcript but no
-    substantive saved answer, join that question's user turns into a new
-    :class:`AnswerRecord` (verbatim STT text, blank timestamps). Saved answers
-    are never touched. Returns the number of records added.
-
-    Guards:
-
-    * Substance gate: a question's joined speech must reach
-      ``_MIN_RECOVERED_WORDS`` words. Greeting small talk and one-word
-      acknowledgements stay unrecovered, so a contentless call keeps its
-      honest ``no_answers`` state instead of getting a junk scorecard.
-    * "Saved" matches the scorers' last-wins indexing (``{a.question_id: a}``):
-      a question only counts as saved if its LAST record has substance, so a
-      trailing ``save_answer("")`` cannot simultaneously void a question and
-      block its recovery.
-
-    Known residual: a candidate continuing their previous answer after the
-    cursor has advanced is tagged with the new question's id (cross-question
-    contamination). livekit-agents 1.5.x commits the user turn before tool
-    execution, so this only occurs on genuinely overlapping speech.
+    与评分索引一致，以最后一条答案判断是否已保存；空记录不阻止恢复。
+    恢复内容须达到最小长度，时间戳留空，返回新增记录数。
+    题号取自发言时的游标，游标前进后的重叠发言可能归入下一题。
     """
     last_by_qid: dict[str, AnswerRecord] = {}
     for a in ud.ctx.answers:
@@ -253,24 +271,15 @@ def _answers_by_question_id(ud: InterviewUserdata) -> dict[str, AnswerRecord]:
 
 
 def _word_count(text: str) -> int:
-    # Chinese/Japanese answers often contain no spaces. Count ideographs as
-    # units alongside Latin words instead of dropping an entire real answer.
+    # 中文和日文可能没有空格，按汉字或假名计数，避免整段回答被误判为一个词。
     return len(re.findall(r"[\u3400-\u9fff\u3040-\u30ff]|[^\s\u3400-\u9fff\u3040-\u30ff]+", text))
 
 
 def evaluate_difficulty(ud: InterviewUserdata) -> DifficultySignal:
-    """Recommend a difficulty move for the current section. PURE + deterministic.
+    """依据当前环节已保存答案的平均长度给出建议，不修改面试状态。
 
-    Reads only ``ud.ctx.plan.questions``, ``ud.ctx.cursor`` and ``ud.ctx.answers``
-    — it NEVER touches the cursor or appends anything. The heuristic looks at the
-    answers already given within the *current* section and compares their average
-    substance (word count) against fixed thresholds:
-
-    * past the end                                       -> ``"wrap"``
-    * no answers in the section yet                      -> ``"advance"`` (neutral)
-    * thin answers                                       -> ``"easier"``
-    * rich answers with a higher difficulty rung left    -> ``"harder"``
-    * otherwise (section solidly covered / maxed out)    -> ``"advance"``
+    无答案时保持计划；短答案建议降低难度，长答案且未达难度上限时建议加难；
+    游标越过计划末尾时建议收尾。长度是启发式信号，不等同于能力评分。
     """
     section = current_section(ud)
     if section is None:

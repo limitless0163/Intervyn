@@ -19,7 +19,7 @@ from .test_live import _userdata_two_sections
 def _agent(monkeypatch):
     monkeypatch.setattr(
         "app.services.prep.nodes.extract_cv_text",
-        AsyncMock(return_value="Backend engineer with data quality and pipeline experience."),
+        AsyncMock(return_value=("Backend engineer with data quality and pipeline experience.", [])),
     )
     ud = _userdata_two_sections()
     fake_session = SimpleNamespace(
@@ -106,6 +106,51 @@ def test_resumed_speech_blocks_pending_progression(monkeypatch, tool):
     asyncio.run(run())
     assert ud.ctx.model_dump() == before
     assert not ud.closing
+
+
+@pytest.mark.parametrize("tool", ["save_answer", "get_next_question", "next_section", "end_interview"])
+def test_unanswered_followup_blocks_tools_even_with_saved_original_answer(monkeypatch, tool):
+    agent, context = _agent(monkeypatch)
+    ud = context.userdata
+    state.add_turn(ud, "user", "I built a ledger and tested the retry path.")
+    state.save_answer(ud, transcript=state.spoken_answer(ud), started_at="", ended_at="")
+    state.mark_followup_pending(ud)
+    before = ud.ctx.model_dump()
+
+    async def run():
+        with pytest.raises(StopResponse):
+            if tool == "save_answer":
+                await agent.save_answer(context, "premature summary")
+            else:
+                await getattr(agent, tool)(context)
+
+    asyncio.run(run())
+    assert ud.ctx.model_dump() == before
+    assert not ud.closing
+
+
+@pytest.mark.parametrize("budget_expired", [False, True])
+def test_followup_reply_is_saved_verbatim_before_progression(monkeypatch, budget_expired):
+    agent, context = _agent(monkeypatch)
+    ud = context.userdata
+    ud.time_limit_reached = budget_expired
+    original = "I built a payments ledger."
+    reply = "I used idempotency keys to prevent duplicate charges."
+    state.add_turn(ud, "user", original)
+    state.mark_followup_pending(ud)
+    state.add_turn(ud, "assistant", "How did you prevent duplicates?")
+
+    async def run():
+        with pytest.raises(StopResponse):
+            await agent.get_next_question(context)
+        state.add_turn(ud, "user", reply)
+        await agent.save_answer(context, "model summary must be ignored")
+        result = await agent.get_next_question(context)
+        assert ("INTERVIEW_COMPLETE" in result) == budget_expired
+
+    asyncio.run(run())
+    assert ud.ctx.answers[-1].transcript == f"{original} {reply}"
+    assert ud.ctx.cursor == (len(ud.ctx.plan.questions) if budget_expired else 1)
 
 
 def test_resumed_answer_can_be_saved_and_advanced_after_speech_finishes(monkeypatch):

@@ -70,8 +70,10 @@ def test_duration_waits_for_unanswered_final_question() -> None:
     from app.services.live import state
 
     q = SimpleNamespace(id="last", section="wrap")
-    ud = _ud()
-    ud.ctx = SimpleNamespace(cursor=0, plan=SimpleNamespace(questions=[q]), answers=[])
+    ud = state.InterviewUserdata(
+        ctx=SimpleNamespace(cursor=0, plan=SimpleNamespace(questions=[q]), answers=[]),
+        session_id="sess_test",
+    )
     session = _FakeSession()
     guard = SessionGuard(session, ud, max_duration_sec=10, max_turns=80,
                          interval_sec=0.001, time_fn=lambda: 10.0)
