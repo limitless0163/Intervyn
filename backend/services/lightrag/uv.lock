@@ -716,6 +716,7 @@ version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "uvicorn" },
 ]
@@ -736,6 +737,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "lightrag-hku", marker = "extra == 'rag'" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "raganything", marker = "extra == 'rag'" },

@@ -9,6 +9,7 @@ import os
 import re
 import uuid
 from collections import Counter
+from heapq import nsmallest
 from typing import Protocol, runtime_checkable
 
 from .models import Citation
@@ -18,12 +19,19 @@ CHUNK_CHARS = 500
 TOP_K = 3
 SNIPPET_CHARS = 240
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_CJK_RE = re.compile(r"[\u3400-\u9fff\u3040-\u30ff]+")
 
 
 def _tokenize(text: str) -> list[str]:
-    """仅提取 ASCII 字母和数字；不提供中文分词或跨语言语义检索。"""
-    return _TOKEN_RE.findall(text.lower())
+    """保留 Unicode 单词，中文及日文使用相邻字对；仍是词面匹配而非语义检索。"""
+    text = text.casefold()
+    tokens = _TOKEN_RE.findall(_CJK_RE.sub(" ", text))
+    for run in _CJK_RE.findall(text):
+        tokens.extend(run[i:i + 2] for i in range(len(run) - 1))
+        if len(run) == 1:
+            tokens.append(run)
+    return tokens
 
 
 def _chunk_text(text: str, *, size: int = CHUNK_CHARS) -> list[str]:
@@ -52,21 +60,21 @@ def _chunk_text(text: str, *, size: int = CHUNK_CHARS) -> list[str]:
 class _Chunk:
     """存储文本块及其来源、稳定序号与词频。"""
 
-    __slots__ = ("_tokens", "index", "source_id", "text")
+    __slots__ = ("_token_count", "_tokens", "index", "source_id", "text")
 
     def __init__(self, source_id: str, text: str, index: int) -> None:
         self.source_id = source_id
         self.text = text
         self.index = index
         self._tokens = Counter(_tokenize(text))
+        self._token_count = sum(self._tokens.values())
 
     def score(self, query_tokens: list[str]) -> float:
         """以查询词在块中的词频之和评分，并按块的词数归一化，避免长块天然占优。"""
         if not self._tokens:
             return 0.0
-        total = sum(self._tokens.values())
         hit = sum(self._tokens.get(t, 0) for t in query_tokens)
-        return hit / total
+        return hit / self._token_count
 
 
 @runtime_checkable
@@ -106,13 +114,15 @@ class NaiveRAG:
         if not store or not query_tokens:
             return ("", [])
 
-        scored = [(chunk.score(query_tokens), chunk) for chunk in store]
+        scored = ((chunk.score(query_tokens), chunk) for chunk in store)
         # 仅返回相关片段，同分时按入库序号排序，保证结果稳定。
-        scored = [pair for pair in scored if pair[0] > 0.0]
-        if not scored:
+        top_pairs = nsmallest(
+            TOP_K, (pair for pair in scored if pair[0] > 0.0),
+            key=lambda pair: (-pair[0], pair[1].index),
+        )
+        if not top_pairs:
             return ("", [])
-        scored.sort(key=lambda pair: (-pair[0], pair[1].index))
-        top = [chunk for _, chunk in scored[:TOP_K]]
+        top = [chunk for _, chunk in top_pairs]
 
         # 直接拼接最相关文本块作为回答，不调用生成模型。
         answer = top[0].text
