@@ -14,8 +14,8 @@ Practice job interviews out loud, with feedback tailored to your experience.
   <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white" alt="Next.js">
   <img src="https://img.shields.io/badge/LangGraph-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph">
-  <a href="https://www.apache.org/licenses/LICENSE-2.0">
-    <img src="https://img.shields.io/badge/License-Apache--2.0-4338CA" alt="Apache-2.0 License">
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-4338CA" alt="MIT License">
   </a>
 </p>
 
@@ -108,4 +108,4 @@ In the setup wizard, choose **Offline demo** to select mock LLM and search provi
 
 ## License
 
-This project is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), as declared in the root package metadata.
+This project is licensed under the [MIT License](./LICENSE).

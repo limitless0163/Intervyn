@@ -2,8 +2,8 @@
   "name": "intervyn",
   "version": "0.3.0",
   "private": true,
-  "description": "Open-source (Apache-2.0), voice-first AI mock-interview platform. English-first, multilingual.",
-  "license": "Apache-2.0",
+  "description": "Open-source (MIT), voice-first AI mock-interview platform. English-first, multilingual.",
+  "license": "MIT",
   "packageManager": "pnpm@11.5.2",
   "engines": {
     "node": ">=20"

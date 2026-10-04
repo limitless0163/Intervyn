@@ -1,7 +1,7 @@
 # @intervyn/ee
 
 The **open-core extension seam**. This OSS package ships inert defaults
-(`features.*` all `false`, `edition: "oss"`) under Apache-2.0 — the OSS build
+(`features.*` all `false`, `edition: "oss"`) under the MIT License — the OSS build
 behaves identically with or without it.
 
 A downstream distribution (e.g. a hosted/commercial edition) maintains its own

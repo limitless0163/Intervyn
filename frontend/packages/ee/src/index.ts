@@ -1,7 +1,7 @@
 /**
  * @intervyn/ee — Intervyn's open-core extension seam.
  *
- * This OSS stub ships inert defaults under Apache-2.0. A downstream
+ * This OSS stub ships inert defaults under the MIT License. A downstream
  * distribution (e.g. a hosted/commercial edition) replaces the CONTENTS of
  * `frontend/packages/ee` in its own repo — same package name, same exported surface —
  * and pnpm workspace resolution serves that implementation to every importer.

@@ -2,7 +2,7 @@
 name = "intervyn-agent"
 version = "0.3.0"
 description = "Intervyn live voice interviewer + prep/post pipelines (WP-0 shell)."
-license = "Apache-2.0"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.13",
