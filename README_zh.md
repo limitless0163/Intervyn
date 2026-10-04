@@ -2,8 +2,6 @@
 
 # Intervyn
 
-根据你的经历定制反馈，开口练习求职面试。
-
 <p align="center">
   <a href="./README.md">English</a> |
   简体中文
@@ -71,7 +69,7 @@ pnpm intervyn init
 docker compose up --build
 ```
 
-在初始化向导中选择 **Offline demo**，即可选择无需 Provider 密钥的模拟 LLM 和搜索服务。基础 Compose 服务会启动 Web 应用、Agent API 和知识 Sidecar，但不会启动语音 Worker。配置 LiveKit 和语音 Provider 后，运行 `docker compose --profile live up --build` 以启动 Worker。
+在初始化向导中选择 **Offline demo**，即可选择无需 Provider 密钥的模拟 LLM 和搜索服务。基础 Compose 服务会启动 Web 应用、Agent API 和知识 Sidecar，但不会启动语音 Worker。配置 LiveKit 和语音 Provider 后，运行 `docker compose --profile live up --build` 以启动 Worker。使用热更新开发环境时，`make dev` 会在根目录 `.env` 中检测到完整的 LiveKit URL、API Key 和 API Secret 后自动启用语音 Worker，并等待 Worker 注册成功；未配置时则按离线基础模式启动。
 
 ## 项目结构
 
@@ -89,6 +87,7 @@ docker compose up --build
 
 | 命令 | 用途 |
 | --- | --- |
+| `make dev` | 启动热更新开发环境；LiveKit 配置齐全时自动启动语音 Worker |
 | `pnpm build` | 构建工作区包和应用 |
 | `pnpm typecheck` | 对 TypeScript 工作区包进行类型检查 |
 | `pnpm test` | 运行工作区测试 |

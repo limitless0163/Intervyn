@@ -2,8 +2,6 @@
 
 # Intervyn
 
-Practice job interviews out loud, with feedback tailored to your experience.
-
 <p align="center">
   English |
   <a href="./README_zh.md">简体中文</a>
@@ -71,7 +69,7 @@ pnpm intervyn init
 docker compose up --build
 ```
 
-In the setup wizard, choose **Offline demo** to select mock LLM and search providers without provider keys. The base Compose stack starts the web app, agent API, and knowledge sidecar; it does not start the voice worker. Configure LiveKit and voice providers, then run `docker compose --profile live up --build` to include it.
+In the setup wizard, choose **Offline demo** to select mock LLM and search providers without provider keys. The base Compose stack starts the web app, agent API, and knowledge sidecar; it does not start the voice worker. Configure LiveKit and voice providers, then run `docker compose --profile live up --build` to include it. For the hot-reload development stack, `make dev` enables the LiveKit profile when all three LiveKit connection values are present in the root `.env`, and waits for the worker to register before reporting startup complete. Without those values it starts the offline/base stack.
 
 ## Project Structure
 
@@ -89,6 +87,7 @@ In the setup wizard, choose **Offline demo** to select mock LLM and search provi
 
 | Command | Purpose |
 | --- | --- |
+| `make dev` | Start the hot-reload development stack; automatically include the LiveKit voice worker when configured |
 | `pnpm build` | Build workspace packages and applications |
 | `pnpm typecheck` | Type-check TypeScript workspace packages |
 | `pnpm test` | Run workspace tests |
