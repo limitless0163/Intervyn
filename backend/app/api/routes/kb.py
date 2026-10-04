@@ -52,7 +52,7 @@ async def kb_ingest(req: KbIngestRequest) -> KbIngestResponse:
         timeout=_INGEST_TIMEOUT,
     )
     if track_id is None:
-        track_id = f"trk-{req.store_key}-{len(req.files)}"
+        raise HTTPException(status_code=503, detail="Knowledge ingestion temporarily unavailable")
     return KbIngestResponse(track_id=track_id)
 
 

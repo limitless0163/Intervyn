@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import functools
 import json
@@ -93,6 +94,13 @@ def _include_prompts() -> bool:
     if "include_prompts" in _overrides:
         return bool(_overrides["include_prompts"])
     return _env_flag("TRACE_INCLUDE_PROMPTS", False)
+
+
+def _error_summary(exc: BaseException) -> str:
+    # 提供方或 Pydantic 异常可能带回原始候选人资料，默认只记录异常类型。
+    if _include_prompts():
+        return f"{type(exc).__name__}: {exc}"
+    return type(exc).__name__
 
 
 def _init_langfuse(*, public_key: str | None, secret_key: str | None, host: str | None) -> None:
@@ -276,8 +284,9 @@ def start_trace(
     status, error = "ok", None
     try:
         yield trace_id
-    except Exception as exc:
-        status, error = "error", f"{type(exc).__name__}: {exc}"
+    except (Exception, asyncio.CancelledError) as exc:
+        status = "cancelled" if isinstance(exc, asyncio.CancelledError) else "error"
+        error = _error_summary(exc)
         raise
     finally:
         duration_ms = (time.perf_counter() - info.start_perf) * 1000
@@ -342,8 +351,9 @@ def start_span(name: str, **attrs: Any) -> Iterator[str]:
     status, error = "ok", None
     try:
         yield span_id
-    except Exception as exc:
-        status, error = "error", f"{type(exc).__name__}: {exc}"
+    except (Exception, asyncio.CancelledError) as exc:
+        status = "cancelled" if isinstance(exc, asyncio.CancelledError) else "error"
+        error = _error_summary(exc)
         raise
     finally:
         duration_ms = (time.perf_counter() - info.start_perf) * 1000
@@ -466,7 +476,7 @@ class TracedLLM:
         with start_span("llm.complete_text", provider=self._provider, model=self._model):
             try:
                 result = await self._inner.complete_text(system=system, user=user)
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError) as exc:
                 record_llm_call(
                     provider=self._provider,
                     model=self._model,
@@ -474,7 +484,7 @@ class TracedLLM:
                     prompt_chars=len(system) + len(user),
                     latency_ms=(time.perf_counter() - t0) * 1000,
                     ok=False,
-                    error=f"{type(exc).__name__}: {exc}",
+                    error=_error_summary(exc),
                     prompt_preview=f"{system}\n{user}",
                 )
                 raise
@@ -500,7 +510,7 @@ class TracedLLM:
         ):
             try:
                 result = await self._inner.complete_json(system=system, user=user, schema=schema)
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError) as exc:
                 record_llm_call(
                     provider=self._provider,
                     model=self._model,
@@ -509,7 +519,7 @@ class TracedLLM:
                     prompt_chars=len(system) + len(user),
                     latency_ms=(time.perf_counter() - t0) * 1000,
                     ok=False,
-                    error=f"{type(exc).__name__}: {exc}",
+                    error=_error_summary(exc),
                     prompt_preview=f"{system}\n{user}",
                 )
                 raise
@@ -544,22 +554,30 @@ class TraceSummary:
 
 def _iter_events(trace_id: str, *, directory: Path | None = None) -> Iterator[dict[str, Any]]:
     path = _trace_path(trace_id, directory=directory)
-    if not path.exists():
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+                    continue
+                if any(
+                    event.get(key) is not None and not isinstance(event[key], str)
+                    for key in ("span_id", "parent_id")
+                ):
+                    continue
+                if event["type"] == "span_start" and not event.get("span_id"):
+                    continue
+                yield event
+    except (OSError, UnicodeError):
         return
-    with open(path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                continue
 
 
 def read_trace(trace_id: str, *, directory: Path | None = None) -> dict[str, Any] | None:
     """读取事件并组装嵌套 span；标识无效、文件缺失或无可解析事件时返回 None。"""
-    if not trace_id or "/" in trace_id or trace_id.startswith("."):
+    if not trace_id or "/" in trace_id or "\\" in trace_id or trace_id.startswith("."):
         return None
     events = list(_iter_events(trace_id, directory=directory))
     if not events:
@@ -653,10 +671,8 @@ def list_traces(
         return []
     out: list[dict[str, Any]] = []
     for path in files:
-        try:
-            with open(path, encoding="utf-8") as fh:
-                events = [json.loads(line) for line in fh if line.strip()]
-        except (OSError, json.JSONDecodeError):
+        events = list(_iter_events(path.stem, directory=d))
+        if not events:
             continue
         header = summarize_events(path.stem, events)
         if session_id and header["session_id"] != session_id:
