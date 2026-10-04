@@ -4,6 +4,7 @@ import {
   CoachReplySchema,
   LanguageSchema,
   type CoachReply,
+  type Language,
 } from "@intervyn/shared";
 import { gateRequest } from "@intervyn/ee";
 import { serverEnv } from "@/lib/env";
@@ -17,31 +18,28 @@ export const dynamic = "force-dynamic";
  * session); it only scopes knowledge retrieval. lang falls back to "en".
  */
 const BodySchema = z.object({
-  session_id: z.string().default("anonymous"),
-  query: z.string().min(1),
+  session_id: z.string().trim().min(1).max(256).default("anonymous"),
+  query: z.string().trim().min(1).max(8000),
   lang: LanguageSchema.catch("en").default("en"),
 });
 
 /** A grounded mock reply so the coach chat works even with the agent down. */
-function mockReply(query: string): CoachReply {
+function mockReply(query: string, lang: Language): CoachReply {
   const q = query.trim().replace(/\s+/g, " ");
-  return {
-    answer:
-      `Here's how I'd coach you on "${q}": name the framework, walk one concrete ` +
-      `example end to end, then state the trade-off you're optimizing for. ` +
-      `(Sample response — start the agent API for fully grounded coaching.)`,
-    citations: [
-      {
-        title: "Prep notes",
-        url: "https://example.com/kb/prep-notes",
-        snippet: "Relevant guidance for this topic from your materials.",
-      },
-    ],
-    follow_ups: [
-      "Can you give a concrete example?",
-      "What's a common mistake here?",
-    ],
-  };
+  return lang === "zh"
+    ? {
+        answer: `关于“${q}”，先说明所用框架，再完整讲述一个具体例子，最后解释你选择的权衡。（示例回答：连接备考教练后，回答会结合你的资料。）`,
+        citations: [],
+        follow_ups: ["能举一个具体例子吗？", "这里最常见的错误是什么？"],
+      }
+    : {
+        answer: `Here's how I'd coach you on "${q}": name the framework, walk one concrete example end to end, then state the trade-off you're optimizing for. (Sample response — connect the coach for answers grounded in your materials.)`,
+        citations: [],
+        follow_ups: [
+          "Can you give a concrete example?",
+          "What's a common mistake here?",
+        ],
+      };
 }
 
 export async function POST(request: Request) {
@@ -83,16 +81,17 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(30_000),
     });
 
-    if (!upstream.ok) return NextResponse.json(mockReply(body.query));
+    if (!upstream.ok)
+      return NextResponse.json(mockReply(body.query, body.lang));
 
     const json = await upstream.json();
     const parsed = CoachReplySchema.safeParse(json);
     // Validate the upstream shape; fall back to a mock on drift.
     return NextResponse.json(
-      parsed.success ? parsed.data : mockReply(body.query),
+      parsed.success ? parsed.data : mockReply(body.query, body.lang),
     );
   } catch {
     // Agent unreachable / timeout / bad JSON — stay resilient.
-    return NextResponse.json(mockReply(body.query));
+    return NextResponse.json(mockReply(body.query, body.lang));
   }
 }

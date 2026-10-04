@@ -4,6 +4,7 @@ import {
   KbQueryResponseSchema,
   LanguageSchema,
   type KbQueryResponse,
+  type Language,
 } from "@intervyn/shared";
 import { gateRequest } from "@intervyn/ee";
 import { getUser } from "@/lib/supabase/server";
@@ -21,35 +22,20 @@ export const dynamic = "force-dynamic";
  * the partition key `user_id`, so we send `user_id: session_id` below.
  */
 const BodySchema = z.object({
-  session_id: z.string().default("anonymous"),
-  query: z.string().min(1),
+  session_id: z.string().trim().min(1).max(256).default("anonymous"),
+  query: z.string().trim().min(1).max(8000),
   lang: LanguageSchema.catch("en").default("en"),
 });
 
 /** A grounded mock answer so the coach chat works fully offline. */
-function mockAnswer(query: string): KbQueryResponse {
+function mockAnswer(query: string, lang: Language): KbQueryResponse {
   const q = query.trim().replace(/\s+/g, " ");
   return {
     answer:
-      `Here's a grounded take on "${q}": think in terms of the entities and ` +
-      `relationships in your knowledge base. Anchor your answer in a concrete ` +
-      `example, name the trade-off you're optimizing for, and cite where the ` +
-      `claim comes from. (This is a sample response — connect the knowledge ` +
-      `service to ground answers in your own notes and the company playbook.)`,
-    citations: [
-      {
-        title: "Interviewing Patterns — STAR & system design",
-        url: "https://example.com/kb/interviewing-patterns",
-        snippet:
-          "Open behavioral answers with Situation + Task; in design rounds, lead with capacity estimates before components.",
-      },
-      {
-        title: "Company Playbook — what this team probes for",
-        url: "https://example.com/kb/company-playbook",
-        snippet:
-          "Signals weighted highest: cross-team influence, exactly-once reasoning, and clear trade-off articulation.",
-      },
-    ],
+      lang === "zh"
+        ? `关于“${q}”，用具体例子组织你的回答，说明关键概念之间的联系，并解释所做的权衡。（示例回答：连接知识库后，回答会结合你的资料并附上来源。）`
+        : `Here's a take on "${q}": anchor your answer in a concrete example, explain how the key concepts relate, and name the trade-off you're optimizing for. (Sample response — connect the knowledge service for answers and citations grounded in your own notes.)`,
+    citations: [],
   };
 }
 
@@ -80,7 +66,7 @@ export async function POST(request: Request) {
 
   // Offline / unconfigured: return a grounded mock so the chat always works.
   if (!lightragUrl) {
-    return NextResponse.json(mockAnswer(body.query));
+    return NextResponse.json(mockAnswer(body.query, body.lang));
   }
 
   try {
@@ -102,16 +88,17 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(30_000),
     });
 
-    if (!upstream.ok) return NextResponse.json(mockAnswer(body.query));
+    if (!upstream.ok)
+      return NextResponse.json(mockAnswer(body.query, body.lang));
 
     const json = await upstream.json();
     const parsed = KbQueryResponseSchema.safeParse(json);
     // Shape/validate upstream output; fall back to mock on drift.
     return NextResponse.json(
-      parsed.success ? parsed.data : mockAnswer(body.query),
+      parsed.success ? parsed.data : mockAnswer(body.query, body.lang),
     );
   } catch {
     // Network error, timeout, bad JSON — stay resilient.
-    return NextResponse.json(mockAnswer(body.query));
+    return NextResponse.json(mockAnswer(body.query, body.lang));
   }
 }

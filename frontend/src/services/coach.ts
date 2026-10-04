@@ -1,4 +1,9 @@
-import type { CoachReply, Citation, Language } from "@intervyn/shared";
+import {
+  CoachReplySchema,
+  type CoachReply,
+  type Citation,
+  type Language,
+} from "@intervyn/shared";
 
 export type { CoachReply, Citation };
 
@@ -27,5 +32,5 @@ export async function askCoach(
     throw new Error(`Coach chat failed (${res.status})`);
   }
 
-  return (await res.json()) as CoachReply;
+  return CoachReplySchema.parse(await res.json());
 }

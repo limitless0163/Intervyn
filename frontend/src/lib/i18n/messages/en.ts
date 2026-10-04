@@ -8,6 +8,10 @@ export const en = {
     loading: "Loading…",
     error: "Something went wrong.",
     languageLabel: "Interface language",
+    skipToContent: "Skip to content",
+    pageFailed: "This page could not be loaded. Try again or return home.",
+    pageNotFound: "Page not found",
+    pageNotFoundHint: "This link may have expired, or the page does not exist.",
   },
   nav: {
     setup: "Setup",
@@ -147,13 +151,15 @@ export const en = {
     checkEmail: "Check your email to confirm your account, then sign in.",
     devNotice: "Auth not configured — continuing in dev mode.",
     devContinue: "Continue to setup",
+    requestFailed: "Could not connect. Please try again.",
   },
   setup: {
     title: "Set up your interview",
     subtitle: "Bring your CV and the job you're aiming for.",
     cvLabel: "Your CV",
-    cvHint: "PDF or DOCX. We read it to tailor the questions.",
-    cvDrop: "Drag a PDF or DOCX here, or click to choose.",
+    cvHint:
+      "PDF, DOCX, or text, up to 10 MB. We read it to tailor the questions.",
+    cvDrop: "Drag your CV here, or click to choose a file.",
     cvPasteLabel: "…or paste your CV text",
     cvPasteHint: "No upload needed — works offline.",
     jdLabel: "Job description",
@@ -185,6 +191,19 @@ export const en = {
     pass: "PASS",
     fail: "FAIL",
     quickDemo: "Quick demo",
+    quickDemoHint:
+      "Load a matched sample CV and job description to try it fast.",
+    cvTooShort: "Add a bit more CV text (at least {min} characters).",
+    jdTooShort: "Paste the full job description (at least {min} characters).",
+    fileTooLarge:
+      "That file is too large (max 10 MB). Choose a smaller CV or paste the text.",
+    fileEmpty: "That file is empty. Choose another CV or paste the text.",
+    fileUnsupported: "Choose a PDF, DOCX, or text document.",
+    fileSelectedHint:
+      "The selected file will be used. Remove it to use pasted text instead.",
+    companyFallback: "the company",
+    startFailed: "Could not start the interview. Please try again.",
+    invalidInput: "Add a valid CV and the full job description.",
     removeFile: "Remove file",
     companyPlaceholder: "Stripe (optional)",
     fileReadError: "Could not read file.",
@@ -409,11 +428,11 @@ export const en = {
     easy: "Easy",
     scheduler:
       "FSRS-like scheduler (SM-2): each rating sets the next review interval.",
-    socraticEyebrow: "Voice · Socratic mode",
-    socraticTitle: "Talk it through, out loud",
+    socraticEyebrow: "Voice practice",
+    socraticTitle: "Put what you learned into practice",
     socraticBody:
-      "Instead of grading you, the coach asks leading questions until the idea clicks — spoken, hands-free. It reuses the same real-time voice pipeline as your interviews, so it feels exactly like the room.",
-    socraticStart: "Start Socratic session",
+      "Start a new voice mock interview and apply what you studied with the coach. Get fresh feedback, then keep improving.",
+    socraticStart: "Start a voice mock",
     coachEyebrow: "AI study coach",
     askCoach: "Ask your coach",
     askCoachIntro:

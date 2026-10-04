@@ -144,7 +144,7 @@ export async function fetchSessionView(
 
     const json: unknown = await res.json();
     const parsed = SessionViewSchema.safeParse(json);
-    if (parsed.success) {
+    if (parsed.success && parsed.data.session_id === id) {
       const pending =
         parsed.data.status === "prep" ||
         (parsed.data.status === "ready" && !parsed.data.context);

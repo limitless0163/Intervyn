@@ -1,4 +1,5 @@
 /** 服务端调用 Agent API 并校验共享响应契约；内部密钥不得通过浏览器转发。 */
+import "server-only";
 import {
   PrepResponseSchema,
   ScoreResponseSchema,
@@ -18,23 +19,22 @@ async function postJson<T>(
   parse: (data: unknown) => T,
 ): Promise<T> {
   const secret = serverEnv.internalApiSecret;
-  const res = await fetch(`${serverEnv.agentApiUrl}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(secret ? { "x-internal-secret": secret } : {}),
+  const res = await fetch(
+    `${serverEnv.agentApiUrl.replace(/\/$/, "")}${path}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(secret ? { "x-internal-secret": secret } : {}),
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
     },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  );
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(
-      `Agent request ${path} failed: ${res.status} ${res.statusText}${
-        text ? ` — ${text}` : ""
-      }`,
-    );
+    throw new Error(`Agent request ${path} failed (${res.status})`);
   }
 
   return parse(await res.json());
