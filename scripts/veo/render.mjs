@@ -54,11 +54,15 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(__dirname, "out");
+const frontendRequire = createRequire(
+  new URL("../../frontend/package.json", import.meta.url),
+);
 
 const IP_RULE =
   "Original fictional character, not resembling any real person or existing franchise; no brand logos.";
@@ -221,7 +225,7 @@ async function liveRender(personas, model, apiKey) {
   // Prefer the official SDK if it's installed; otherwise use raw fetch.
   let genai = null;
   try {
-    genai = await import("@google/genai");
+    genai = frontendRequire("@google/genai");
     console.log("Using @google/genai SDK.");
   } catch {
     console.log("@google/genai not installed — using raw REST via fetch.");
@@ -405,7 +409,7 @@ async function restGenerateVideo(apiKey, model, prompt, referenceImage) {
 async function uploadToR2(r2, key, bytes) {
   let s3mod;
   try {
-    s3mod = await import("@aws-sdk/client-s3");
+    s3mod = frontendRequire("@aws-sdk/client-s3");
   } catch {
     throw new Error(
       "R2 is configured but @aws-sdk/client-s3 is not installed; cannot upload.",

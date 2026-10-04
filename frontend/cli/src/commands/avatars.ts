@@ -23,7 +23,7 @@ const DEST_DIR = join("frontend", "public", "avatars");
 async function loadManifest(): Promise<AvatarManifest> {
   if (!existsSync(MANIFEST_PATH)) {
     throw new Error(
-      `${MANIFEST_PATH} not found — run from the repo root (pnpm intervyn avatars pull).`,
+      `${MANIFEST_PATH} not found — run from the repo root (pnpm --dir frontend intervyn avatars pull).`,
     );
   }
   return parseManifest(await readFile(MANIFEST_PATH, "utf8"));

@@ -1,0 +1,9 @@
+{
+  "name": "@intervyn/agent",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "uv --directory ../../../backend run pytest -q",
+    "lint": "uv --directory ../../../backend run ruff check ."
+  }
+}

@@ -4,11 +4,21 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "build": "turbo run build && pnpm build:web",
+    "typecheck": "turbo run typecheck && pnpm typecheck:web",
+    "test": "turbo run test && pnpm test:web",
+    "test:sidecar": "uv --directory ../backend/services/lightrag run pytest",
+    "test:all": "pnpm test && pnpm test:sidecar",
+    "test:live": "uv --directory ../backend run --extra livekit pytest -q",
+    "gen:schema": "turbo run gen:schema",
+    "dev": "turbo run build --filter @intervyn/shared --filter @intervyn/ee && next dev",
+    "lint": "prettier --check \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" \"cli/src/**/*.ts\" \"packages/shared/src/**/*.ts\" \"packages/shared/scripts/**/*.mts\" && pnpm --filter @intervyn/agent run lint",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" \"cli/src/**/*.ts\" \"packages/shared/src/**/*.ts\" \"packages/shared/scripts/**/*.mts\"",
+    "intervyn": "cd .. && node frontend/cli/dist/index.js",
     "start": "next start",
-    "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run"
+    "build:web": "next build",
+    "typecheck:web": "next typegen && tsc --noEmit",
+    "test:web": "vitest run"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
@@ -40,6 +50,13 @@
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.6"
+  },
+  "description": "Open-source (MIT), voice-first AI mock-interview platform. English-first, multilingual.",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=20"
   }
 }

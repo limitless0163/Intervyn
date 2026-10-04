@@ -37,10 +37,10 @@ Closes #
 
 - [ ] Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
       (`feat:`, `fix:`, `docs:`, `chore:`, …).
-- [ ] `pnpm build` is green.
-- [ ] `pnpm typecheck` is green.
-- [ ] `pnpm lint` is green.
-- [ ] `pnpm test` is green.
+- [ ] `pnpm --dir frontend build` is green.
+- [ ] `pnpm --dir frontend typecheck` is green.
+- [ ] `pnpm --dir frontend lint` is green.
+- [ ] `pnpm --dir frontend test` is green.
 - [ ] `uv --directory backend run pytest` is green (if Python touched).
 - [ ] The **offline / mock-first** path still works with **no API keys set**
       (no provider key required to run the prep → live → post loop locally).

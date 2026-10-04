@@ -64,12 +64,12 @@ From the repository root:
 
 ```bash
 bash scripts/setup.sh
-pnpm build
-pnpm intervyn init
+pnpm --dir frontend build
+pnpm --dir frontend intervyn init
 docker compose up --build
 ```
 
-In the setup wizard, choose **Offline demo** to select mock LLM and search providers without provider keys. The base Compose stack starts the web app, agent API, and knowledge sidecar; it does not start the voice worker. Configure LiveKit and voice providers, then run `docker compose --profile live up --build` to include it. For the hot-reload development stack, `make dev` enables the LiveKit profile when all three LiveKit connection values are present in the root `.env`, and waits for the worker to register before reporting startup complete. Without those values it starts the offline/base stack.
+In the setup wizard, choose **Offline demo** to select mock LLM and search providers without provider keys. The single `docker-compose.yml` starts the web app with source mounts and Fast Refresh, plus the agent API and knowledge sidecar; it does not start the voice worker. Configure LiveKit and voice providers, then run `docker compose --profile live up --build` to include it. `make dev` uses the same configuration, enables the LiveKit profile when all three LiveKit connection values are present in the root `.env`, and waits for the worker to register before reporting startup complete. Without those values it starts the offline/base stack. The frontend Dockerfile still defaults to a production standalone image when built directly; pass `NEXT_PUBLIC_*` configuration with `--build-arg` for that build.
 
 ## Project Structure
 
@@ -88,16 +88,16 @@ In the setup wizard, choose **Offline demo** to select mock LLM and search provi
 | Command | Purpose |
 | --- | --- |
 | `make dev` | Start the hot-reload development stack; automatically include the LiveKit voice worker when configured |
-| `pnpm build` | Build workspace packages and applications |
-| `pnpm typecheck` | Type-check TypeScript workspace packages |
-| `pnpm test` | Run workspace tests |
-| `pnpm test:all` | Run workspace tests and the separate knowledge-sidecar suite |
-| `pnpm test:live` | Run agent tests with the optional LiveKit SDK, including voice regressions |
-| `pnpm lint` | Check configured frontend files and run agent Ruff checks |
-| `pnpm gen:schema` | Regenerate shared JSON Schemas |
+| `pnpm --dir frontend build` | Build workspace packages and applications |
+| `pnpm --dir frontend typecheck` | Type-check TypeScript workspace packages |
+| `pnpm --dir frontend test` | Run workspace tests |
+| `pnpm --dir frontend test:all` | Run workspace tests and the separate knowledge-sidecar suite |
+| `pnpm --dir frontend test:live` | Run agent tests with the optional LiveKit SDK, including voice regressions |
+| `pnpm --dir frontend lint` | Check configured frontend files and run agent Ruff checks |
+| `pnpm --dir frontend gen:schema` | Regenerate shared JSON Schemas |
 | `uv --directory backend/services/lightrag run pytest` | Run the separate knowledge-sidecar tests |
 
-`pnpm dev` starts the web package only; it does not start the Python API or LiveKit worker.
+`pnpm --dir frontend dev` starts the web package only; it does not start the Python API or LiveKit worker.
 
 ## Documentation
 

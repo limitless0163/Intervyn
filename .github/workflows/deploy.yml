@@ -50,18 +50,22 @@ jobs:
 
       - name: Install pnpm
         if: steps.gate.outputs.enabled == 'true'
-        # Version comes from package.json `packageManager` (pnpm@11.5.2);
+        # Version comes from frontend/package.json `packageManager` (pnpm@11.5.2);
         # pinning here too triggers ERR_PNPM_BAD_PM_VERSION.
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
 
       - name: Setup Node
         if: steps.gate.outputs.enabled == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: frontend/.nvmrc
           cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Deploy to Vercel (region sin1)
+        working-directory: frontend
         if: steps.gate.outputs.enabled == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

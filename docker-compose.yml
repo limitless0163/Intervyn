@@ -1,9 +1,11 @@
 name: intervyn
 
-# WP-12 full stack. `docker compose up` brings up the base stack: web +
+# Unified local stack. `docker compose up` brings up the base stack: web +
 # agent-api + lightrag (all run offline on mock providers / naive RAG with no
 # keys). The live voice worker needs the `livekit` extra + LiveKit/STT/TTS keys,
 # so it is gated behind the `live` profile:  `docker compose --profile live up`.
+# The web app runs in development mode with Fast Refresh. Production images
+# can still be built directly from frontend/Dockerfile (its default runner stage).
 #
 # `docker compose config -q` validates this file in CI (ci.yml).
 # Healthchecks use the in-image runtime (node / python) — slim images ship
@@ -174,22 +176,23 @@ services:
 
   web:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
-      # NEXT_PUBLIC_* values are inlined into the browser bundle at BUILD time
-      # by Next.js — runtime env_file values never reach client code. Pass them
-      # as build args (compose interpolates ${...} from the root .env) so
-      # `docker compose up --build` bakes them in. Mirrors the NEXT_PUBLIC_
-      # keys in .env.example.
-      args:
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
-        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: deps
+    working_dir: /repo/frontend
+    command:
+      - sh
+      - -lc
+      - exec pnpm dev --hostname 0.0.0.0
     ports:
       - "3000:3000"
     environment:
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+      # Next's dev server reads public config at runtime from .env; production
+      # Dockerfile builds must receive NEXT_PUBLIC_* values as build args.
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
       # Reach the agent + knowledge sidecar over the compose network (overrides
       # the .env localhost defaults, which would resolve to the web container
       # itself; an unset LIGHTRAG_URL means a silent mock fallback).
@@ -198,6 +201,16 @@ services:
     env_file:
       - path: .env
         required: false
+    volumes:
+      - .:/repo
+      # Keep Linux workspace dependencies separate from host node_modules.
+      # `make dev` renews these anonymous volumes when the image changes.
+      - /repo/frontend/node_modules
+      - /repo/frontend/cli/node_modules
+      - /repo/frontend/packages/shared/node_modules
+      - /repo/frontend/packages/ee/node_modules
+      # Next's cache contains platform-specific build artifacts.
+      - /repo/frontend/.next
     depends_on:
       agent-api:
         condition: service_started

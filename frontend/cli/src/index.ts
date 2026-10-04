@@ -27,8 +27,8 @@ Usage:
 
 \`init\` writes three files:
   .env                 → read by docker compose (the full stack)
-  backend/.env      → read by the Python agent in local dev (pnpm dev)
-  frontend/.env.local  → read by the Next.js app in local dev (pnpm dev)
+  backend/.env      → read by the Python agent in local dev
+  frontend/.env.local  → read by the Next.js app in local dev (pnpm --dir frontend dev)
 
 In a terminal, \`init\` runs an interactive wizard: choose a run mode (live voice
 / prep-only / offline demo), then enter only the keys that mode needs (existing

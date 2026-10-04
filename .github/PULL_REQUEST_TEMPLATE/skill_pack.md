@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `pnpm intervyn skills lint` passes with no errors
+- [ ] `pnpm --dir frontend intervyn skills lint` passes with no errors
 - [ ] `role` is a kebab-case slug; `status: draft`; `id` is `{company}-{role}-{level}`
 - [ ] Body has **Round structure / Question bank / Signals / Pitfalls**
 - [ ] Questions are original and generalized — recollection-based, no verbatim

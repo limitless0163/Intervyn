@@ -27,7 +27,7 @@ body:
       label: Steps to reproduce
       description: Exact steps so we can see it too.
       placeholder: |
-        1. Run `pnpm dev`
+        1. Run `pnpm --dir frontend dev`
         2. Go to /setup and upload sample CV + JD
         3. Click "Start interview"
         4. See error

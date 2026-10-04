@@ -1,24 +1,25 @@
 # Frontend agent guide
 
-See the [repository guide](../AGENTS.md) for workspace setup, service topology, root commands, shared-contract policy, environment handling, and CI. This file covers `frontend/`, including its workspace packages and CLI.
+See the [repository guide](../AGENTS.md) for workspace setup, service topology, workspace commands, shared-contract policy, environment handling, and CI. This file covers `frontend/`, including its workspace packages and CLI.
 
 ## Stack and source layout
 
-- Next.js 16 App Router, React 19, TypeScript 5.9, Tailwind CSS 4, and Vitest. TypeScript extends `../tsconfig.base.json`; `@/*` resolves to `src/*`.
+- Next.js 16 App Router, React 19, TypeScript 5.9, Tailwind CSS 4, and Vitest. TypeScript extends `./tsconfig.base.json`; `@/*` resolves to `src/*`.
 - `src/app/` owns pages, layouts, Server Actions, and API route handlers. `src/components/` is grouped by feature; `features/`, `hooks/`, `lib/`, `services/`, `constants/`, `styles/`, `types/`, and `utils/` contain supporting code.
 - `packages/shared/src/` is the Zod contract source and exports built ESM/CJS. `packages/shared/schema/` is generated. `packages/ee/src/` is the open-core seam; its OSS feature flags are false and `gateRequest` allows requests.
 - `cli/src/` implements the `intervyn` CLI. `cli/avatars.manifest.json` is the avatar manifest; pulled avatar files are written under ignored `frontend/public/avatars/`.
 
 ## Commands and tests
 
-Run from the repository root:
+Run from `frontend/` (or add `--dir frontend` when running pnpm from the repository root):
 
-- Web: `pnpm --filter @intervyn/web dev`, `pnpm --filter @intervyn/web build`, `pnpm --filter @intervyn/web typecheck`, `pnpm --filter @intervyn/web test`.
+- Web: `pnpm --filter @intervyn/web dev`, `pnpm build`, `pnpm typecheck:web`, `pnpm test:web`.
 - Shared contracts: `pnpm --filter @intervyn/shared gen:schema`, `pnpm --filter @intervyn/shared typecheck`, `pnpm --filter @intervyn/shared test`.
 - CLI: `pnpm --filter @intervyn/cli build`, `pnpm --filter @intervyn/cli typecheck`, `pnpm --filter @intervyn/cli test`.
-- `pnpm intervyn …` executes the built `frontend/cli/dist/index.js`; run `pnpm build` first on a fresh checkout.
+- `pnpm build`, `pnpm typecheck`, and `pnpm test` run Turbo package tasks followed by the root web app task. The root app must not be registered as a Turbo task using these same scripts, which would recurse.
+- `pnpm intervyn …` changes to the repository root and executes the built `frontend/cli/dist/index.js`; run `pnpm build` first on a fresh checkout.
 
-Vitest runs in the Node environment. Web tests are under `frontend/tests/`; the shared and CLI Vitest configs point to `frontend/tests/shared/` and `frontend/tests/cli/`. Root `pnpm test` runs all Turbo workspace test tasks. Follow the existing test placement and config rather than assuming a browser/React Testing Library setup.
+Vitest runs in the Node environment. Web tests are under `frontend/tests/`; the shared and CLI Vitest configs point to `frontend/tests/shared/` and `frontend/tests/cli/`. `pnpm test` runs all Turbo workspace test tasks. Follow the existing test placement and config rather than assuming a browser/React Testing Library setup.
 
 ## Contracts and integration boundaries
 
@@ -31,7 +32,7 @@ Vitest runs in the Node environment. Web tests are under `frontend/tests/`; the 
 
 ## Style, configuration, and builds
 
-- Follow strict TypeScript settings in `../tsconfig.base.json` and the existing component/server boundaries. Use `cn` from `src/utils/cn.ts` for class merging where the surrounding code does.
-- `.editorconfig` sets two-space indentation for TypeScript/Markdown and LF endings. `pnpm lint` checks the frontend paths listed in the root `package.json`; it is Prettier checking, not a separate ESLint script. `pnpm format` writes those same configured paths.
-- Use `.env.example` for env names. Supabase URL/anon key and other `NEXT_PUBLIC_*` values are build-time client config; `frontend/Dockerfile` receives them as build args and uses Next standalone output. Server-only values such as `SUPABASE_SERVICE_ROLE_KEY`, `INTERNAL_API_SECRET`, LiveKit secrets, and R2 credentials must remain server-side.
-- The Docker build context for `frontend/Dockerfile` is the repository root because the app depends on workspace packages. Preserve that workspace build path and `next.config.ts`'s `transpilePackages`/standalone settings.
+- Follow strict TypeScript settings in `./tsconfig.base.json` and the existing component/server boundaries. Use `cn` from `src/utils/cn.ts` for class merging where the surrounding code does.
+- `.editorconfig` sets two-space indentation for TypeScript/Markdown and LF endings. `pnpm lint` checks the frontend paths listed in `frontend/package.json`; it is Prettier checking, not a separate ESLint script. `pnpm format` writes those same configured paths.
+- Use `.env.example` for env names. Production `NEXT_PUBLIC_*` values are build-time client config; `frontend/Dockerfile` receives them as build args and uses Next standalone output. The single local Compose configuration uses the Dockerfile's `deps` stage and runs Next's dev server, which reads public config at runtime. Server-only values such as `SUPABASE_SERVICE_ROLE_KEY`, `INTERNAL_API_SECRET`, LiveKit secrets, and R2 credentials must remain server-side.
+- The Docker build context for `frontend/Dockerfile` is `frontend/`, which contains the complete pnpm workspace. Preserve that workspace build path and `next.config.ts`'s `transpilePackages`/standalone settings.

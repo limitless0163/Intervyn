@@ -2,7 +2,7 @@
 
 LIVEKIT_CONFIGURED := $(shell [ -f .env ] && grep -Eq '^LIVEKIT_URL=.+$$' .env && grep -Eq '^LIVEKIT_API_KEY=.+$$' .env && grep -Eq '^LIVEKIT_API_SECRET=.+$$' .env && echo 1)
 LIVE_PROFILE = $(if $(LIVEKIT_CONFIGURED),--profile live)
-COMPOSE = docker compose $(LIVE_PROFILE) -f docker-compose.yml -f docker-compose.dev.yml
+COMPOSE = docker compose $(LIVE_PROFILE)
 DOCKER_START_TIMEOUT ?= 120
 WEB_START_TIMEOUT ?= 180
 WORKER_START_TIMEOUT ?= 120
@@ -14,7 +14,7 @@ setup: ## 安装前端和后端开发依赖
 	bash scripts/setup.sh
 
 install: ## 根据锁文件安装 pnpm 依赖
-	pnpm install --frozen-lockfile
+	pnpm --dir frontend install --frozen-lockfile
 
 dev: ## 启动 Docker 开发环境；LiveKit 配置齐全时也启动语音 Worker
 	@set -eu; \
@@ -103,19 +103,19 @@ shell: ## 进入前端开发容器
 	$(COMPOSE) exec web sh
 
 build: ## 构建 workspace
-	pnpm build
+	pnpm --dir frontend build
 
 typecheck: ## 检查 TypeScript 类型
-	pnpm typecheck
+	pnpm --dir frontend typecheck
 
 test: ## 运行 workspace 测试
-	pnpm test
+	pnpm --dir frontend test
 
 lint: ## 检查代码格式和后端 lint
-	pnpm lint
+	pnpm --dir frontend lint
 
 format: ## 自动格式化代码
-	pnpm format
+	pnpm --dir frontend format
 
 schema: ## 重新生成共享 JSON Schema
-	pnpm gen:schema
+	pnpm --dir frontend gen:schema

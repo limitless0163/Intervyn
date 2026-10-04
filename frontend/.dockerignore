@@ -1,0 +1,15 @@
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/__pycache__
+**/.venv
+**/*.egg-info
+.git
+.intervyn
+**/.pytest_cache
+**/.ruff_cache
+.env
+.env.*
+!.env.example
+**/*.tsbuildinfo

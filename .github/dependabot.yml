@@ -3,9 +3,9 @@
 version: 2
 updates:
   # JS/TS workspace (pnpm). Covers frontend, frontend/packages/*, frontend/cli via the
-  # root pnpm-lock.yaml.
+  # frontend/pnpm-lock.yaml.
   - package-ecosystem: npm
-    directory: /
+    directory: /frontend
     schedule:
       interval: weekly
       day: monday

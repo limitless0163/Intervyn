@@ -25,7 +25,7 @@ Install Python 3.11+ and `uv`. From `backend/`:
 uv sync
 ```
 
-The settings loader reads `.env` from the process working directory. The root `pnpm intervyn init` command can create `backend/.env` from the root `.env.example`.
+The settings loader reads `.env` from the process working directory. The root `pnpm --dir frontend intervyn init` command can create `backend/.env` from the root `.env.example`.
 
 ## Run
 
@@ -94,7 +94,7 @@ uv --directory backend/services/lightrag run pytest
 uv --directory backend/services/lightrag run ruff check .
 ```
 
-The root workspace wrappers are `pnpm --filter @intervyn/agent test` and `pnpm --filter @intervyn/agent lint`. Ruff uses a 100-character line length. Shared request and response models are mirrored from `frontend/packages/shared/src/` in `app/schemas/shared_models.py`; regenerate JSON Schemas from the repository root with `pnpm gen:schema` after contract changes.
+The root workspace wrappers are `pnpm --dir frontend --filter @intervyn/agent test` and `pnpm --dir frontend --filter @intervyn/agent lint`. Ruff uses a 100-character line length. Shared request and response models are mirrored from `frontend/packages/shared/src/` in `app/schemas/shared_models.py`; regenerate JSON Schemas from the repository root with `pnpm --dir frontend gen:schema` after contract changes.
 
 ## Source Layout
 

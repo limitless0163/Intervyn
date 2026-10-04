@@ -11,12 +11,12 @@ The `frontend/` workspace contains the Intervyn web app, shared TypeScript contr
 
 ## Prerequisites and Setup
 
-Use Node 22 (`../.nvmrc`) and pnpm 11.5.2 (`../package.json`). From the repository root:
+Use Node 22 (`.nvmrc`) and pnpm 11.5.2 (`package.json`). From the repository root:
 
 ```bash
 bash scripts/setup.sh
-pnpm build
-pnpm intervyn init
+pnpm --dir frontend build
+pnpm --dir frontend intervyn init
 ```
 
 The setup script installs the workspace and syncs the Python agent environment. The CLI initializer writes the root `.env` and copies it to `backend/.env` and `frontend/.env.local`. Choose **Offline demo** for mock providers without provider keys. Docker Compose reads the root `.env`; local Next.js development reads `frontend/.env.local`.
@@ -26,7 +26,7 @@ The setup script installs the workspace and syncs the Python agent environment. 
 Run the web app from the repository root:
 
 ```bash
-pnpm --filter @intervyn/web dev
+pnpm --dir frontend --filter @intervyn/web dev
 ```
 
 The web dev server is only the frontend. Start the agent API separately from `backend/`:
@@ -39,13 +39,13 @@ For a full local stack, use `docker compose up --build` from the repository root
 
 | Command (from repository root) | Purpose |
 | --- | --- |
-| `pnpm build` | Build workspace packages and applications |
-| `pnpm --filter @intervyn/web typecheck` | Generate route types and type-check the app |
-| `pnpm --filter @intervyn/web test` | Run frontend Vitest tests |
-| `pnpm --filter @intervyn/shared gen:schema` | Regenerate JSON Schemas from the Zod contracts |
-| `pnpm --filter @intervyn/cli build` | Build the CLI used by `pnpm intervyn` |
+| `pnpm --dir frontend build` | Build workspace packages and applications |
+| `pnpm --dir frontend typecheck:web` | Generate route types and type-check the app |
+| `pnpm --dir frontend test:web` | Run frontend Vitest tests |
+| `pnpm --dir frontend --filter @intervyn/shared gen:schema` | Regenerate JSON Schemas from the Zod contracts |
+| `pnpm --dir frontend --filter @intervyn/cli build` | Build the CLI used by `pnpm --dir frontend intervyn` |
 
-Build the workspace before using `pnpm intervyn`; the root command runs `frontend/cli/dist/index.js`.
+Build the workspace before using `pnpm --dir frontend intervyn`; the frontend workspace command runs `frontend/cli/dist/index.js`.
 
 ## Routes
 
@@ -64,7 +64,7 @@ Server API routes include `/api/health`, `/api/session/[id]`, `/api/coach/chat`,
 
 ## Configuration
 
-Use the root [`.env.example`](../.env.example) as the variable list. `pnpm intervyn init` creates app-local env files. Values prefixed with `NEXT_PUBLIC_` are included in the browser bundle at build time; keep service credentials in server-only variables.
+Use the root [`.env.example`](../.env.example) as the variable list. `pnpm --dir frontend intervyn init` creates app-local env files. Values prefixed with `NEXT_PUBLIC_` are included in the browser bundle at build time; keep service credentials in server-only variables.
 
 | Variables | Purpose |
 | --- | --- |
@@ -97,6 +97,10 @@ tests/                    Frontend, CLI, and shared-package tests
 ## Development Notes
 
 - Keep private agent and knowledge-service calls in server routes and server-only modules.
-- Author shared contracts in `packages/shared/src/`, regenerate schemas with `pnpm gen:schema`, and keep the Pydantic mirror in `../backend/app/schemas/shared_models.py` aligned.
+- Author shared contracts in `packages/shared/src/`, regenerate schemas with `pnpm --dir frontend gen:schema`, and keep the Pydantic mirror in `../backend/app/schemas/shared_models.py` aligned.
 - UI translations live in `src/lib/i18n/messages/en.ts` and `zh.ts`; English is the default, with Simplified Chinese as the only alternate UI locale.
-- The root `pnpm dev` task starts the web package only; it does not launch the Python API or LiveKit worker.
+- The `pnpm --dir frontend dev` task starts the web package only; it does not launch the Python API or LiveKit worker.
+
+## Vercel
+
+Set the Vercel project Root Directory to `frontend`. Its `vercel.json`, pnpm workspace, and lockfile live in that directory; the build emits `.next` there.

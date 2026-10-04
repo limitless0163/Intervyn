@@ -29,16 +29,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install pnpm
-        # Version comes from package.json `packageManager` (pnpm@11.5.2).
+        # Version comes from frontend/package.json `packageManager` (pnpm@11.5.2).
         # Pinning it here too makes pnpm/action-setup error with
         # ERR_PNPM_BAD_PM_VERSION ("Multiple versions of pnpm specified").
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: frontend/.nvmrc
           cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -46,28 +49,28 @@ jobs:
           enable-cache: true
 
       - name: Install JS deps
-        run: pnpm install
+        run: pnpm --dir frontend install --frozen-lockfile
 
       - name: Sync Python deps (agent)
         run: cd backend && uv sync
 
       - name: Generate schema
-        run: pnpm gen:schema
+        run: pnpm --dir frontend gen:schema
 
       - name: Schema is up to date
         run: git diff --exit-code frontend/packages/shared/schema
 
       - name: Build
-        run: pnpm build
+        run: pnpm --dir frontend build
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: pnpm --dir frontend typecheck
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm --dir frontend lint
 
       - name: Test (Vitest + pytest + knowledge sidecar)
-        run: pnpm test:all
+        run: pnpm --dir frontend test:all
 
       - name: Validate docker compose
         # Profiled services are skipped unless their profile is named, so the
@@ -117,3 +120,12 @@ jobs:
           push: false
           cache-from: type=gha,scope=lightrag
           cache-to: type=gha,mode=max,scope=lightrag
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web

@@ -384,7 +384,7 @@ function nextSteps(values: Values): string {
   const lines = [
     "Next steps:",
     "  docker compose up            # full stack with the keys you just set",
-    "  (or) pnpm dev                # web :3000 + agent API :8000",
+    "  (or) pnpm --dir frontend dev # web :3000 (start agent API separately)",
   ];
   if (values.STT_PROVIDER || values.LIVEKIT_URL) {
     lines.push(

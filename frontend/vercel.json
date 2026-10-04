@@ -3,6 +3,6 @@
   "framework": "nextjs",
   "regions": ["sin1"],
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm build --filter @intervyn/web...",
-  "outputDirectory": "frontend/.next"
+  "buildCommand": "pnpm build",
+  "outputDirectory": ".next"
 }

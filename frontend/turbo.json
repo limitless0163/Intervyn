@@ -24,19 +24,20 @@
     },
     "@intervyn/cli#test": {
       "dependsOn": ["gen:schema"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/cli/**"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tests/cli/**"]
     },
     "@intervyn/cli#typecheck": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/cli/**"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tests/cli/**"]
     },
     "@intervyn/shared#test": {
       "dependsOn": ["gen:schema"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/shared/**"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tests/shared/**"]
     },
     "@intervyn/shared#typecheck": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/shared/**"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tests/shared/**"]
     }
-  }
+  },
+  "globalDependencies": ["tsconfig.base.json"]
 }

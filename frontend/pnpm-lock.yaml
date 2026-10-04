@@ -10,20 +10,6 @@ overrides:
 importers:
 
   .:
-    devDependencies:
-      prettier:
-        specifier: ^3.9.6
-        version: 3.9.6
-      turbo:
-        specifier: ^2.10.6
-        version: 2.10.6
-      typescript:
-        specifier: ~5.9.3
-        version: 5.9.3
-
-  backend: {}
-
-  frontend:
     dependencies:
       '@aws-sdk/client-s3':
         specifier: ^3.1127.0
@@ -101,9 +87,15 @@ importers:
       postcss:
         specifier: ^8.5.28
         version: 8.5.28
+      prettier:
+        specifier: ^3.9.6
+        version: 3.9.6
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+      turbo:
+        specifier: ^2.10.6
+        version: 2.10.6
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
@@ -111,7 +103,7 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.1)(vite@7.3.5(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.1)(yaml@2.9.0))
 
-  frontend/cli:
+  cli:
     dependencies:
       '@clack/prompts':
         specifier: ^1.7.0
@@ -136,7 +128,9 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.1)(vite@7.3.5(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.1)(yaml@2.9.0))
 
-  frontend/packages/ee:
+  packages/agent: {}
+
+  packages/ee:
     devDependencies:
       tsup:
         specifier: ^8.5.1
@@ -145,7 +139,7 @@ importers:
         specifier: ~5.9.3
         version: 5.9.3
 
-  frontend/packages/shared:
+  packages/shared:
     dependencies:
       zod:
         specifier: ^4.4.3

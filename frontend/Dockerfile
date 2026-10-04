@@ -1,32 +1,31 @@
-# Intervyn web (Next.js 15, App Router) — production image (WP-12).
+# Intervyn web (Next.js 16, App Router) — production image (WP-12).
 #
 # Multi-stage, Next.js *standalone* output (see frontend/next.config.ts:
 # `output: 'standalone'`). The final image is a slim `node server.js` with no
 # install step at runtime.
 #
-# BUILD CONTEXT = repo root (this is a pnpm + Turborepo monorepo; the web app
-# depends on the `@intervyn/shared` workspace package, which must be built
-# first). Build from the root:
+# BUILD CONTEXT = frontend (the complete pnpm workspace lives here).
+# Build from the repository root:
 #
-#     docker build -f frontend/Dockerfile -t intervyn-web .
+#     docker build -f frontend/Dockerfile -t intervyn-web frontend
 #
-# (docker-compose.yml already sets `context: .` + this dockerfile.)
+# docker-compose.yml uses the deps stage below for the local dev server.
+# Direct builds use the final runner stage for production.
 
 # ---- deps: install the full workspace (need every member's manifest) --------
 FROM node:22-slim AS deps
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
-WORKDIR /repo
+WORKDIR /repo/frontend
 
 # Copy lockfile + workspace config + every package manifest first for caching.
 # pnpm needs ALL workspace members' package.json to resolve the lockfile.
 COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc package.json ./
-COPY frontend/package.json frontend/package.json
-COPY backend/package.json backend/package.json
-COPY frontend/packages/shared/package.json frontend/packages/shared/package.json
-COPY frontend/packages/ee/package.json frontend/packages/ee/package.json
-COPY frontend/cli/package.json frontend/cli/package.json
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/ee/package.json packages/ee/package.json
+COPY packages/agent/package.json packages/agent/package.json
+COPY cli/package.json cli/package.json
 RUN pnpm install --frozen-lockfile
 
 # ---- builder: build @intervyn/shared then the web app ------------------
@@ -35,13 +34,13 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN corepack enable
-WORKDIR /repo
+WORKDIR /repo/frontend
 
 # NEXT_PUBLIC_* vars are inlined into the browser bundle at BUILD time by
 # Next.js — values injected at runtime (compose env_file) never reach client
 # code. Accept them as build args here and export them as env so `pnpm build`
-# bakes them in. docker-compose.yml wires these from the root .env via
-# `build.args` (see the web service). Hosted-only billing vars
+# bakes them in. Pass them with `docker build --build-arg` when building the
+# production image. Hosted-only billing vars
 # (NEXT_PUBLIC_PADDLE_*) are intentionally not plumbed — the OSS compose
 # path runs without billing.
 ARG NEXT_PUBLIC_APP_URL
@@ -56,15 +55,15 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
     NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 
 # Bring in installed node_modules, then the full source tree.
-COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/frontend ./
 COPY . .
 
-# Some Next projects expect frontend/public to exist; guarantee it so the
+# Some Next projects expect public to exist; guarantee it so the
 # runner COPY below never fails even when there are no static assets yet.
-RUN mkdir -p frontend/public
+RUN mkdir -p public
 
-# Turbo builds the `@intervyn/shared` dependency first (^build), then web.
-RUN pnpm build --filter @intervyn/web...
+# Build workspace packages before the root Next.js app.
+RUN pnpm build
 
 # ---- runner: slim standalone server ----------------------------------------
 FROM node:22-slim AS runner
@@ -78,15 +77,12 @@ WORKDIR /app
 RUN groupadd --system --gid 1001 nodejs \
  && useradd --system --uid 1001 --gid nodejs nextjs
 
-# The standalone output already contains a minimal node_modules + the nested
-# monorepo layout (frontend/server.js, frontend/packages/shared, …). Copy it whole,
-# then layer in static assets + public (Next does NOT bundle these).
+# The workspace root is also the app root, so server.js is at the bundle root.
 COPY --from=builder --chown=nextjs:nodejs /repo/frontend/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /repo/frontend/.next/static ./frontend/.next/static
-COPY --from=builder --chown=nextjs:nodejs /repo/frontend/public ./frontend/public
+COPY --from=builder --chown=nextjs:nodejs /repo/frontend/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /repo/frontend/public ./public
 
 USER nextjs
 EXPOSE 3000
 
-# Standalone entry is the nested path in a pnpm monorepo.
-CMD ["node", "frontend/server.js"]
+CMD ["node", "server.js"]
