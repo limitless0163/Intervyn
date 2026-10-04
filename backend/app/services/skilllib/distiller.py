@@ -94,9 +94,12 @@ async def propose_skill(
 
     skills_dir 可指定技能库根目录，date 可覆盖验证日期；返回草稿但不自动发布。
     """
-    ctx = await deps.repo.load_context(session_id)
+    view = await deps.repo.get_session_view(session_id)
+    ctx = view.context if view is not None else None
     if ctx is None:
         raise KeyError(f"No persisted context for session_id: {session_id}")
+    if view.scorecard is not None:
+        ctx = ctx.model_copy(update={"scorecard": view.scorecard})
 
     root = Path(skills_dir) if skills_dir is not None else DEFAULT_SKILLS_DIR
     review_dir = root / REVIEW_SUBDIR

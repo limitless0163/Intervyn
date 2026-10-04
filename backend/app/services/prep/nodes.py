@@ -84,8 +84,9 @@ async def cv_analysis(state: PrepState, deps: Deps) -> PrepState:
     """从简历正文提取候选人资料，调用失败时使用最小有效资料并记录警告。"""
     system, user = cv_analysis_prompts(state["cv_text"])
     try:
-        candidate = await deps.llm.complete_json(
-            system=system, user=user, schema=CandidateProfile
+        candidate = await asyncio.wait_for(
+            deps.llm.complete_json(system=system, user=user, schema=CandidateProfile),
+            timeout=deps.settings.llm_call_timeout_sec,
         )
     except Exception as exc:  # noqa: BLE001 - 分析失败时降级而不中断准备
         log.warning("cv_analysis failed, using minimal profile (%s)", exc)
@@ -101,7 +102,10 @@ async def jd_analysis(state: PrepState, deps: Deps) -> PrepState:
     req = state["req"]
     system, user = jd_analysis_prompts(req.jd_text, req.company)
     try:
-        job = await deps.llm.complete_json(system=system, user=user, schema=JobSpec)
+        job = await asyncio.wait_for(
+            deps.llm.complete_json(system=system, user=user, schema=JobSpec),
+            timeout=deps.settings.llm_call_timeout_sec,
+        )
     except Exception as exc:  # noqa: BLE001 - 分析失败时降级而不中断准备
         log.warning("jd_analysis failed, using minimal job spec (%s)", exc)
         job = build_mock(JobSpec)
@@ -144,18 +148,25 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
         localized = f"{company} interview process {language_name(primary)}"
         queries.append((localized, primary))
 
-    results = []
-    for query, lang in queries:
+    async def search_one(query: str, lang: str):
         try:
-            results.extend(await deps.search.search(query, lang=lang, max_results=4))
+            return await asyncio.wait_for(
+                deps.search.search(query, lang=lang, max_results=4),
+                timeout=deps.settings.search_call_timeout_sec,
+            )
         except Exception as exc:  # noqa: BLE001 - 搜索失败允许继续准备
-            log.warning("company_research: search failed for %r (%s)", query, exc)
+            log.warning("company_research: search failed (%s)", type(exc).__name__)
+            return []
+
+    batches = await asyncio.gather(*(search_one(query, lang) for query, lang in queries))
+    results = [result for batch in batches for result in batch]
 
     snippets = "\n".join(f"- {r.title}: {r.snippet}" for r in results) or "(no results)"
     system, user = company_research_prompts(company, snippets)
     try:
-        intel = await deps.llm.complete_json(
-            system=system, user=user, schema=CompanyIntel
+        intel = await asyncio.wait_for(
+            deps.llm.complete_json(system=system, user=user, schema=CompanyIntel),
+            timeout=deps.settings.llm_call_timeout_sec,
         )
     except Exception as exc:  # noqa: BLE001 - 公司分析失败时降级
         log.warning("company_research failed, using minimal intel (%s)", exc)
@@ -231,7 +242,7 @@ def _skill_library_hint(
     技能库缺失或检索失败时返回空字符串，不让准备流程依赖技能库可用性。
     """
     try:
-        from ..skilllib import effective_confidence, find_relevant
+        from ..skilllib.store import effective_confidence, find_relevant
 
         skills = find_relevant(skills_dir, company=company, role=role, level=level)
         if not skills:
@@ -281,8 +292,9 @@ async def question_planner(state: PrepState, deps: Deps) -> PrepState:
             f"{hint}"
         )
     try:
-        plan = await deps.llm.complete_json(
-            system=system, user=user, schema=QuestionPlan
+        plan = await asyncio.wait_for(
+            deps.llm.complete_json(system=system, user=user, schema=QuestionPlan),
+            timeout=deps.settings.llm_call_timeout_sec,
         )
     except Exception as exc:  # noqa: BLE001 - 规划失败仍需返回契约有效的计划
         log.warning(

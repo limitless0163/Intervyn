@@ -26,6 +26,9 @@ log = get_logger(__name__)
 
 # 限制文件读取等待时间，避免不可达主机长时间阻塞准备。
 _CV_FETCH_TIMEOUT_SEC = 5.0
+_MAX_DOCUMENT_BYTES = 10_000_000
+_MAX_EXTRACTED_CHARS = 200_000
+_CONVERSION_TIMEOUT_SEC = 20.0
 
 _MIN_CV_LEN = 30
 
@@ -109,14 +112,21 @@ async def _gemini_extract(data: bytes, mime: str, deps: Deps) -> str:
 
     try:
         client = genai.Client(api_key=settings.gemini_api_key)
-        resp = await client.aio.models.generate_content(
-            model=settings.gemini_model,
-            contents=[
-                types.Part.from_bytes(data=data, mime_type=mime or "application/pdf"),
-                _GEMINI_PROMPT,
-            ],
-        )
-        return (resp.text or "").strip()
+        try:
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=[
+                        types.Part.from_bytes(data=data, mime_type=mime or "application/pdf"),
+                        _GEMINI_PROMPT,
+                    ],
+                ),
+                timeout=settings.llm_call_timeout_sec,
+            )
+            return (resp.text or "").strip()
+        finally:
+            await client.aio.aclose()
+            client.close()
     except Exception as exc:  # noqa: BLE001 - 模型提取失败时返回空正文
         log.warning("Gemini CV extraction failed (%s)", exc)
         return ""
@@ -160,7 +170,9 @@ def _is_fetchable_url(url: str) -> bool:
         return False
     if parts.scheme not in ("http", "https"):
         return False
-    host = (parts.hostname or "").strip("[]").lower()
+    if parts.username is not None or parts.password is not None:
+        return False
+    host = (parts.hostname or "").strip("[]").lower().rstrip(".")
     if not host or host == "localhost" or host.endswith((".localhost", ".internal")):
         return False
     try:
@@ -190,29 +202,42 @@ async def _fetch_url_bytes(cv_url: str) -> tuple[bytes, str] | None:
         log.warning("fetch_cv: refusing non-public URL %r", cv_url)
         return None
     try:
-        async with httpx.AsyncClient(timeout=_CV_FETCH_TIMEOUT_SEC) as client:
-            url = cv_url
-            for _ in range(_MAX_CV_REDIRECTS + 1):
-                resp = await client.get(url, follow_redirects=False)
-                if resp.is_redirect:
-                    location = resp.headers.get("location")
-                    if not location:
-                        return None
-                    nxt = str(resp.url.join(location))
-                    if not _is_fetchable_url(nxt):
-                        log.warning(
-                            "fetch_cv: refusing redirect to non-public URL %r", nxt
-                        )
-                        return None
-                    url = nxt
-                    continue
-                resp.raise_for_status()
-                return resp.content, resp.headers.get("content-type", "")
-            log.warning("fetch_cv: too many redirects for %r", cv_url)
-            return None
+        async with asyncio.timeout(_CV_FETCH_TIMEOUT_SEC):
+            async with httpx.AsyncClient(timeout=_CV_FETCH_TIMEOUT_SEC) as client:
+                url = cv_url
+                for _ in range(_MAX_CV_REDIRECTS + 1):
+                    async with client.stream("GET", url, follow_redirects=False) as resp:
+                        if resp.is_redirect:
+                            location = resp.headers.get("location")
+                            if not location:
+                                return None
+                            nxt = str(resp.url.join(location))
+                            if not _is_fetchable_url(nxt):
+                                log.warning("fetch_cv: refusing redirect to non-public URL")
+                                return None
+                            url = nxt
+                            continue
+                        resp.raise_for_status()
+                        length = resp.headers.get("content-length")
+                        if length and int(length) > _MAX_DOCUMENT_BYTES:
+                            return None
+                        data = bytearray()
+                        async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
+                            data.extend(chunk)
+                            if len(data) > _MAX_DOCUMENT_BYTES:
+                                return None
+                        return bytes(data), resp.headers.get("content-type", "")
+                log.warning("fetch_cv: too many redirects")
+                return None
     except Exception as exc:  # noqa: BLE001 - 读取失败由调用方降级
         log.warning("fetch_cv: could not GET %r (%s)", cv_url, exc)
         return None
+
+
+def _bounded_text(text: str) -> tuple[str, list[str]]:
+    if len(text) > _MAX_EXTRACTED_CHARS:
+        return text[:_MAX_EXTRACTED_CHARS], ["CV text was truncated because the document is too large."]
+    return text, []
 
 
 async def _extract_from_bytes(data: bytes, mime: str, deps: Deps) -> tuple[str, list[str]]:
@@ -220,9 +245,17 @@ async def _extract_from_bytes(data: bytes, mime: str, deps: Deps) -> tuple[str, 
 
     不把原始字节或 base64 作为简历正文交给分析。
     """
-    text = await asyncio.to_thread(_markitdown_extract, data, mime)
+    if len(data) > _MAX_DOCUMENT_BYTES:
+        return "", [_UNREADABLE_WARNING]
+    try:
+        text = await asyncio.wait_for(
+            asyncio.to_thread(_markitdown_extract, data, mime), timeout=_CONVERSION_TIMEOUT_SEC
+        )
+    except TimeoutError:
+        log.warning("CV document conversion timed out")
+        text = ""
     if text and _is_meaningful(text):
-        return text, []
+        return _bounded_text(text)
 
     # 扫描件等本地解析困难的文档可由多模态模型兜底。
     settings = deps.settings
@@ -232,11 +265,11 @@ async def _extract_from_bytes(data: bytes, mime: str, deps: Deps) -> tuple[str, 
     if gemini_ready:
         fallback = await _gemini_extract(data, mime, deps)
         if fallback and _is_meaningful(fallback):
-            return fallback, []
+            return _bounded_text(fallback)
 
     # 本地提取结果未达到有效性阈值时仍优于空正文，由下游输入校验最终判断。
     if text:
-        return text, []
+        return _bounded_text(text)
 
     return "", [_UNREADABLE_WARNING]
 
@@ -254,6 +287,8 @@ async def extract_cv_text(cv_url: str, deps: Deps) -> tuple[str, list[str]]:
     if decoded is not None:
         data, mime = decoded
         return await _extract_from_bytes(data, mime, deps)
+    if cv_url.lstrip().startswith("data:"):
+        return "", [_UNREADABLE_WARNING]
 
     stripped = cv_url.strip()
     if stripped.lower().startswith(("http://", "https://")) and "\n" not in stripped:
