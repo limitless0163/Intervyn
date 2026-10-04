@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
+import { LocaleProvider } from "@/components/locale-provider";
 import "@/styles/globals.css";
 
 const inter = Inter({
@@ -33,7 +34,7 @@ export const metadata = {
     template: "%s · Intervyn",
   },
   description:
-    "Open-source, voice-first AI mock interviews. Intervyn reads your CV and the job, researches the company, runs an adaptive voice interview, then shows you exactly what to fix. English-first, 10+ languages.",
+    "Open-source, voice-first AI mock interviews with an English or Simplified Chinese interface. Intervyn reads your CV and the job, researches the company, then shows you exactly what to improve. Practice interviews in 10+ languages.",
   applicationName: "Intervyn",
   openGraph: {
     title: "Intervyn — Practice the interview out loud",
@@ -56,10 +57,11 @@ export default async function RootLayout({
 }: {
   children: ReactNode;
 }) {
-  // Screen readers pick pronunciation from `lang` — resolve it from the same
-  // `locale` cookie the LanguageToggle writes (EN default).
+  // Screen readers pick pronunciation from `lang`; unsupported legacy locale
+  // cookies resolve to the English default.
   const store = await cookies();
-  const lang = store.get("locale")?.value === "vi" ? "vi" : "en";
+  const locale = store.get("locale")?.value === "zh" ? "zh" : "en";
+  const lang = locale === "zh" ? "zh-CN" : "en";
   return (
     <html
       lang={lang}
@@ -73,7 +75,7 @@ export default async function RootLayout({
             }}
           />
         </noscript>
-        {children}
+        <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
       </body>
     </html>
   );

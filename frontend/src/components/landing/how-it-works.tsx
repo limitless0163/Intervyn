@@ -1,42 +1,45 @@
+"use client";
+
 import { Container } from "@/components/ui/container";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Reveal } from "@/components/ui/reveal";
-
-const STEPS = [
-  {
-    num: "01 — PREP",
-    title: "Drop your CV & the job post",
-    body: "We extract your experience, the role's real requirements, and the gaps between them — then research how that company actually interviews.",
-  },
-  {
-    num: "02 — INTERVIEW",
-    title: "Talk to your interviewer",
-    body: "An adaptive voice interview with follow-ups, interruptions, and behavioral, technical and coding rounds — in the language you choose.",
-  },
-  {
-    num: "03 — IMPROVE",
-    title: "Score, then study",
-    body: "A per-skill scorecard with model answers, and a coach that teaches your weak areas before you go again.",
-  },
-];
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 export function HowItWorks() {
+  const messages = useMessages();
+  const steps = [
+    {
+      num: "01 — PREP",
+      title: t(messages, "landing.how.step1Title"),
+      body: t(messages, "landing.how.step1Body"),
+    },
+    {
+      num: "02 — INTERVIEW",
+      title: t(messages, "landing.how.step2Title"),
+      body: t(messages, "landing.how.step2Body"),
+    },
+    {
+      num: "03 — IMPROVE",
+      title: t(messages, "landing.how.step3Title"),
+      body: t(messages, "landing.how.step3Body"),
+    },
+  ];
   return (
     <section id="how" className="scroll-mt-24 py-[84px]">
       <Container>
         <Reveal className="mb-12 max-w-[680px]">
-          <Eyebrow>How it works</Eyebrow>
+          <Eyebrow>{t(messages, "landing.how.eyebrow")}</Eyebrow>
           <h2 className="serif my-3.5 text-[38px]">
-            Prepare, perform, improve.
+            {t(messages, "landing.how.title")}
           </h2>
           <p className="text-[17px] text-ink-soft">
-            The heavy thinking happens before the call, so the conversation
-            itself stays fast and natural.
+            {t(messages, "landing.how.body")}
           </p>
         </Reveal>
         <Reveal>
           <div className="grid overflow-hidden rounded-2xl border border-line bg-panel md:grid-cols-3">
-            {STEPS.map((step) => (
+            {steps.map((step) => (
               <div
                 key={step.num}
                 className="border-b border-line px-7 py-[30px] last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0"

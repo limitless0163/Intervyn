@@ -1,6 +1,10 @@
+"use client";
+
 import type { ScoreCard } from "@intervyn/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 function Bullet({
   tone,
@@ -30,11 +34,14 @@ function Bullet({
  * areas route into the Prep Coach (WP-4). Server component.
  */
 export function StrengthsGaps({ scorecard }: { scorecard: ScoreCard }) {
+  const messages = useMessages();
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Strengths</CardTitle>
+          <CardTitle className="text-lg">
+            {t(messages, "report.strengthsTitle")}
+          </CardTitle>
         </CardHeader>
         <CardContent className="pb-6">
           <ul className="space-y-2.5">
@@ -49,7 +56,9 @@ export function StrengthsGaps({ scorecard }: { scorecard: ScoreCard }) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Growth areas</CardTitle>
+          <CardTitle className="text-lg">
+            {t(messages, "report.growthTitle")}
+          </CardTitle>
         </CardHeader>
         <CardContent className="pb-6">
           <ul className="space-y-2.5">
@@ -70,9 +79,7 @@ export function StrengthsGaps({ scorecard }: { scorecard: ScoreCard }) {
                 ))}
               </div>
               <p className="mt-2 text-xs leading-relaxed text-ink-soft">
-                These weak areas route straight into your{" "}
-                <span className="font-medium text-accent">Prep Coach</span> — it
-                builds a focused study plan around them.
+                {t(messages, "report.weakAreasNote")}
               </p>
             </div>
           )}

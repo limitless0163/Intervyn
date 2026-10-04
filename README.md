@@ -29,7 +29,7 @@ Intervyn is a self-hostable mock-interview app for candidates. It uses a CV and 
 - Practice with a LiveKit voice interviewer when configured; typed answers are available as a fallback.
 - Review competency scores, strengths, improvement areas, and example answers.
 - Continue with a study plan and coaching chat using the available knowledge sources.
-- Use the interface in English or Vietnamese.
+- Use the interface in English by default or switch to Simplified Chinese. Interview language options are configured separately.
 
 ## Tech Stack
 
@@ -91,6 +91,8 @@ In the setup wizard, choose **Offline demo** to select mock LLM and search provi
 | `pnpm build` | Build workspace packages and applications |
 | `pnpm typecheck` | Type-check TypeScript workspace packages |
 | `pnpm test` | Run workspace tests |
+| `pnpm test:all` | Run workspace tests and the separate knowledge-sidecar suite |
+| `pnpm test:live` | Run agent tests with the optional LiveKit SDK, including voice regressions |
 | `pnpm lint` | Check configured frontend files and run agent Ruff checks |
 | `pnpm gen:schema` | Regenerate shared JSON Schemas |
 | `uv --directory backend/services/lightrag run pytest` | Run the separate knowledge-sidecar tests |

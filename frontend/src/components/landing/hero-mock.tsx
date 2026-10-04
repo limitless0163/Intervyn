@@ -1,26 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-const BASE =
-  "At a fintech startup we sharded the ledger by region and added idempotency keys";
-const PHRASES = [
-  BASE,
-  `${BASE} — then backfilled idempotently`,
-  `${BASE} and cut p99 from 800ms to 120ms`,
-];
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 export function HeroMock() {
-  const [said, setSaid] = useState(BASE);
+  const messages = useMessages();
+  const base = t(messages, "landing.hero.mockAnswer");
+  const followup = t(messages, "landing.hero.mockFollowup");
+  const outcome = t(messages, "landing.hero.mockOutcome");
+  const [said, setSaid] = useState(base);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    setSaid(base);
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const phrases = [base, `${base} ${followup}`, `${base} ${outcome}`];
     let pi = 0;
-    let ci = BASE.length;
+    let ci = base.length;
     let dir = 1;
     const tick = () => {
-      const full = PHRASES[pi];
+      const full = phrases[pi];
       if (!full) return;
       setSaid(full.slice(0, ci));
       ci += dir;
@@ -29,9 +29,9 @@ export function HeroMock() {
         timer.current = setTimeout(tick, 1600);
         return;
       }
-      if (ci < BASE.length) {
+      if (ci < base.length) {
         dir = 1;
-        pi = (pi + 1) % PHRASES.length;
+        pi = (pi + 1) % phrases.length;
       }
       timer.current = setTimeout(tick, dir > 0 ? 42 : 16);
     };
@@ -39,7 +39,7 @@ export function HeroMock() {
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, []);
+  }, [base, followup, outcome]);
 
   return (
     <div
@@ -75,15 +75,15 @@ export function HeroMock() {
         <div className="flex min-h-[268px] flex-col gap-[13px] px-[18px] py-4">
           <div className="flex gap-2.5">
             <div className="w-[74px] flex-shrink-0 pt-0.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-faint">
-              Interviewer
+              {t(messages, "landing.hero.mockInterviewer")}
             </div>
             <div className="text-[13.5px] font-[450] leading-[1.5] text-ink">
-              Walk me through a time you scaled a system under heavy load.
+              {t(messages, "landing.hero.mockQuestion")}
             </div>
           </div>
           <div className="flex gap-2.5">
             <div className="w-[74px] flex-shrink-0 pt-0.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-faint">
-              You
+              {t(messages, "landing.hero.mockYou")}
             </div>
             <div className="text-[13.5px] leading-[1.5] text-ink-soft">
               {said}
@@ -92,9 +92,9 @@ export function HeroMock() {
           </div>
           <div className="mt-auto flex flex-wrap gap-[18px] border-t border-line-2 pt-3">
             {[
-              ["Communication", "8.5"],
-              ["System design", "7.0"],
-              ["Clarity", "9.0"],
+              [t(messages, "landing.hero.mockCommunication"), "8.5"],
+              [t(messages, "landing.hero.mockSystemDesign"), "7.0"],
+              [t(messages, "landing.hero.mockClarity"), "9.0"],
             ].map(([k, v]) => (
               <div key={k} className="flex flex-col gap-[3px]">
                 <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-faint">

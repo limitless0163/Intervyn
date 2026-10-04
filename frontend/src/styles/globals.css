@@ -16,6 +16,9 @@
   --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-serif: var(--font-fraunces), Georgia, serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --font-chinese:
+    "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
 
   --radius: 14px;
   --radius-card: 14px;
@@ -39,6 +42,13 @@
     color: var(--color-ink);
     font-family: var(--font-sans);
     line-height: 1.6;
+  }
+
+  html[lang="zh-CN"] body,
+  html[lang="zh-CN"] .serif,
+  html[lang="zh-CN"] .font-serif {
+    font-family: var(--font-chinese);
+    letter-spacing: 0;
   }
 
   a {

@@ -1,5 +1,9 @@
+"use client";
+
 import { Container } from "@/components/ui/container";
 import { BrandMark } from "@/components/ui/brand-mark";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 type FooterLink = { href: string; label: string };
 
@@ -22,13 +26,13 @@ function FooterCol({ title, links }: { title: string; links: FooterLink[] }) {
   );
 }
 
-const PRODUCT_LINKS: FooterLink[] = [
-  { href: "#how", label: "How it works" },
-  { href: "#product", label: "Features" },
-  { href: "#faq", label: "FAQ" },
-];
-
 export function Footer() {
+  const messages = useMessages();
+  const productLinks: FooterLink[] = [
+    { href: "#how", label: t(messages, "landing.footer.how") },
+    { href: "#product", label: t(messages, "landing.footer.features") },
+    { href: "#faq", label: t(messages, "landing.nav.faq") },
+  ];
   return (
     <footer className="mt-[30px] border-t border-line pt-[54px] pb-10">
       <Container>
@@ -41,15 +45,19 @@ export function Footer() {
               </span>
             </div>
             <p className="max-w-[280px] text-sm text-muted">
-              The open-source AI voice interviewer. Practice out loud, in any
-              language.
+              {t(messages, "landing.footer.body")}
             </p>
           </div>
-          <FooterCol title="Product" links={PRODUCT_LINKS} />
+          <FooterCol
+            title={t(messages, "landing.footer.product")}
+            links={productLinks}
+          />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-line pt-[22px] text-[13px] text-faint">
           <span>© 2026 Intervyn · MIT License</span>
-          <span className="font-mono">Built in the open</span>
+          <span className="font-mono">
+            {t(messages, "landing.footer.built")}
+          </span>
         </div>
       </Container>
     </footer>

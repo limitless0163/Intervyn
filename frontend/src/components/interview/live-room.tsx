@@ -59,6 +59,7 @@ import {
 import { ControlBar } from "@/components/interview/control-bar";
 import { SessionTimer } from "@/components/interview/session-timer";
 import { TextFallback } from "@/components/interview/text-fallback";
+import { LanguageToggle } from "@/components/language-toggle";
 
 // The text-stream topic livekit-agents' RoomIO registers its chat handler on
 // (TOPIC_CHAT in the Python SDK). Typed answers MUST go here to reach the agent.
@@ -169,6 +170,7 @@ function Scaffold({
   textFallback: React.ReactNode;
   notice?: React.ReactNode;
 }) {
+  const messages = useMessages();
   return (
     <main className="relative min-h-screen overflow-hidden bg-paper">
       {/* Calm backdrop wash behind the frosted panels. */}
@@ -186,14 +188,17 @@ function Scaffold({
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <span className="font-mono text-[10px] tracking-[0.16em] text-faint">
-              INTERVYN · LIVE
+              {t(messages, "interview.liveHeader")}
             </span>
             {/* Page heading for screen-reader navigation (styled as before). */}
             <h1 className="font-serif text-[17px] font-normal text-ink">
               {persona.name}
             </h1>
           </div>
-          {timer}
+          <div className="flex items-center gap-3">
+            {timer}
+            <LanguageToggle />
+          </div>
         </div>
 
         {/* Centerpiece: avatar + transcript, calm two-column on wide. */}

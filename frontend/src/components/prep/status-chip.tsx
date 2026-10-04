@@ -1,5 +1,9 @@
+"use client";
+
 import { cn } from "@/utils/cn";
 import type { MasteryState } from "@/features/prep/sample-mastery";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 /**
  * Shared visual language for a competency's mastery state, used by the study
@@ -35,7 +39,20 @@ export function StatusChip({
   state: MasteryState;
   className?: string;
 }) {
+  const messages = useMessages();
   const c = MASTERY_COLORS[state];
+  const label = t(
+    messages,
+    `prep.${
+      state === "unseen"
+        ? "notStarted"
+        : state === "learning"
+          ? "learning"
+          : state === "shaky"
+            ? "shaky"
+            : "mastered"
+    }`,
+  );
   return (
     <span
       className={cn(
@@ -50,7 +67,7 @@ export function StatusChip({
         style={{ backgroundColor: c.fg }}
         aria-hidden
       />
-      {MASTERY_LABEL[state]}
+      {label}
     </span>
   );
 }

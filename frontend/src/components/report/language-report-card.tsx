@@ -1,3 +1,5 @@
+"use client";
+
 import type { LanguageReport } from "@intervyn/shared";
 import {
   Card,
@@ -6,6 +8,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 function Stat({
   label,
@@ -37,31 +41,35 @@ function Stat({
  * component.
  */
 export function LanguageReportCard({ report }: { report: LanguageReport }) {
+  const messages = useMessages();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Language & Delivery</CardTitle>
+        <CardTitle>{t(messages, "report.languageDelivery")}</CardTitle>
         <CardDescription>{report.summary}</CardDescription>
       </CardHeader>
       <CardContent className="pb-6">
         <div className="grid grid-cols-3 gap-3">
           <Stat
-            label="Fluency"
+            label={t(messages, "report.fluency")}
             value={report.fluency_score.toFixed(1)}
             suffix="/5"
           />
           <Stat
-            label="Clarity"
+            label={t(messages, "report.clarity")}
             value={report.clarity_score.toFixed(1)}
             suffix="/5"
           />
-          <Stat label="Filler words" value={String(report.filler_word_count)} />
+          <Stat
+            label={t(messages, "report.fillerWords")}
+            value={String(report.filler_word_count)}
+          />
         </div>
 
         <dl className="mt-5 space-y-4">
           <div>
             <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-              Code-switching
+              {t(messages, "report.codeSwitching")}
             </dt>
             <dd className="mt-1 text-sm leading-relaxed text-ink-soft">
               {report.code_switching_notes}
@@ -69,7 +77,7 @@ export function LanguageReportCard({ report }: { report: LanguageReport }) {
           </div>
           <div>
             <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-              Pronunciation
+              {t(messages, "report.pronunciation")}
             </dt>
             <dd className="mt-1 text-sm leading-relaxed text-ink-soft">
               {report.pronunciation_notes}

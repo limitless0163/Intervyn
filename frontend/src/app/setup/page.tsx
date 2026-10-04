@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { isR2Configured, isSupabaseConfigured } from "@/lib/env";
 import { getUser } from "@/lib/supabase/server";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { LanguageToggle } from "@/components/language-toggle";
 import { SetupForm } from "@/components/setup/setup-form";
+import { getMessages, t } from "@/lib/i18n";
 
 // Evaluate at request time: `isR2Configured()` reads server env, which must not
 // be baked into a static prerender (a deploy with R2 set would otherwise serve a
@@ -17,6 +19,10 @@ export const dynamic = "force-dynamic";
  * user, then hand both into the client form island as props.
  */
 export default async function SetupPage() {
+  const cookieStore = await cookies();
+  const messages = getMessages(
+    cookieStore.get("locale")?.value === "zh" ? "zh" : "en",
+  );
   // R2 status must be computed server-side — the client can't see server env.
   const r2Configured = isR2Configured();
 
@@ -35,7 +41,7 @@ export default async function SetupPage() {
           {user && (
             <form action="/auth/signout" method="post">
               <Button type="submit" variant="ghost" size="sm">
-                Sign out
+                {t(messages, "setup.signOut")}
               </Button>
             </form>
           )}

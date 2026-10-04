@@ -1,20 +1,23 @@
+"use client";
+
 import { Container } from "@/components/ui/container";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Reveal } from "@/components/ui/reveal";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 export function OpenSource() {
+  const messages = useMessages();
   return (
     <section id="oss" className="scroll-mt-24 border-t border-line py-[84px]">
       <Container className="grid items-center gap-[54px] md:grid-cols-2">
         <Reveal>
-          <Eyebrow>Open source</Eyebrow>
+          <Eyebrow>{t(messages, "landing.openSource.eyebrow")}</Eyebrow>
           <h2 className="serif my-3.5 text-[36px]">
-            Run it yourself with Docker.
+            {t(messages, "landing.openSource.title")}
           </h2>
           <p className="mb-[22px] text-base text-muted">
-            The full voice pipeline, multi-agent brain and study coach are open
-            under the MIT License. Bring your own model keys, add a language pack, or
-            contribute back.
+            {t(messages, "landing.openSource.body")}
           </p>
         </Reveal>
 
@@ -27,7 +30,7 @@ export function OpenSource() {
             </div>
             <pre className="overflow-x-auto p-[18px] font-mono text-[13px] leading-[1.7] text-[#D6D4DE]">
               <span className="text-[#6B6B72]">
-                # from the project directory
+                {t(messages, "landing.openSource.comment")}
               </span>
               {"\n"}
               <span className="text-[#7C84F2]">$</span> docker compose up{"\n"}

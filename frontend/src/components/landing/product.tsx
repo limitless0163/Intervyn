@@ -1,7 +1,11 @@
+"use client";
+
 import { Container } from "@/components/ui/container";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Reveal } from "@/components/ui/reveal";
 import { FeatureRow } from "@/components/landing/feature-row";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 const LANGUAGES = [
   { label: "English", active: true },
@@ -15,27 +19,15 @@ const LANGUAGES = [
   { label: "+ more" },
 ];
 
-const PLAN_ROWS: { label: string; tag: string; strong: boolean }[] = [
-  { label: "Distributed systems", tag: "probe", strong: true },
-  { label: "Kafka & event streaming", tag: "gap", strong: true },
-  { label: "System design — payments", tag: "core", strong: false },
-  { label: "Behavioral — ownership", tag: "core", strong: false },
-  { label: "SQL window functions", tag: "warm-up", strong: false },
-];
-
-const LOOP_STEPS = [
-  { badge: "1", label: "CV + JD → gap analysis" },
-  { badge: "2", label: "Study plan for weak areas" },
-  { badge: "3", label: "Voice mock interview" },
-  { badge: "4", label: "Scored feedback" },
-  { badge: "↻", label: "back to step 2, sharper" },
-];
-
-function LanguagesVisual() {
+function LanguagesVisual({
+  messages,
+}: {
+  messages: ReturnType<typeof useMessages>;
+}) {
   return (
     <div>
       <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
-        LANGUAGES
+        {t(messages, "landing.product.languages")}
       </div>
       <div className="flex flex-wrap gap-2">
         {LANGUAGES.map((lang) => (
@@ -52,20 +44,50 @@ function LanguagesVisual() {
         ))}
       </div>
       <div className="mt-[18px] text-[13.5px] text-muted">
-        English-first, with first-class interviews in your own language — drill
-        the same role in both.
+        {t(messages, "landing.product.languagesBody")}
       </div>
     </div>
   );
 }
 
-function PlanVisual() {
+function PlanVisual({
+  messages,
+}: {
+  messages: ReturnType<typeof useMessages>;
+}) {
+  const planRows = [
+    {
+      label: "Distributed systems",
+      tag: t(messages, "landing.product.probe"),
+      strong: true,
+    },
+    {
+      label: "Kafka & event streaming",
+      tag: t(messages, "landing.product.gap"),
+      strong: true,
+    },
+    {
+      label: "System design — payments",
+      tag: t(messages, "landing.product.core"),
+      strong: false,
+    },
+    {
+      label: "Behavioral — ownership",
+      tag: t(messages, "landing.product.core"),
+      strong: false,
+    },
+    {
+      label: "SQL window functions",
+      tag: t(messages, "landing.product.warmup"),
+      strong: false,
+    },
+  ];
   return (
     <div>
       <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
-        QUESTION PLAN · SENIOR BACKEND
+        {t(messages, "landing.product.plan")}
       </div>
-      {PLAN_ROWS.map((row) => (
+      {planRows.map((row) => (
         <div
           key={row.label}
           className="flex justify-between border-b border-dashed border-line-2 py-2.5 text-[13.5px] last:border-b-0"
@@ -80,10 +102,21 @@ function PlanVisual() {
   );
 }
 
-function LoopVisual() {
+function LoopVisual({
+  messages,
+}: {
+  messages: ReturnType<typeof useMessages>;
+}) {
+  const loopSteps = [
+    { badge: "1", label: t(messages, "landing.product.loop1") },
+    { badge: "2", label: t(messages, "landing.product.loop2") },
+    { badge: "3", label: t(messages, "landing.product.loop3") },
+    { badge: "4", label: t(messages, "landing.product.loop4") },
+    { badge: "↻", label: t(messages, "landing.product.loop5") },
+  ];
   return (
     <div className="flex flex-col gap-2.5">
-      {LOOP_STEPS.map((step) => (
+      {loopSteps.map((step) => (
         <div
           key={step.badge}
           className="flex items-center gap-[11px] text-[13.5px] text-ink-soft"
@@ -99,52 +132,53 @@ function LoopVisual() {
 }
 
 export function Product() {
+  const messages = useMessages();
   return (
     <section id="product" className="scroll-mt-24 py-[84px] pt-0">
       <Container>
         <Reveal className="mb-12 max-w-[680px]">
-          <Eyebrow>The product</Eyebrow>
+          <Eyebrow>{t(messages, "landing.product.eyebrow")}</Eyebrow>
           <h2 className="serif my-3.5 text-[38px]">
-            A real conversation, not a quiz.
+            {t(messages, "landing.product.title")}
           </h2>
         </Reveal>
 
         <FeatureRow
           first
-          eyebrow="Real-time voice"
-          title="Speak naturally. Get interrupted. Recover."
-          body="Sub-second responses, barge-in, and a full transcript of every answer. Speech recognition is chosen so accented English is understood, not penalized."
+          eyebrow={t(messages, "landing.product.voiceEyebrow")}
+          title={t(messages, "landing.product.voiceTitle")}
+          body={t(messages, "landing.product.voiceBody")}
           bullets={[
-            "Behavioral, technical & coding rounds",
-            "Live captions & saved transcript",
-            "Choose an interviewer persona",
+            t(messages, "landing.product.voiceBullet1"),
+            t(messages, "landing.product.voiceBullet2"),
+            t(messages, "landing.product.voiceBullet3"),
           ]}
-          visual={<LanguagesVisual />}
+          visual={<LanguagesVisual messages={messages} />}
         />
 
         <FeatureRow
           flip
-          eyebrow="Personalized"
-          title="Questions built from your CV, the JD & the company."
-          body="No generic question bank. A planner agent researches the role and the employer, finds where your experience is thin, and shapes a difficulty curve around it."
+          eyebrow={t(messages, "landing.product.tailoredEyebrow")}
+          title={t(messages, "landing.product.tailoredTitle")}
+          body={t(messages, "landing.product.tailoredBody")}
           bullets={[
-            "CV ↔ JD gap analysis",
-            "Company-specific question patterns",
-            "Adaptive follow-ups",
+            t(messages, "landing.product.tailoredBullet1"),
+            t(messages, "landing.product.tailoredBullet2"),
+            t(messages, "landing.product.tailoredBullet3"),
           ]}
-          visual={<PlanVisual />}
+          visual={<PlanVisual messages={messages} />}
         />
 
         <FeatureRow
-          eyebrow="The loop"
-          title="Practice, feedback, study — repeat."
-          body="Every interview is scored per competency. Your weak areas flow straight into a document-grounded study coach with flashcards and a voice tutor — then back into the next interview."
+          eyebrow={t(messages, "landing.product.loopEyebrow")}
+          title={t(messages, "landing.product.loopTitle")}
+          body={t(messages, "landing.product.loopBody")}
           bullets={[
-            "Grounded answers with citations",
-            "Spaced-repetition flashcards",
-            "Mastery tracking across sessions",
+            t(messages, "landing.product.loopBullet1"),
+            t(messages, "landing.product.loopBullet2"),
+            t(messages, "landing.product.loopBullet3"),
           ]}
-          visual={<LoopVisual />}
+          visual={<LoopVisual messages={messages} />}
         />
       </Container>
     </section>

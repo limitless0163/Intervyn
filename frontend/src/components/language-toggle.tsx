@@ -1,43 +1,30 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import type { Locale } from "@/lib/i18n";
+import { useCallback } from "react";
+import { useMessages, useLocale } from "@/hooks/use-i18n";
+import { selectLocale } from "@/components/locale-provider";
+import { t, type Locale } from "@/lib/i18n";
 import { cn } from "@/utils/cn";
 
 const OPTIONS: { value: Locale; label: string }[] = [
   { value: "en", label: "EN" },
-  { value: "vi", label: "VI" },
+  { value: "zh", label: "中文" },
 ];
-
-function readLocaleCookie(): Locale {
-  if (typeof document === "undefined") return "en";
-  const match = document.cookie
-    .split("; ")
-    .find((c) => c.startsWith("locale="));
-  const value = match?.split("=")[1];
-  return value === "vi" ? "vi" : "en";
-}
 
 /**
  * Minimal locale switcher. Persists the choice in a `locale` cookie and
- * refreshes so server components re-render in the new language. English-first:
- * unset cookie resolves to EN.
+ * refreshes server components in the new language. English is the default.
  */
 export function LanguageToggle({ className }: { className?: string }) {
   const router = useRouter();
-  const [locale, setLocale] = useState<Locale>("en");
-
-  // Read the cookie after mount so SSR markup stays stable (no hydration drift).
-  useEffect(() => {
-    setLocale(readLocaleCookie());
-  }, []);
+  const locale = useLocale();
+  const messages = useMessages();
 
   const choose = useCallback(
     (next: Locale) => {
       if (next === locale) return;
-      document.cookie = `locale=${next}; path=/; max-age=31536000; samesite=lax`;
-      setLocale(next);
+      selectLocale(next);
       router.refresh();
     },
     [locale, router],
@@ -50,7 +37,7 @@ export function LanguageToggle({ className }: { className?: string }) {
         className,
       )}
       role="group"
-      aria-label="Language"
+      aria-label={t(messages, "common.languageLabel")}
     >
       {OPTIONS.map((opt) => {
         const active = opt.value === locale;

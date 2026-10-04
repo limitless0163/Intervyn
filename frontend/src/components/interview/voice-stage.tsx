@@ -20,6 +20,8 @@ import { AvatarStage } from "@/components/avatar/avatar-stage";
 import type { AvatarState } from "@/components/avatar/avatar-stage";
 import type { Persona } from "@/constants/personas";
 import { cn } from "@/utils/cn";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 /**
  * Total, exhaustive map from the agent's full `AgentState` union to the 4-state
@@ -67,17 +69,21 @@ function AccentVisualizer({
  * interviewer's FIRST words (worker accepting the job, loading the session
  * context, synthesizing the greeting — several seconds of otherwise dead air).
  */
-export function waitingStatusFor(state: AgentState, name: string): string {
+export function waitingStatusFor(
+  state: AgentState,
+  name: string,
+  messages: ReturnType<typeof useMessages>,
+): string {
   switch (state) {
     case "thinking":
-      return "Preparing your first question…";
+      return t(messages, "interview.firstQuestion");
     case "listening":
     case "initializing":
-      return `${name} is getting ready…`;
+      return t(messages, "interview.gettingReady").replace("{name}", name);
     default:
       // disconnected / connecting / pre-connect buffering / idle / failed —
       // before the agent participant is fully up.
-      return "Connecting your interviewer…";
+      return t(messages, "interview.connectingInterviewer");
   }
 }
 
@@ -119,6 +125,7 @@ export function VoiceStage({
   className,
   startupFailed,
 }: VoiceStageProps) {
+  const messages = useMessages();
   const { state, audioTrack } = useVoiceAssistant();
   const avatarState = agentStateToAvatarState(state);
 
@@ -135,7 +142,9 @@ export function VoiceStage({
       <AvatarStage persona={persona} state={avatarState} />
       {audioTrack && <AccentVisualizer state={state} track={audioTrack} />}
       {!hasSpoken && !startupFailed && (
-        <WaitingOverlay label={waitingStatusFor(state, persona.name)} />
+        <WaitingOverlay
+          label={waitingStatusFor(state, persona.name, messages)}
+        />
       )}
     </div>
   );

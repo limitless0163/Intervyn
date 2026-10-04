@@ -1,8 +1,13 @@
 import { en, type Messages } from "./messages/en";
-import { vi, type Localized } from "./messages/vi";
+import { zh } from "./messages/zh";
 
-/** Supported UI locales. English-first; more packs plug in here. */
-export type Locale = "en" | "vi";
+/** Keep translated packs structurally aligned while allowing translated text. */
+export type Localized<T> = {
+  [K in keyof T]: T[K] extends string ? string : Localized<T[K]>;
+};
+
+/** Supported interface locales. English is the default; Chinese is optional. */
+export type Locale = "en" | "zh";
 
 export const DEFAULT_LOCALE: Locale = "en";
 
@@ -16,7 +21,7 @@ export type Dictionary = Localized<Messages>;
 
 const dictionaries: Record<Locale, Dictionary> = {
   en,
-  vi,
+  zh,
 };
 
 /** Resolve the message dictionary for a locale (defaults to English). */

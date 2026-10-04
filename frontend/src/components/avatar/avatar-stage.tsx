@@ -21,6 +21,8 @@
 import * as React from "react";
 import { cn } from "@/utils/cn";
 import type { Persona } from "@/constants/personas";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 export type AvatarState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -66,13 +68,6 @@ const FALLBACK_STYLE: Record<
 
 type LayerStatus = "loading" | "ready" | "error";
 
-const STATE_LABEL: Record<AvatarState, string> = {
-  idle: "IDLE",
-  listening: "LISTENING",
-  thinking: "THINKING",
-  speaking: "SPEAKING",
-};
-
 /**
  * Scoped keyframes for the fallback breathing/pulse. Injected as a plain <style>
  * (not styled-jsx) so it needs no globals.css edit and no extra dep. Both
@@ -95,6 +90,7 @@ const STAGE_KEYFRAMES = `
 `;
 
 export function AvatarStage({ persona, state, className }: AvatarStageProps) {
+  const messages = useMessages();
   const [idleStatus, setIdleStatus] = React.useState<LayerStatus>("loading");
   const [speakStatus, setSpeakStatus] = React.useState<LayerStatus>("loading");
 
@@ -108,6 +104,10 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
   const fallbackVisible = showSpeakingLayer ? !speakReady : !idleReady;
 
   const look = FALLBACK_STYLE[persona.id];
+  const stateLabel = t(
+    messages,
+    `avatars.state${state[0]?.toUpperCase()}${state.slice(1)}`,
+  );
 
   return (
     <div
@@ -117,7 +117,7 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
         className,
       )}
       role="img"
-      aria-label={`${persona.name} avatar, ${STATE_LABEL[state].toLowerCase()}`}
+      aria-label={`${persona.name} · ${stateLabel}`}
     >
       <style>{STAGE_KEYFRAMES}</style>
 
@@ -198,7 +198,7 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
               speaking ? "bg-accent" : "bg-faint",
             )}
           />
-          {STATE_LABEL[state]}
+          {stateLabel.toUpperCase()}
         </span>
       </div>
     </div>

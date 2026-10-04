@@ -1,9 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import { Clock, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonClasses } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { StatusChip } from "@/components/prep/status-chip";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 import {
   SAMPLE_STUDY_PLAN,
   type StudyModule,
@@ -23,28 +27,30 @@ export function StudyPlan({
   /** Weak competencies from the last interview, for the header tie-in. */
   weakAreas?: string[];
 }) {
+  const messages = useMessages();
   const totalMin = modules.reduce((sum, m) => sum + m.est_min, 0);
   const gaps = weakAreas?.length ? weakAreas : ["your weak areas"];
 
   return (
     <section aria-labelledby="study-plan-heading">
       <header className="mb-4">
-        <Eyebrow>Gap → study path</Eyebrow>
+        <Eyebrow>{t(messages, "prep.studyPath")}</Eyebrow>
         <h2
           id="study-plan-heading"
           className="mt-2 font-serif text-2xl text-ink"
         >
-          Your study plan
+          {t(messages, "prep.studyPlan")}
         </h2>
         <p className="mt-1 text-[14px] leading-relaxed text-muted">
-          Built from your last interview&apos;s weak areas
+          {t(messages, "prep.studyPlanIntro")}
           {weakAreas?.length ? (
             <>
               {" — "}
               <span className="text-ink-soft">{gaps.join(", ")}</span>
             </>
           ) : null}
-          . {modules.length} modules · about {totalMin} min.
+          . {modules.length} {t(messages, "prep.modules")} ·{" "}
+          {t(messages, "prep.about")} {totalMin} {t(messages, "prep.min")}.
         </p>
       </header>
 
@@ -74,7 +80,7 @@ export function StudyPlan({
                     <span>{m.competency}</span>
                     <span className="inline-flex items-center gap-1">
                       <Clock className="h-3 w-3" aria-hidden />
-                      {m.est_min} min
+                      {m.est_min} {t(messages, "prep.min")}
                     </span>
                   </div>
                 </div>
@@ -83,17 +89,17 @@ export function StudyPlan({
                   <Link
                     href={`/prep?module=${m.id}`}
                     className={buttonClasses({ size: "sm" })}
-                    aria-label={`Start module: ${m.title}`}
+                    aria-label={`${t(messages, "prep.start")}: ${m.title}`}
                   >
-                    Start
+                    {t(messages, "prep.start")}
                     <ArrowRight className="h-3.5 w-3.5" aria-hidden />
                   </Link>
                   <Link
                     href={`/setup?focus=${encodeURIComponent(m.competency)}`}
                     className={buttonClasses({ size: "sm", variant: "out" })}
-                    aria-label={`Practice ${m.competency} in a mock interview`}
+                    aria-label={`${t(messages, "prep.practiceMock")}: ${m.competency}`}
                   >
-                    Practice in a mock
+                    {t(messages, "prep.practiceMock")}
                   </Link>
                 </div>
               </CardContent>

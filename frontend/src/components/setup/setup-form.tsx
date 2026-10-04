@@ -3,11 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { UploadCloud, FileText, X } from "lucide-react";
-import {
-  LANGUAGES,
-  type Language,
-  type LanguageMode,
-} from "@intervyn/shared";
+import { LANGUAGES, type Language, type LanguageMode } from "@intervyn/shared";
 import { startSession } from "@/app/setup/actions";
 import { PERSONAS, DEFAULT_PERSONA_ID } from "@/constants/personas";
 import { useMessages } from "@/hooks/use-i18n";
@@ -154,7 +150,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = () =>
-        reject(reader.error ?? new Error("Could not read file."));
+        reject(reader.error ?? new Error(t(messages, "setup.fileReadError")));
       reader.readAsDataURL(f);
     });
   }
@@ -170,7 +166,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
         size: f.size,
       }),
     });
-    if (!res.ok) throw new Error("Upload could not be prepared.");
+    if (!res.ok) throw new Error(t(messages, "setup.uploadPrepareError"));
     const { uploadUrl, publicUrl } = (await res.json()) as {
       uploadUrl: string;
       publicUrl: string;
@@ -180,7 +176,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
       headers: { "content-type": f.type || "application/octet-stream" },
       body: f,
     });
-    if (!put.ok) throw new Error("File upload failed.");
+    if (!put.ok) throw new Error(t(messages, "setup.uploadError"));
     return publicUrl;
   }
 
@@ -270,7 +266,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
     return (
       <Card className="mt-8">
         <CardContent className="flex flex-col items-center gap-5 py-12 text-center">
-          <Spinner className="h-6 w-6" />
+          <Spinner className="h-6 w-6" label={t(messages, "common.loading")} />
           <p className="serif text-xl text-ink">{researching}</p>
           <ol className="flex flex-col gap-2 text-left">
             {steps.map((s, i) => (
@@ -322,7 +318,9 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
       <Card className="border-dashed">
         <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-[13px] font-medium text-ink">Quick demo</p>
+            <p className="text-[13px] font-medium text-ink">
+              {t(messages, "setup.quickDemo")}
+            </p>
             <p className="text-[12px] text-muted">
               Load a matched sample CV + job description to try it fast.
             </p>
@@ -380,7 +378,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                 {file.name}
                 <button
                   type="button"
-                  aria-label="Remove file"
+                  aria-label={t(messages, "setup.removeFile")}
                   onClick={(e) => {
                     e.stopPropagation();
                     setFile(null);
@@ -461,7 +459,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
           <Input
             value={company}
             onChange={(e) => setCompany(e.target.value)}
-            placeholder="Stripe (optional)"
+            placeholder={t(messages, "setup.companyPlaceholder")}
             aria-label={t(messages, "setup.companyLabel")}
           />
         </CardContent>
@@ -530,7 +528,12 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
               />
               <div>
                 <p className="text-[14px] font-medium text-ink">{p.name}</p>
-                <p className="text-[12px] leading-snug text-muted">{p.style}</p>
+                <p className="text-[12px] leading-snug text-muted">
+                  {t(
+                    messages,
+                    `setup.persona${p.id === "anime" ? "Anime" : p.id === "superhero" ? "Superhero" : p.id === "recruiter" ? "Recruiter" : "Professor"}`,
+                  )}
+                </p>
               </div>
             </button>
           ))}

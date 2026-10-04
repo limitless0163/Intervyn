@@ -10,6 +10,8 @@ import {
   Tooltip,
 } from "recharts";
 import type { CompetencyScore } from "@intervyn/shared";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 const ACCENT = "#4338ca";
 const LINE = "#e7e3da";
@@ -28,6 +30,7 @@ export function CompetencyChart({
 }: {
   competencies: CompetencyScore[];
 }) {
+  const messages = useMessages();
   const data = competencies.map((c) => ({
     competency: c.competency,
     score: c.score,
@@ -49,7 +52,7 @@ export function CompetencyChart({
             axisLine={false}
           />
           <Radar
-            name="Score"
+            name={t(messages, "report.scoreLabel")}
             dataKey="score"
             stroke={ACCENT}
             fill={ACCENT}
@@ -58,7 +61,10 @@ export function CompetencyChart({
             dot={{ r: 2.5, fill: ACCENT, strokeWidth: 0 }}
           />
           <Tooltip
-            formatter={(value) => [`${value} / 5`, "Score"]}
+            formatter={(value) => [
+              `${value} / 5`,
+              t(messages, "report.scoreLabel"),
+            ]}
             contentStyle={{
               borderRadius: 10,
               border: `1px solid ${LINE}`,

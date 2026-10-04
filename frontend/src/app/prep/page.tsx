@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { RefreshCw, ArrowRight } from "lucide-react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import { GroundedChat } from "@/components/prep/grounded-chat";
 import { Flashcards } from "@/components/prep/flashcards";
 import { MasteryGraphView } from "@/components/prep/mastery-graph";
 import { SocraticCta } from "@/components/prep/socratic-cta";
+import { getMessages, t } from "@/lib/i18n";
 
 // Reads server-only config (`isSupabaseConfigured()`) and the per-request user;
 // must not be statically prerendered.
@@ -59,6 +61,10 @@ export default async function PrepPage({
 }) {
   // No auth gate — OSS runs without sign-in.
   const params = await searchParams;
+  const cookieStore = await cookies();
+  const messages = getMessages(
+    cookieStore.get("locale")?.value === "zh" ? "zh" : "en",
+  );
   const sessionId =
     typeof params.session === "string" && params.session
       ? params.session
@@ -89,25 +95,23 @@ export default async function PrepPage({
           <Eyebrow>Intervyn</Eyebrow>
         </Link>
         <div className="flex items-center gap-3">
-          {isSample && <Badge variant="outline">Preview (sample data)</Badge>}
+          {isSample && (
+            <Badge variant="outline">
+              {t(messages, "prepPage.sampleBadge")}
+            </Badge>
+          )}
           <LanguageToggle />
         </div>
       </header>
 
       <div className="mt-6">
-        <h1 className="font-serif text-4xl text-ink">Prep Coach</h1>
+        <h1 className="font-serif text-4xl text-ink">
+          {t(messages, "prepPage.title")}
+        </h1>
         <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-muted">
-          {isSample ? (
-            <>
-              Here&apos;s how the coach works, shown with sample weak areas —
-              finish an interview and open the coach from your report to get
-              your real plan.
-            </>
-          ) : (
-            <>
-              Your interview surfaced a few weak areas. Here&apos;s the plan to
-              close them — study, drill, talk it through, then run it back.
-            </>
+          {t(
+            messages,
+            isSample ? "prepPage.sampleIntro" : "prepPage.realIntro",
           )}
         </p>
       </div>
@@ -122,11 +126,10 @@ export default async function PrepPage({
             />
             <div>
               <h2 className="font-serif text-lg text-ink">
-                Turn weak areas into your next mock
+                {t(messages, "prepPage.bannerTitle")}
               </h2>
               <p className="mt-0.5 text-[13.5px] text-muted">
-                The fastest way to improve is to study, then test under
-                pressure. Loop straight back into a tailored interview.
+                {t(messages, "prepPage.bannerBody")}
               </p>
             </div>
           </div>
@@ -134,7 +137,7 @@ export default async function PrepPage({
             href="/setup"
             className={buttonClasses({ className: "sm:shrink-0" })}
           >
-            Start a new mock
+            {t(messages, "prepPage.startMock")}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
         </div>

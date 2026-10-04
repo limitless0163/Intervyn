@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
+import { LanguageToggle } from "@/components/language-toggle";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -58,7 +59,10 @@ export default function SignupPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-[440px] flex-col justify-center px-6 py-16">
-      <Eyebrow>{t(messages, "common.appName")}</Eyebrow>
+      <div className="mb-3 flex items-center justify-between">
+        <Eyebrow>{t(messages, "common.appName")}</Eyebrow>
+        <LanguageToggle />
+      </div>
       <Card className="mt-3">
         <CardHeader>
           <CardTitle>{t(messages, "auth.signupTitle")}</CardTitle>
@@ -109,7 +113,12 @@ export default function SignupPage() {
                 </p>
               )}
               <Button type="submit" size="lg" disabled={busy}>
-                {busy && <Spinner className="text-white" />}
+                {busy && (
+                  <Spinner
+                    className="text-white"
+                    label={t(messages, "common.loading")}
+                  />
+                )}
                 {t(messages, "auth.signUp")}
               </Button>
               <p className="text-[13px] text-muted">

@@ -98,5 +98,5 @@ tests/                    Frontend, CLI, and shared-package tests
 
 - Keep private agent and knowledge-service calls in server routes and server-only modules.
 - Author shared contracts in `packages/shared/src/`, regenerate schemas with `pnpm gen:schema`, and keep the Pydantic mirror in `../backend/app/schemas/shared_models.py` aligned.
-- UI translations currently live in `src/lib/i18n/messages/en.ts` and `vi.ts`.
+- UI translations live in `src/lib/i18n/messages/en.ts` and `zh.ts`; English is the default, with Simplified Chinese as the only alternate UI locale.
 - The root `pnpm dev` task starts the web package only; it does not launch the Python API or LiveKit worker.

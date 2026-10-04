@@ -126,13 +126,13 @@ export function DeviceCheck() {
         </div>
         {status === "ok" ? (
           <div className="flex items-center gap-2">
-            <Badge variant="ok">PASS</Badge>
+            <Badge variant="ok">{t(messages, "setup.pass")}</Badge>
             <Button type="button" variant="ghost" size="sm" onClick={stop}>
               {t(messages, "setup.micStop")}
             </Button>
           </div>
         ) : status === "denied" || status === "unsupported" ? (
-          <Badge variant="outline">FAIL</Badge>
+          <Badge variant="outline">{t(messages, "setup.fail")}</Badge>
         ) : (
           <Button
             type="button"

@@ -1,18 +1,23 @@
+"use client";
+
 import Link from "next/link";
 import { features } from "@intervyn/ee";
 import { Container } from "@/components/ui/container";
 import { buttonClasses } from "@/components/ui/button";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { MobileMenu } from "@/components/landing/mobile-menu";
-
-export const NAV_LINKS = [
-  { href: "#how", label: "How it works" },
-  { href: "#product", label: "Product" },
-  { href: "#oss", label: "Open source" },
-  { href: "#faq", label: "FAQ" },
-];
+import { LanguageToggle } from "@/components/language-toggle";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 export function Nav() {
+  const messages = useMessages();
+  const links = [
+    { href: "#how", label: t(messages, "landing.nav.how") },
+    { href: "#product", label: t(messages, "landing.nav.product") },
+    { href: "#oss", label: t(messages, "landing.nav.openSource") },
+    { href: "#faq", label: t(messages, "landing.nav.faq") },
+  ];
   return (
     <nav className="sticky top-0 z-50 border-b border-line bg-paper/80 backdrop-blur-md">
       <Container className="flex h-[66px] items-center justify-between">
@@ -24,7 +29,7 @@ export function Nav() {
         </a>
 
         <div className="hidden gap-[30px] text-[14.5px] text-ink-soft min-[861px]:flex">
-          {NAV_LINKS.map((link) => (
+          {links.map((link) => (
             <a key={link.href} href={link.href} className="hover:text-ink">
               {link.label}
             </a>
@@ -32,23 +37,31 @@ export function Nav() {
         </div>
 
         <div className="flex items-center gap-3.5">
+          <LanguageToggle className="hidden min-[861px]:inline-flex" />
           {features.auth ? (
             <Link
               href="/login"
               className="hidden text-[14.5px] text-ink-soft hover:text-ink min-[861px]:inline"
             >
-              Sign in
+              {t(messages, "landing.nav.signIn")}
             </Link>
           ) : null}
           <Link href="/setup" className={buttonClasses()}>
-            Start free
+            {t(messages, "landing.nav.start")}
           </Link>
           <MobileMenu
             links={
               features.auth
-                ? [...NAV_LINKS, { href: "/login", label: "Sign in" }]
-                : NAV_LINKS
+                ? [
+                    ...links,
+                    {
+                      href: "/login",
+                      label: t(messages, "landing.nav.signIn"),
+                    },
+                  ]
+                : links
             }
+            showLanguageToggle
           />
         </div>
       </Container>

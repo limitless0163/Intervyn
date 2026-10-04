@@ -15,18 +15,26 @@ import {
   AvatarStage,
   type AvatarState,
 } from "@/components/avatar/avatar-stage";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 const STATES: AvatarState[] = ["idle", "listening", "thinking", "speaking"];
 
-const STATE_HINT: Record<AvatarState, string> = {
-  idle: "Resting between turns — gentle breathing loop.",
-  listening: "You're talking — still on the idle loop, attentive.",
-  thinking: "Composing a follow-up — idle loop holds.",
-  speaking: "Asking a question — crossfades to the speaking loop.",
-};
-
 export function AvatarGallery() {
+  const messages = useMessages();
   const [state, setState] = React.useState<AvatarState>("idle");
+  const labels: Record<AvatarState, string> = {
+    idle: t(messages, "avatars.stateIdle"),
+    listening: t(messages, "avatars.stateListening"),
+    thinking: t(messages, "avatars.stateThinking"),
+    speaking: t(messages, "avatars.stateSpeaking"),
+  };
+  const personaStyles: Record<string, string> = {
+    anime: t(messages, "avatars.personaAnime"),
+    superhero: t(messages, "avatars.personaSuperhero"),
+    recruiter: t(messages, "avatars.personaRecruiter"),
+    professor: t(messages, "avatars.personaProfessor"),
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -35,7 +43,7 @@ export function AvatarGallery() {
         <div
           className="inline-flex flex-wrap gap-1 self-start rounded-card border border-line bg-panel p-1"
           role="group"
-          aria-label="Avatar state"
+          aria-label={t(messages, "avatars.stateLabel")}
         >
           {STATES.map((s) => {
             const active = s === state;
@@ -54,12 +62,12 @@ export function AvatarGallery() {
                     : "text-muted hover:text-ink hover:bg-accent-soft",
                 )}
               >
-                {s}
+                {labels[s]}
               </button>
             );
           })}
         </div>
-        <p className="text-sm text-muted">{STATE_HINT[state]}</p>
+        <p className="text-sm text-muted">{t(messages, `avatars.${state}`)}</p>
       </div>
 
       {/* Persona grid. */}
@@ -73,7 +81,7 @@ export function AvatarGallery() {
                 {persona.id}
               </span>
               <span className="mt-1 text-sm leading-snug text-muted">
-                {persona.style}
+                {personaStyles[persona.id]}
               </span>
             </figcaption>
           </figure>

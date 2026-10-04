@@ -27,7 +27,7 @@ Vitest runs in the Node environment. Web tests are under `frontend/tests/`; the 
 - The `src/proxy.ts` matcher refreshes Supabase sessions for page requests and deliberately excludes several API routes. API handlers perform their own input validation, auth/distribution checks, upstream error handling, and response behavior; preserve those boundaries when adding endpoints.
 - `LIVEKIT_AGENT_NAME` must match the worker dispatch name. The token's explicit dispatch is required for the LiveKit worker to join.
 - Supabase is optional in the OSS build. Preserve null-safe behavior when browser/server Supabase clients are unconfigured. `@intervyn/ee` is intentionally inert upstream; do not add hosted-only auth, billing, or premium behavior to its OSS stub.
-- User-facing translations are in `src/lib/i18n/messages/en.ts` and `vi.ts`; when changing an existing translated string, keep both locale maps in sync.
+- User-facing translations are in `src/lib/i18n/messages/en.ts` and `zh.ts`; when changing an existing translated string, keep both locale maps in sync. English is the default UI locale, with Simplified Chinese as the only alternate UI locale.
 
 ## Style, configuration, and builds
 
