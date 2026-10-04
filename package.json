@@ -22,8 +22,8 @@
     "intervyn": "node frontend/cli/dist/index.js"
   },
   "devDependencies": {
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.9",
     "turbo": "^2.10.6",
-    "typescript": "~5.9.3"
+    "typescript": "~7.0.2"
   }
 }
