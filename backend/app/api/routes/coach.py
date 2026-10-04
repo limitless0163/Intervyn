@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ...dependencies.container import build_deps
 from ...schemas.shared_models import CoachChatRequest, CoachReply, ScoreCard, StudyPlan
-from ...services.coach import run_coach_chat, run_coach_plan
+from ...services.coach.pipeline import run_coach_chat, run_coach_plan
 
 router = APIRouter()
 

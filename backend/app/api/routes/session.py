@@ -12,6 +12,12 @@ from ...dependencies.auth import require_internal_secret
 from ...dependencies.container import build_deps
 from ...schemas.shared_models import InterviewContext
 from ...schemas.views import SessionView
+from ...services.session import (
+    SessionConflictError,
+    SessionIdentityError,
+    SessionNotFoundError,
+    save_live_result,
+)
 
 router = APIRouter()
 
@@ -26,10 +32,9 @@ class LiveResultRequest(BaseModel):
     status: str | None = None
 
 
-_ALLOWED_LIVE_STATUSES = {"no_answers", "error"}
-
-# 终态之后拒绝迟到的检查点或重放写入，避免覆盖已完成的面试记录。
-_TERMINAL_STATUSES = {"complete", "no_answers", "error", "rejected"}
+class CoachTranscriptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    transcript: list[dict] = Field(default_factory=list, max_length=1000)
 
 
 @router.get("/api/session/{session_id}", response_model=SessionView)
@@ -47,18 +52,27 @@ async def get_session(session_id: str) -> SessionView:
 async def post_live_result(session_id: str, req: LiveResultRequest) -> dict:
     """先核对会话身份与终态，再回写转录和上下文；只采纳允许的终态提示。"""
     deps = build_deps()
-    view = await deps.repo.get_session_view(session_id)
-    if view is None:
-        raise HTTPException(status_code=404, detail="Unknown session_id")
-    if req.context.session_id != session_id:
-        raise HTTPException(status_code=422, detail="Context session_id must match the URL")
-    if view.status in _TERMINAL_STATUSES:
-        raise HTTPException(
-            status_code=409, detail=f"Session already {view.status}"
+    try:
+        await save_live_result(
+            session_id, req.context, req.transcript, req.status, deps.repo
         )
-    if req.transcript:
-        await deps.repo.save_transcript(session_id, req.transcript)
-    await deps.repo.save_context(session_id, req.context)
-    if req.status in _ALLOWED_LIVE_STATUSES:
-        await deps.repo.update_status(session_id, req.status)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SessionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SessionIdentityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.post(
+    "/api/session/{session_id}/coach-transcript",
+    dependencies=[Depends(require_internal_secret)],
+)
+async def post_coach_transcript(session_id: str, req: CoachTranscriptRequest) -> dict:
+    """教练工作进程也通过 API 回写，支持默认内存模式并保持两种转录分离。"""
+    repo = build_deps().repo
+    if await repo.get_session_view(session_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown session_id")
+    await repo.save_coach_transcript(session_id, req.transcript)
     return {"ok": True}

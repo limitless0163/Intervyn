@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import uuid4
@@ -36,6 +37,8 @@ class SessionRepository(Protocol):
     async def append_answer(self, session_id: str, a: AnswerRecord) -> None: ...
 
     async def save_scorecard(self, session_id: str, sc: ScoreCard) -> None: ...
+
+    async def complete_session(self, session_id: str, sc: ScoreCard) -> None: ...
 
     async def save_transcript(self, session_id: str, turns: list[dict]) -> None: ...
 
@@ -112,11 +115,16 @@ class MemoryRepository:
     async def save_scorecard(self, session_id: str, sc: ScoreCard) -> None:
         self._require(session_id).scorecard = sc.model_dump()
 
+    async def complete_session(self, session_id: str, sc: ScoreCard) -> None:
+        row = self._require(session_id)
+        row.scorecard = sc.model_dump()
+        row.status = "complete"
+
     async def save_transcript(self, session_id: str, turns: list[dict]) -> None:
-        self._require(session_id).transcript = list(turns)
+        self._require(session_id).transcript = deepcopy(turns)
 
     async def save_coach_transcript(self, session_id: str, turns: list[dict]) -> None:
-        self._require(session_id).coach_transcript = list(turns)
+        self._require(session_id).coach_transcript = deepcopy(turns)
 
     async def mark_progress(self, session_id: str, step: str) -> None:
         row = self._require(session_id)
@@ -239,6 +247,10 @@ class SupabaseRepository:
 
     async def save_scorecard(self, session_id: str, sc: ScoreCard) -> None:
         await self._update(session_id, {"scorecard": sc.model_dump()})
+
+    async def complete_session(self, session_id: str, sc: ScoreCard) -> None:
+        # 一个数据库更新同时保存成绩和终态，避免第二次写入失败留下 scoring 残态。
+        await self._update(session_id, {"scorecard": sc.model_dump(), "status": "complete"})
 
     async def save_transcript(self, session_id: str, turns: list[dict]) -> None:
         await self._update(session_id, {"transcript": list(turns)})

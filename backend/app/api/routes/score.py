@@ -7,7 +7,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from ...core.logging import get_logger
 from ...dependencies.container import build_deps
 from ...schemas.shared_models import ScoreRequest, ScoreResponse
-from ...services.post import run_score
+from ...services.post.pipeline import run_score
+from ...services.session import session_mutations
 
 router = APIRouter()
 log = get_logger(__name__)
@@ -20,7 +21,13 @@ async def _score_in_background(req: ScoreRequest, deps) -> None:
         await run_score(req, deps)
     except Exception:
         log.exception("background scoring failed for %s", req.session_id)
-        await deps.repo.update_status(req.session_id, "error")
+        try:
+            async with session_mutations.get(req.session_id):
+                view = await deps.repo.get_session_view(req.session_id)
+                if view is not None and view.status != "complete":
+                    await deps.repo.update_status(req.session_id, "error")
+        except Exception:
+            log.exception("could not record scoring failure for %s", req.session_id)
     finally:
         _scheduled_scores.discard(req.session_id)
 
@@ -29,21 +36,24 @@ async def _score_in_background(req: ScoreRequest, deps) -> None:
 async def start_score(req: ScoreRequest, background_tasks: BackgroundTasks) -> dict:
     """先接受评分任务，避免语音工作进程在关闭期限内等待完整报告。"""
     deps = build_deps()
-    view = await deps.repo.get_session_view(req.session_id)
-    if view is None:
-        raise HTTPException(status_code=404, detail="Unknown session_id")
-    if view.status == "complete" and view.scorecard is not None:
-        return {"session_id": req.session_id, "status": "complete"}
-    # 数据库中的 scoring 可能残留于重启后；仅依据本进程的实际任务去重。
-    if req.session_id in _scheduled_scores:
-        return {"session_id": req.session_id, "status": "scoring"}
-    _scheduled_scores.add(req.session_id)
-    try:
-        await deps.repo.update_status(req.session_id, "scoring")
-        background_tasks.add_task(_score_in_background, req, deps)
-    except Exception:
-        _scheduled_scores.discard(req.session_id)
-        raise
+    async with session_mutations.get(req.session_id):
+        view = await deps.repo.get_session_view(req.session_id)
+        if view is None:
+            raise HTTPException(status_code=404, detail="Unknown session_id")
+        if view.status == "complete" and view.scorecard is not None:
+            return {"session_id": req.session_id, "status": "complete"}
+        # 数据库中的 scoring 可能残留于重启后；仅依据本进程的实际任务去重。
+        if req.session_id in _scheduled_scores:
+            return {"session_id": req.session_id, "status": "scoring"}
+        if view.context is None:
+            raise HTTPException(status_code=409, detail="Session has no interview context")
+        _scheduled_scores.add(req.session_id)
+        try:
+            await deps.repo.update_status(req.session_id, "scoring")
+            background_tasks.add_task(_score_in_background, req, deps)
+        except BaseException:
+            _scheduled_scores.discard(req.session_id)
+            raise
     return {"session_id": req.session_id, "status": "scoring"}
 
 

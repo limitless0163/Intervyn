@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from ...dependencies.container import build_deps
 from ...schemas.shared_models import PrepRequest, PrepResponse
-from ...services.prep import run_prep_for_session
+from ...services.prep.pipeline import run_prep_for_session
 
 router = APIRouter()
 
