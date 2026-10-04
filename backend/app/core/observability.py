@@ -1,27 +1,8 @@
 # ruff: noqa: BLE001, S110, PYI034, PYI046
-# This module is a degradation shim by design: every provider call is wrapped in
-# a blind catch-and-continue (tracing must never break a prep run or live turn),
-# and the no-op stand-ins deliberately mirror provider types, not PYI idioms.
-"""WP-12 — gated, provider-agnostic observability for the agent.
+# 观测必须容错，可选提供方调用失败后继续；空实现保留提供方接口以兼容调用方。
+"""初始化本地追踪及可选 Sentry/Langfuse，并导出业务调用所需的追踪接口。
 
-Design (see docs/DEPLOY.md):
-  - ZERO config = local JSONL tracing only (``TRACE_DIR``). With no
-    ``SENTRY_DSN`` / ``LANGFUSE_*`` set, nothing hosted initializes.
-  - ``sentry-sdk`` and ``langfuse`` are the optional ``observability`` extra
-    (NOT installed by default). Imports are lazy + wrapped in ``try/except
-    ImportError`` so a missing package is a silent no-op.
-  - Never raises: tracing must never break a prep run or a live turn.
-
-Wire-up: :func:`init_observability` is called once at process start from
-``app.create_app()`` and ``worker.main()``/``entrypoint``. It syncs Settings
-into the local tracer (see :mod:`core.tracing`) and initializes Sentry /
-Langfuse when configured. ``TRACE_ENABLED=0`` disables even local tracing
-(the test suite sets this; see ``tests/conftest.py``).
-
-Per-call tracing lives in :mod:`core.tracing` — :func:`start_trace`,
-:func:`start_span`, :func:`add_event`, the :func:`traced` decorator, and the
-:class:`TracedLLM` adapter wrapper. This module re-exports the pieces call
-sites need so existing imports keep working.
+缺少配置或可选依赖时跳过远程集成；观测失败不能中断准备、评分或语音轮次。
 """
 
 from __future__ import annotations
@@ -39,12 +20,7 @@ _initialized = False
 
 
 class _Settings(Protocol):
-    """Structural type — anything exposing these optional attrs works.
-
-    The agent ``Settings`` (core/config.py) declares the tracing fields
-    (``trace_enabled``/``trace_dir``/``trace_include_prompts``/``langfuse_*``/
-    ``sentry_dsn``); older/stub settings fall back to env via ``getattr``.
-    """
+    """观测配置的结构化接口；缺少属性时通过 getattr 使用兼容默认值。"""
 
 
 def _env(*names: str) -> str | None:
@@ -66,19 +42,13 @@ def _langfuse_keys(settings: Any | None) -> tuple[str | None, str | None]:
 
 
 def init_observability(settings: Any | None = None) -> None:
-    """Initialize local tracing + Sentry and/or Langfuse if configured.
-
-    Safe to call multiple times and safe to call with the optional packages not
-    installed (logs a debug line and returns). Local JSONL tracing follows
-    ``trace_enabled``/``TRACE_ENABLED``; hosted providers need their keys.
-    """
+    """同步本地追踪配置并按需初始化远程观测；可重复调用，缺少可选依赖时降级。"""
     global _initialized
     if _initialized:
         return
-    _initialized = True  # mark first so a failure doesn't loop on retry.
+    _initialized = True  # 先标记已初始化，避免提供方失败时反复初始化。
 
-    # Local tracing first (no deps): sync Settings (.env + env) into the tracer
-    # so file-based tracking works out of the box, including via `docker compose`.
+    # 先同步本地配置，使 .env 中的追踪设置也能生效。
     try:
         init_tracing(
             enabled=getattr(settings, "trace_enabled", None),
@@ -88,7 +58,7 @@ def init_observability(settings: Any | None = None) -> None:
             langfuse_secret_key=getattr(settings, "langfuse_secret_key", None),
             langfuse_host=getattr(settings, "langfuse_host", None),
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - 防御性降级
         _log.warning("tracing init failed: %s", exc)
 
     dsn = _sentry_dsn(settings)
@@ -104,7 +74,7 @@ def init_observability(settings: Any | None = None) -> None:
             _log.info("Sentry initialized")
         except ImportError:
             _log.debug("sentry-sdk not installed; skipping Sentry (extra: observability)")
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - 防御性降级
             _log.warning("Sentry init failed: %s", exc)
 
     public, secret = _langfuse_keys(settings)
@@ -115,12 +85,12 @@ def init_observability(settings: Any | None = None) -> None:
             _log.info("Langfuse credentials present; hosted tracing enabled")
         except ImportError:
             _log.debug("langfuse not installed; skipping (extra: observability)")
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - 防御性降级
             _log.warning("Langfuse init failed: %s", exc)
 
 
 class _NoOpTracer:
-    """Fallback tracer with the minimal surface used by call sites."""
+    """提供调用方所需的最小空追踪接口，不产生记录。"""
 
     def start_span(self, _name: str, **_kw: Any) -> _NoOpSpan:
         return _NoOpSpan()
@@ -138,26 +108,20 @@ class _NoOpSpan:
 
 
 def get_tracer() -> Any:
-    """Return a tracer with ``start_span(name, **attrs)``.
-
-    Now backed by the real local tracer (:mod:`core.tracing`): with tracing
-    enabled it records JSONL spans (+ OTel/Langfuse when configured),
-    otherwise it yields disabled span ids — so call sites can
-    ``with get_tracer().start_span(...)`` unconditionally.
-    """
+    """返回支持 start_span 的追踪器；关闭追踪时仍可无条件进入上下文管理器。"""
     from . import tracing as _tracing
 
     class _Tracer:
         def start_span(self, name: str, **kw: Any) -> Any:
             return _real_start_span(name, **kw)
 
-    # Keep the old no-op importable for tests that patch it, but default to real.
+    # 保留空实现供既有测试替换，默认使用实际追踪器。
     _ = _tracing
     return _Tracer()
 
 
 def capture_error(error: BaseException) -> None:
-    """Report an error to Sentry if available; else log it. Never raises."""
+    """尽力向 Sentry 上报异常，否则写日志；上报失败不影响业务。"""
     dsn = _sentry_dsn(None)
     if dsn:
         try:
@@ -167,6 +131,6 @@ def capture_error(error: BaseException) -> None:
             return
         except ImportError:
             pass
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - 防御性降级
             pass
     _log.error("capture_error: %r", error)

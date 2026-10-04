@@ -1,4 +1,4 @@
-"""Remove inline reasoning before streaming text reaches speech or captions."""
+"""流式文本进入语音和字幕前清除内联推理块。"""
 
 from __future__ import annotations
 
@@ -9,13 +9,14 @@ _TAG = re.compile(r"</?(?:think|thinking)>", re.IGNORECASE)
 
 
 class ReasoningFilter:
-    """Keep tag prefixes across chunks; never flush an unfinished thought."""
+    """跨分块保留未完整的标签前缀，并跟踪推理深度；结束时不输出残留内容。"""
 
     def __init__(self) -> None:
         self._buffer = ""
         self._depth = 0
 
     def feed(self, text: str) -> str:
+        """返回当前分块已确认的公开文本；不完整标签前缀留待下一分块判断。"""
         self._buffer += text
         visible: list[str] = []
         while self._buffer:
@@ -47,7 +48,7 @@ class ReasoningFilter:
         return "".join(visible)
 
     def finish(self) -> str:
-        # A pending tag prefix may itself be the beginning of a thought.
+        # 未完整的标签前缀可能是推理开头，结束时直接丢弃以免泄露。
         self._buffer = ""
         self._depth = 0
         return ""

@@ -60,7 +60,7 @@ async def _ingest_prep_materials(
             session_id,
             track_id,
         )
-    except Exception as exc:  # noqa: BLE001 - knowledge ingest is strictly best-effort
+    except Exception as exc:  # noqa: BLE001 - 知识入库失败不能阻断准备
         log.warning("prep: knowledge ingest failed for session %s (%s)", session_id, exc)
 
 
@@ -134,5 +134,5 @@ async def run_prep_for_session(
             log.exception("run_prep_for_session(%s) failed", session_id)
             try:
                 await deps.repo.update_status(session_id, "error")
-            except Exception:  # noqa: BLE001 - best-effort status write
+            except Exception:  # noqa: BLE001 - 尽力记录失败状态
                 log.warning("could not mark session %s as error", session_id)

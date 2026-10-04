@@ -1,15 +1,6 @@
-"""Offline tests for the WP-5 live interview state machine.
+"""离线验证面试状态机及转录恢复；每项测试独立创建状态，避免游标修改相互影响。
 
-These import ONLY ``app.services.live.state`` (never ``livekit``), so they
-pass with the optional ``livekit-agents`` extra absent. A valid
-``InterviewContext`` is produced by running the WP-6 prep pipeline with the
-deterministic default adapters (MockLLM / MockSearch / MemoryRepository) — no
-keys, no network.
-
-The mock ``QuestionPlan`` carries exactly one question (all section ``intro``),
-so for the ``next_section`` case we augment the plan with a second question in a
-different section. Each test builds its OWN ``InterviewUserdata`` so cursor
-mutations never leak between assertions.
+默认模拟计划仅有一道 intro 题，跨环节测试额外追加 behavioral 题。
 """
 
 from __future__ import annotations
@@ -29,7 +20,7 @@ from app.services.prep import run_prep
 
 
 def _build_context() -> InterviewContext:
-    """Run the offline prep pipeline and load the resulting InterviewContext."""
+    """运行模拟准备流程并读取有效面试上下文。"""
     deps = build_deps()
     req = PrepRequest(
         cv_url="https://example.com/cv.pdf",
@@ -49,10 +40,9 @@ def _userdata() -> InterviewUserdata:
 
 
 def _userdata_two_sections() -> InterviewUserdata:
-    """A userdata whose plan has a second question in a different section."""
+    """构造含两个不同环节题目的独立状态。"""
     ctx = _build_context()
     first = ctx.plan.questions[0]
-    # The mock first question is section "intro"; append a "behavioral" one.
     second = first.model_copy(update={"id": "q_behavioral", "section": "behavioral"})
     ctx.plan.questions.append(second)
     return InterviewUserdata(ctx=ctx, session_id=ctx.session_id)
@@ -96,7 +86,7 @@ def test_advance_until_complete_then_no_current_question() -> None:
     ud = _userdata()
     assert not state.is_complete(ud)
 
-    # Bounded loop: advance once per planned question.
+    # 推进次数限定为计划题数，避免测试本身无限循环。
     steps = 0
     max_steps = len(ud.ctx.plan.questions) + 5
     while not state.is_complete(ud) and steps < max_steps:
@@ -113,19 +103,17 @@ def test_advance_until_complete_then_no_current_question() -> None:
 def test_next_section_jumps_to_a_different_section() -> None:
     ud = _userdata_two_sections()
     starting = state.current_section(ud)
-    assert starting is not None  # "intro"
+    assert starting is not None
 
     nxt = state.next_section(ud)
     assert nxt is not None
     assert nxt.section != starting
-    # The cursor now points at the first question of the new section.
     assert state.current_question(ud) is nxt
     assert state.current_section(ud) == nxt.section
 
 
 def test_next_section_at_end_returns_none() -> None:
     ud = _userdata()
-    # Drive to the end so there is no later section.
     ud.ctx.cursor = len(ud.ctx.plan.questions)
     assert state.next_section(ud) is None
     assert state.is_complete(ud)
@@ -164,7 +152,7 @@ def test_add_turn_past_end_has_empty_question_id() -> None:
 
 
 def test_reconstruct_answers_recovers_unsaved_user_turns() -> None:
-    """A hang-up before save_answer must not drop what the candidate said."""
+    """候选人断开前未调用保存工具时，真实发言仍须可恢复。"""
     ud = _userdata_two_sections()
     q1 = state.current_question(ud)
     assert q1 is not None
@@ -195,14 +183,14 @@ def test_reconstruct_answers_skips_saved_questions_and_is_idempotent() -> None:
         started_at="",
         ended_at="",
     )
-    state.advance(ud)  # -> q_behavioral
+    state.advance(ud)
     state.add_turn(
         ud, "user", "an answer the model never saved about leading the on-call rotation overhaul"
     )
 
     added = state.reconstruct_answers(ud)
 
-    # Only the unsaved second question is recovered; the saved one is untouched.
+    # 仅恢复未保存的第二题，保留第一题已有答案。
     assert added == 1
     assert len(ud.ctx.answers) == 2
     assert ud.ctx.answers[0].transcript.startswith("The model's curated")
@@ -211,7 +199,7 @@ def test_reconstruct_answers_skips_saved_questions_and_is_idempotent() -> None:
         "an answer the model never saved about leading the on-call rotation overhaul"
     )
 
-    # Running again adds nothing.
+    # 重复恢复须幂等。
     assert state.reconstruct_answers(ud) == 0
     assert len(ud.ctx.answers) == 2
 
@@ -224,22 +212,18 @@ def test_reconstruct_answers_ignores_blank_and_assistant_turns() -> None:
     assert ud.ctx.answers == []
 
 
-# --- recovery edge cases (regression pins for the no_answers production bug) --
+# 转录恢复的边界回归。
 
 
 def test_reconstruct_answers_turns_follow_cursor_across_advances() -> None:
-    """Turns are bucketed by the question active when spoken, not replayed flat.
-
-    Speech before ``advance`` belongs to Q1; speech after belongs to Q2. Recovery
-    must yield one record per question, each containing ONLY its own turns.
-    """
+    """按发言时的活动题号分组恢复，游标推进前后的回答不能混入同一题。"""
     ud = _userdata_two_sections()
     q1 = state.current_question(ud)
     assert q1 is not None
     state.add_turn(ud, "user", "first part of answer one about sharding the ledger")
     state.add_turn(ud, "user", "second part of answer one covering the rollout and metrics")
 
-    state.advance(ud)  # get_next_question semantics: cursor -> q_behavioral
+    state.advance(ud)
     q2 = state.current_question(ud)
     assert q2 is not None
     assert q2.id != q1.id
@@ -252,7 +236,7 @@ def test_reconstruct_answers_turns_follow_cursor_across_advances() -> None:
     assert added == 2
     by_id = {a.question_id: a for a in ud.ctx.answers}
     assert set(by_id) == {q1.id, q2.id}
-    # Each record joins only its own turns, in spoken order — no cross-bleed.
+    # 每题只合并自己的转写片段，禁止跨题污染。
     assert by_id[q1.id].transcript == (
         "first part of answer one about sharding the ledger "
         "second part of answer one covering the rollout and metrics"
@@ -263,11 +247,11 @@ def test_reconstruct_answers_turns_follow_cursor_across_advances() -> None:
 
 
 def test_reconstruct_answers_joins_multi_fragment_answer_in_spoken_order() -> None:
-    """Three STT fragments for one question join with single spaces, in order."""
+    """同题多个转写片段按发言顺序用空格拼接。"""
     ud = _userdata()
     q1 = state.current_question(ud)
     assert q1 is not None
-    # Fragments carry stray whitespace the way streaming STT finals often do.
+    # 模拟流式最终转写中可能出现的首尾空白。
     state.add_turn(ud, "user", "  I shipped the ledger")
     state.add_turn(ud, "user", "then I profiled it  ")
     state.add_turn(ud, "user", "and fixed the hot path")
@@ -279,16 +263,11 @@ def test_reconstruct_answers_joins_multi_fragment_answer_in_spoken_order() -> No
 
 
 def test_reconstruct_answers_preserves_existing_answer_order_for_last_wins() -> None:
-    """Recovered records append AFTER saved ones, so ``{a.question_id: a}``
-    last-wins indexing (evaluator/report/verifier) can never replace a curated
-    answer with a verbatim STT one for the same question id.
-    """
+    """恢复记录追加在已存记录后；已有有效答案的题目不得再恢复重复记录。"""
     ud = _userdata_two_sections()
     q1 = state.current_question(ud)
     assert q1 is not None
-    # Q1: raw speech AND a curated save_answer from the model. The speech
-    # clears the substance gate, so ONLY the qid-in-saved guard prevents a
-    # second record for Q1.
+    # 同题同时有足量原话和已保存答案，用于验证已有答案去重规则。
     state.add_turn(
         ud, "user", "raw stt text the model rewrote about debugging the sharded ledger consistency bug"
     )
@@ -298,22 +277,20 @@ def test_reconstruct_answers_preserves_existing_answer_order_for_last_wins() -> 
         started_at="2026-06-08T09:00:00Z",
         ended_at="2026-06-08T09:01:30Z",
     )
-    state.advance(ud)  # -> q_behavioral
+    state.advance(ud)
     state.add_turn(
         ud, "user", "speech for question two that was never saved about migrating the billing service"
     )
 
     added = state.reconstruct_answers(ud)
 
-    # qid-in-saved guard, asserted directly: speech for an already-saved Q never
-    # creates a second record for that id.
+    # 已有有效答案的题目不应生成第二条恢复记录。
     assert added == 1
     q1_records = [a for a in ud.ctx.answers if a.question_id == q1.id]
     assert len(q1_records) == 1
     assert q1_records[0].transcript == "The model's curated answer for question one."
 
-    # Ordering: every recovered record sits after every saved record, so the
-    # last-wins index resolves each id to the curated answer when one exists.
+    # 验证最后记录优先索引仍读取已保存答案，恢复记录只追加未保存的题。
     assert [a.question_id for a in ud.ctx.answers] == [q1.id, "q_behavioral"]
     by_id = {a.question_id: a for a in ud.ctx.answers}
     assert by_id[q1.id].transcript.startswith("The model's curated")
@@ -323,21 +300,15 @@ def test_reconstruct_answers_preserves_existing_answer_order_for_last_wins() -> 
 
 
 def test_evaluate_difficulty_sees_recovered_answers() -> None:
-    """Recovery feeds adaptive difficulty: a recovered answer counts in
-    ``answered_in_section`` exactly like a tool-saved one. (A recovered answer
-    always carries at least ``_MIN_RECOVERED_WORDS`` words — the substance gate
-    — so it can never read as "thin" / flip the heuristic to "easier".)
-    """
+    """恢复后的有效回答必须被难度计算读取，并满足最低内容门槛。"""
     ud = _userdata()
     section = state.current_section(ud)
     assert section is not None and section != "wrap"
 
-    # Before recovery there is no evidence in the section.
     before = state.evaluate_difficulty(ud)
     assert before.answered_in_section == 0
     assert before.recommendation == "advance"
 
-    # A moderate (>= _MIN_RECOVERED_WORDS, <= _RICH_WORDS) unsaved answer.
     state.add_turn(
         ud, "user", "I used Python with asyncio to rebuild the ingestion worker around batching."
     )
@@ -345,18 +316,11 @@ def test_evaluate_difficulty_sees_recovered_answers() -> None:
 
     after = state.evaluate_difficulty(ud)
     assert after.answered_in_section == 1
-    # Moderate substance in a covered section -> stay on plan.
     assert after.recommendation == "advance"
 
 
 def test_reconstruct_answers_substance_gate_drops_small_talk() -> None:
-    """Sub-threshold speech is small talk, not an answer (confirmed-review pin).
-
-    The greeting reply ("Hi, nice to meet you!") is tagged with Q1's id because
-    ``on_enter`` greets and asks Q1 in one breath. Recovering it would fire the
-    full LLM scoring pipeline on junk and replace the honest ``no_answers``
-    empty state with a misleading near-zero report.
-    """
+    """问候等短发言不能恢复为答案，避免触发无依据的低分报告。"""
     ud = _userdata()
     state.add_turn(ud, "assistant", "Hi! I'll be running your mock interview today.")
     state.add_turn(ud, "user", "Hi, nice to meet you, I'm ready!")
@@ -366,27 +330,21 @@ def test_reconstruct_answers_substance_gate_drops_small_talk() -> None:
 
 
 def test_reconstruct_answers_substance_gate_boundary() -> None:
-    """The gate is exact: 11 joined words drop, 12 recover — and fragments
-    accumulate toward the threshold across turns for the same question.
-    """
+    """门槛按同题合并内容计算：十一词不恢复，补足十二词后恢复。"""
     eleven = "one two three four five six seven eight nine ten eleven"
     ud = _userdata()
     state.add_turn(ud, "user", eleven)
     assert state.reconstruct_answers(ud) == 0
     assert ud.ctx.answers == []
 
-    # A later fragment for the same question pushes it over the threshold.
+    # 同题后续片段可累计补足恢复门槛。
     state.add_turn(ud, "user", "twelve")
     assert state.reconstruct_answers(ud) == 1
     assert ud.ctx.answers[-1].transcript == f"{eleven} twelve"
 
 
 def test_trailing_empty_save_answer_does_not_block_recovery() -> None:
-    """The saved-guard mirrors the scorers' last-wins indexing: a trailing
-    ``save_answer("")`` voids the question for scoring, so real speech for it
-    must still be recovered — and the recovered record, appended last, is what
-    ``{a.question_id: a}`` resolves to.
-    """
+    """末尾空答案按最后记录优先规则覆盖旧答案时，仍须从真实发言补回有效答案。"""
     ud = _userdata()
     q1 = state.current_question(ud)
     assert q1 is not None
@@ -394,8 +352,7 @@ def test_trailing_empty_save_answer_does_not_block_recovery() -> None:
         ud, "user", "I rebuilt the payments retry queue and cut duplicate charges to zero."
     )
     state.save_answer(ud, transcript="A curated answer.", started_at="", ended_at="")
-    # The model fumbles a second tool call: the trailing record voids Q1 under
-    # last-wins indexing.
+    # 末尾空记录会在最后记录优先索引中覆盖原答案，因此需补回真实发言。
     state.save_answer(ud, transcript="", started_at="", ended_at="")
 
     assert state.reconstruct_answers(ud) == 1
@@ -404,11 +361,9 @@ def test_trailing_empty_save_answer_does_not_block_recovery() -> None:
 
 
 def test_reconstruct_answers_never_recovers_wrap_phase_speech() -> None:
-    """User speech after the last planned question (question_id == "") is
-    goodbye chatter, not an answer — it must never become an AnswerRecord.
-    """
+    """计划结束后的告别发言题号为空，不能恢复成回答。"""
     ud = _userdata()
-    ud.ctx.cursor = len(ud.ctx.plan.questions)  # past the end
+    ud.ctx.cursor = len(ud.ctx.plan.questions)
     state.add_turn(ud, "user", "Thanks, this was a great conversation, goodbye!")
     assert ud.transcript[-1]["question_id"] == ""
 

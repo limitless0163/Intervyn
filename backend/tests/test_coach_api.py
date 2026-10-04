@@ -1,4 +1,4 @@
-"""Offline API tests for the WP-4 coach endpoints (FastAPI TestClient)."""
+"""通过 TestClient 离线验证学习计划与教练聊天接口。"""
 
 from fastapi.testclient import TestClient
 
@@ -53,6 +53,6 @@ def test_coach_chat_endpoint() -> None:
     assert resp.status_code == 200
     reply = resp.json()
     assert isinstance(reply["answer"], str) and reply["answer"]
-    # Ungrounded by default (no LIGHTRAG_URL) -> honest: no fabricated citations.
+    # 未配置知识检索时不返回模拟引用。
     assert reply["citations"] == []
     assert len(reply["follow_ups"]) <= 3

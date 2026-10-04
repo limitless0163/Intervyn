@@ -65,5 +65,5 @@ Before opening a PR, validate your pack and read the content policy
 (recollection-based, generalized, de-identified — hard requirement):
 
 ```bash
-pnpm intervyn skills lint   # after `pnpm build`; see CONTRIBUTING.md §6
+pnpm --dir frontend intervyn skills lint   # after `pnpm --dir frontend build`; see CONTRIBUTING.md §6
 ```

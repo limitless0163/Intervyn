@@ -1,15 +1,6 @@
-"""Prompt builders for the WP-7 scoring pipeline.
+"""构造评分阶段的英文系统提示词及紧凑的用户载荷，返回 (system, user)。
 
-English-first: every system prompt is in English. The post phase is
-latency-tolerant, so prompts here can be richer than the live agent's. Each
-builder returns a ``(system, user)`` tuple whose ``user`` payload is a compact,
-model-readable summary of the relevant interview state (question + rubric +
-candidate answer), keeping each call self-contained.
-
-The mock LLM ignores prompt content entirely, so these strings only matter once
-a real provider is wired; the deterministic offline behaviour comes from the
-post modules overriding the structurally-significant fields themselves (e.g.
-``competency`` and ``level`` in the evaluator).
+每次调用携带所需问题、标准和回答；能力标识、分数范围等关键字段由业务代码约束。
 """
 
 from __future__ import annotations
@@ -26,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def _question_en(question: PlannedQuestion) -> str:
-    """Best-effort English question text (falls back to any available entry)."""
+    """优先使用英语题干，缺失时取任意已有译文。"""
     text = question.text
     return text.get("en") or next(iter(text.values()), "")
 
@@ -39,18 +30,11 @@ def _rubric_lines(rubric: list[RubricItem]) -> str:
     )
 
 
-# --- competency evaluation ---------------------------------------------------
-
-
 def evaluate_answer_prompts(
     question: PlannedQuestion,
     answer_transcript: str | None,
 ) -> tuple[str, str]:
-    """System/user prompts to score one answer against its question rubric.
-
-    ``answer_transcript`` is ``None`` when the candidate never answered the
-    question; the prompt asks for a low, evidence-light score in that case.
-    """
+    """构造单题评分提示词；None 使用无回答说明，正常评估路径会预先跳过未答题。"""
     system = (
         "You are a rigorous, fair interview assessor. Score the candidate's answer "
         "to a single interview question against the provided rubric on a 0-5 scale "
@@ -74,24 +58,13 @@ def evaluate_answer_prompts(
     return system, user
 
 
-# --- adversarial score verification ------------------------------------------
-
-
 def verify_score_prompts(
     competency: str,
     evidence: str,
     score: float,
     transcript_excerpt: str = "",
 ) -> tuple[str, str]:
-    """System/user prompts for a second, adversarial pass over a low/borderline score.
-
-    Asks a sceptical reviewer whether the original 0-5 ``score`` for ``competency``
-    is justified — grounded in the candidate's ACTUAL answer transcript when
-    available, not only the first pass's own evidence summary (judging evidence
-    written by the model under audit is circular). The post module clamps the
-    result and re-derives the band, so only the numbers and the boolean verdict
-    are trusted here.
-    """
+    """构造低分复核提示词，优先提供实际回答，避免仅依据首轮模型生成的证据循环判断。"""
     system = (
         "You are a sceptical second reviewer auditing an interview score for "
         "over- or under-scoring. Given one competency, the candidate's actual "
@@ -118,11 +91,8 @@ def verify_score_prompts(
     return system, user
 
 
-# --- language coaching -------------------------------------------------------
-
-
 def language_coach_prompts(transcript: str, primary_language: str) -> tuple[str, str]:
-    """System/user prompts to assess spoken-language quality across the interview."""
+    """构造整场面试的语言表达评估提示词。"""
     system = (
         "You are a supportive spoken-English (and multilingual) communication coach. "
         "Across the full interview transcript, assess the candidate's spoken delivery: "
@@ -138,15 +108,12 @@ def language_coach_prompts(transcript: str, primary_language: str) -> tuple[str,
     return system, user
 
 
-# --- model answers -----------------------------------------------------------
-
-
 def model_answer_prompts(
     question: PlannedQuestion,
     candidate: CandidateProfile,
     answer_transcript: str | None,
 ) -> tuple[str, str]:
-    """System/user prompts to draft an exemplary answer to one question."""
+    """构造单题示范回答提示词。"""
     system = (
         "You are an expert interview coach. Write a concise, strong model answer to "
         "the interview question below, tailored to this candidate's background so they "
@@ -168,19 +135,12 @@ def model_answer_prompts(
     return system, user
 
 
-# --- report synthesis --------------------------------------------------------
-
-
 def report_summary_prompts(
     ctx: InterviewContext,
     competency_lines: str,
     overall_score: float,
 ) -> tuple[str, str]:
-    """System/user prompts to synthesize the narrative parts of the scorecard.
-
-    Produces the free-text strengths / weaknesses / next_steps / summary; the
-    structured numeric fields are assembled deterministically by ``report``.
-    """
+    """构造报告叙述提示词；优势、弱项及建议由模型撰写，数值字段由代码组装。"""
     system = (
         "You are an interview coach writing the candidate's feedback report. Given the "
         "per-competency scores and the role, produce: a list of concrete strengths, a "

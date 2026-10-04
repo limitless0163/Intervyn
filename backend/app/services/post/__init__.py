@@ -29,7 +29,7 @@ __all__ = ["coach", "evaluate", "generate_report", "run_score", "verify_scores"]
 
 
 def _missing_context_scorecard(session_id: str) -> ScoreCard:
-    """A valid, empty scorecard for a session whose context cannot be loaded."""
+    """上下文缺失时返回契约有效的空结果，不保存为已完成评分。"""
     return ScoreCard(
         overall_score=0.0,
         competency_scores=[],
@@ -78,7 +78,7 @@ def _no_answers_scorecard(session_id: str) -> ScoreCard:
 
 
 def _fallback_language_report() -> LanguageReport:
-    """Neutral, well-formed language report used when the coach stage fails."""
+    """语言评估失败时使用的中性降级报告。"""
     return LanguageReport(
         fluency_score=0.0,
         filler_word_count=0,

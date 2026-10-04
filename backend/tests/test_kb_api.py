@@ -1,9 +1,4 @@
-"""Offline API tests for the Phase 2 knowledge endpoints (FastAPI TestClient).
-
-No lightrag_url configured and no network: ``/api/kb/ingest`` returns a
-deterministic stub track_id; ``/api/kb/query`` grounds via the default
-MockKnowledge client.
-"""
+"""未配置侧车时离线验证入库任务标识及模拟知识回答。"""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,14 +9,7 @@ from app.main import create_app
 
 @pytest.fixture(autouse=True)
 def _no_local_dotenv(monkeypatch, tmp_path):
-    """Keep the suite independent of the developer's local config.
-
-    pydantic-settings reads ``.env`` cwd-relative, so a dev machine with
-    LIGHTRAG_URL wired for local runs would silently flip these offline tests
-    onto HttpKnowledge. Run from an empty cwd, scrub the process env, and drop
-    the ``get_settings`` lru_cache on both sides so neither an earlier test's
-    cached Settings leaks in nor ours leaks out.
-    """
+    """隔离工作目录、环境和配置缓存，避免本地侧车配置影响测试选择或泄漏到后续测试。"""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("LIGHTRAG_URL", raising=False)
     get_settings.cache_clear()
@@ -61,5 +49,5 @@ def test_kb_query_returns_grounded_answer() -> None:
     body = resp.json()
     assert isinstance(body["answer"], str)
     assert body["answer"]
-    # MockKnowledge grounds the reply with citations.
+    # 此知识 API 默认返回模拟引用，区别于教练聊天的无检索引用策略。
     assert len(body["citations"]) >= 1

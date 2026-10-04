@@ -1,16 +1,6 @@
-"""Async node functions for the WP-6 prep graph.
+"""准备图的异步节点只返回各自计算的增量字段，由 LangGraph 汇合。
 
-Every node takes ``(state, deps)`` and returns a partial ``PrepState`` dict with
-only the key(s) it computes; LangGraph merges those into the running state. Deps
-are injected into the graph via :func:`functools.partial` (see ``graph.py``), so
-each compiled node presents the ``(state)`` signature LangGraph expects.
-
-``fetch_cv`` is deliberately best-effort and offline-tolerant: it delegates to
-:func:`app.services.prep.cv_extract.extract_cv_text`, which parses an
-uploaded PDF/DOCX (``data:`` URL or fetched ``http(s)`` URL) into real text and,
-on any failure, falls back to the URL string itself as the document text. This
-keeps the whole pipeline — and the existing ``POST /api/prep`` test that points
-at an unreachable example.com — green without network access.
+依赖通过 partial 注入；各外部调用失败时保留有效降级数据及会话警告。
 """
 
 from __future__ import annotations
@@ -49,51 +39,39 @@ log = get_logger(__name__)
 
 
 async def _mark(state: PrepState, deps: Deps, step: str) -> None:
-    """Record that ``step`` finished, if running against a known session.
-
-    Best-effort: a missing/closed session must never crash prep — the progress
-    signal is for the UI only.
-    """
+    """尽力记录已知会话的完成步骤，进度写入失败不能中断准备流程。"""
     session_id = state.get("session_id")
     if not session_id:
         return
     try:
         await deps.repo.mark_progress(session_id, step)
-    except Exception as exc:  # noqa: BLE001 - progress is advisory only
+    except Exception as exc:  # noqa: BLE001 - 进度写入失败不能中断准备
         log.warning("mark_progress(%s) failed (%s)", step, exc)
 
 
 async def _warn(state: PrepState, deps: Deps, warnings: list[str]) -> None:
-    """Attach input-quality/fallback warnings to the session (best-effort)."""
+    """尽力保存输入质量或降级警告，写入失败不影响准备流程。"""
     session_id = state.get("session_id")
     if not session_id or not warnings:
         return
     try:
         await deps.repo.add_warnings(session_id, warnings)
-    except Exception as exc:  # noqa: BLE001 - warnings are advisory only
+    except Exception as exc:  # noqa: BLE001 - 警告写入失败不能中断准备
         log.warning("add_warnings failed (%s)", exc)
 
 
 @traced("prep.fetch_cv")
 async def fetch_cv(state: PrepState, deps: Deps) -> PrepState:
-    """Best-effort parse of the CV document into text; fall back to the URL string.
+    """提取简历正文并保存警告；若 cv_text 键已存在，则不重复解析。
 
-    Delegates to :func:`extract_cv_text`, which converts an uploaded PDF/DOCX
-    (``data:`` URL or fetched ``http(s)`` URL) into plain text via markitdown
-    (Gemini fallback for scanned/image PDFs). Any returned warnings are attached
-    to the session via ``_warn``.
-
-    Idempotent: if ``cv_text`` was already resolved (the caller pre-fetched it so
-    it could validate inputs), this is a no-op — we never parse the CV twice. We
-    check key *presence*, not truthiness: an unreadable document resolves to ``""``
-    and must NOT trigger a re-parse (which would re-warn and re-bill Gemini).
+    空正文也视为已解析，避免重复警告和多模态费用；意外异常时保留原输入。
     """
     if "cv_text" in state:
         return {}
     req = state["req"]
     try:
         cv_text, warnings = await extract_cv_text(req.cv_url, deps)
-    except Exception as exc:  # noqa: BLE001 - best-effort: any failure -> raw fallback
+    except Exception as exc:  # noqa: BLE001 - 提取异常时保留原输入
         log.warning("fetch_cv: extraction failed, using cv_url as text (%s)", exc)
         return {"cv_text": req.cv_url}
     if warnings:
@@ -103,13 +81,13 @@ async def fetch_cv(state: PrepState, deps: Deps) -> PrepState:
 
 @traced("prep.cv_analysis")
 async def cv_analysis(state: PrepState, deps: Deps) -> PrepState:
-    """Extract a ``CandidateProfile`` from the fetched CV text."""
+    """从简历正文提取候选人资料，调用失败时使用最小有效资料并记录警告。"""
     system, user = cv_analysis_prompts(state["cv_text"])
     try:
         candidate = await deps.llm.complete_json(
             system=system, user=user, schema=CandidateProfile
         )
-    except Exception as exc:  # noqa: BLE001 - resilient: degrade, don't crash prep
+    except Exception as exc:  # noqa: BLE001 - 分析失败时降级而不中断准备
         log.warning("cv_analysis failed, using minimal profile (%s)", exc)
         candidate = build_mock(CandidateProfile)
         await _warn(state, deps, ["Could not analyze the CV; used a minimal profile."])
@@ -119,12 +97,12 @@ async def cv_analysis(state: PrepState, deps: Deps) -> PrepState:
 
 @traced("prep.jd_analysis")
 async def jd_analysis(state: PrepState, deps: Deps) -> PrepState:
-    """Extract a ``JobSpec`` from the job description text."""
+    """从职位正文提取岗位要求，调用失败时使用最小有效要求并记录警告。"""
     req = state["req"]
     system, user = jd_analysis_prompts(req.jd_text, req.company)
     try:
         job = await deps.llm.complete_json(system=system, user=user, schema=JobSpec)
-    except Exception as exc:  # noqa: BLE001 - resilient: degrade, don't crash prep
+    except Exception as exc:  # noqa: BLE001 - 分析失败时降级而不中断准备
         log.warning("jd_analysis failed, using minimal job spec (%s)", exc)
         job = build_mock(JobSpec)
         await _warn(
@@ -135,7 +113,7 @@ async def jd_analysis(state: PrepState, deps: Deps) -> PrepState:
 
 
 def _empty_company_intel(name: str) -> CompanyIntel:
-    """A valid, empty ``CompanyIntel`` for a junk/unknown company (no fabrication)."""
+    """生成契约有效的空公司资料，避免为无效公司名编造信息。"""
     return CompanyIntel(
         name=name or "Unknown",
         summary="",
@@ -150,12 +128,7 @@ def _empty_company_intel(name: str) -> CompanyIntel:
 
 @traced("prep.company_research")
 async def company_research(state: PrepState, deps: Deps) -> PrepState:
-    """Search the web for company interview intel and synthesize ``CompanyIntel``.
-
-    If the company name was flagged junk (``company_ok`` is False) this skips all
-    search + LLM work and returns an empty-but-valid intel, so we never fabricate
-    company knowledge from a meaningless name or waste calls on it.
-    """
+    """检索公司资料并由模型整理；公司名无效时跳过搜索及模型调用。"""
     req = state["req"]
     company = req.company
 
@@ -175,7 +148,7 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
     for query, lang in queries:
         try:
             results.extend(await deps.search.search(query, lang=lang, max_results=4))
-        except Exception as exc:  # noqa: BLE001 - search is best-effort
+        except Exception as exc:  # noqa: BLE001 - 搜索失败允许继续准备
             log.warning("company_research: search failed for %r (%s)", query, exc)
 
     snippets = "\n".join(f"- {r.title}: {r.snippet}" for r in results) or "(no results)"
@@ -184,7 +157,7 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
         intel = await deps.llm.complete_json(
             system=system, user=user, schema=CompanyIntel
         )
-    except Exception as exc:  # noqa: BLE001 - resilient: degrade, don't crash prep
+    except Exception as exc:  # noqa: BLE001 - 公司分析失败时降级
         log.warning("company_research failed, using minimal intel (%s)", exc)
         intel = _empty_company_intel(company)
         await _warn(
@@ -201,7 +174,7 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
 
 @traced("prep.gap_matching")
 async def gap_matching(state: PrepState, deps: Deps) -> PrepState:
-    """Build the gap in code; a model may enrich only its prose summary."""
+    """先计算确定性差距字段，模型仅补充摘要，失败时保留原分析。"""
     gap = basic_gap_analysis(state["candidate"], state["job"])
     system, user = gap_narrative_prompts(state["candidate"], state["job"], gap)
     try:
@@ -210,7 +183,7 @@ async def gap_matching(state: PrepState, deps: Deps) -> PrepState:
             timeout=min(deps.settings.llm_call_timeout_sec, 30.0),
         )
         gap = with_gap_narrative(gap, narrative)
-    except Exception as exc:  # noqa: BLE001 - resilient: degrade, don't crash prep
+    except Exception as exc:  # noqa: BLE001 - 模型说明失败时保留代码分析
         log.warning(
             "gap narrative unavailable session=%s error=%s; retaining code-generated analysis",
             state.get("session_id"), type(exc).__name__,
@@ -229,15 +202,13 @@ async def gap_matching(state: PrepState, deps: Deps) -> PrepState:
     return {"gap": gap}
 
 
-# Body sections a pack contributes to the planner prompt, and the total budget.
-# Bounded so a growing library can never blow up prep prompt size (golden rule:
-# keep prompts compact).
+# 只注入规划相关章节并设字符预算，防止技能库增长导致提示词失控。
 _HINT_SECTIONS = frozenset({"round structure", "question bank", "signals", "pitfalls"})
 _HINT_CHAR_BUDGET = 1500
 
 
 def _extract_hint_sections(body_md: str) -> str:
-    """Pull the planner-relevant ``##`` sections out of a pack body, in order."""
+    """按原顺序提取技能正文中与问题规划相关的二级标题章节。"""
     sections: list[tuple[str, list[str]]] = []
     current: list[str] | None = None
     for line in body_md.splitlines():
@@ -255,12 +226,9 @@ def _extract_hint_sections(body_md: str) -> str:
 def _skill_library_hint(
     company: str, role: str, level: str, skills_dir: str | None = None
 ) -> str:
-    """Playbook context for the planner (WP-10 retrieval): provenance header
-    plus the pack's question bank / signals / pitfalls, capped at
-    ``_HINT_CHAR_BUDGET`` characters.
+    """提取匹配技能的来源、题库及评估提示并按字符预算截断。
 
-    Best-effort and additive: any failure (missing/un-parseable library, import
-    error) returns an empty string so prep never depends on the skill store.
+    技能库缺失或检索失败时返回空字符串，不让准备流程依赖技能库可用性。
     """
     try:
         from ..skilllib import effective_confidence, find_relevant
@@ -282,13 +250,13 @@ def _skill_library_hint(
         if len(hint) > _HINT_CHAR_BUDGET:
             hint = hint[:_HINT_CHAR_BUDGET].rsplit("\n", 1)[0] + "\n[truncated]"
         return hint
-    except Exception:  # noqa: BLE001 - retrieval is strictly best-effort
+    except Exception:  # noqa: BLE001 - 技能检索失败时忽略附加资料
         return ""
 
 
 @traced("prep.question_planner")
 async def question_planner(state: PrepState, deps: Deps) -> PrepState:
-    """Keystone: synthesize the full ``QuestionPlan`` from all upstream state."""
+    """汇合上游结果生成问题计划；失败时返回有效通用计划并强制保留请求的语言设置。"""
     req = state["req"]
     system, user = question_planner_prompts(
         candidate=state["candidate"],
@@ -297,7 +265,7 @@ async def question_planner(state: PrepState, deps: Deps) -> PrepState:
         gap=state["gap"],
         language_mode=req.language_mode,
     )
-    # WP-10: inject any matching distilled playbook as extra planner context.
+    # 附加匹配的技能参考，供模型结合当前简历与职位调整计划。
     hint = _skill_library_hint(
         company=state["company"].name,
         role=state["job"].title,
@@ -316,7 +284,7 @@ async def question_planner(state: PrepState, deps: Deps) -> PrepState:
         plan = await deps.llm.complete_json(
             system=system, user=user, schema=QuestionPlan
         )
-    except Exception as exc:  # noqa: BLE001 - keystone must still emit a valid plan
+    except Exception as exc:  # noqa: BLE001 - 规划失败仍需返回契约有效的计划
         log.warning(
             "question_planner failed session=%s error=%s; using generic plan",
             state.get("session_id"), type(exc).__name__,
@@ -331,8 +299,7 @@ async def question_planner(state: PrepState, deps: Deps) -> PrepState:
         await _warn(
             state, deps, [f"Could not tailor the question plan; used a generic one. {reason}"]
         )
-    # Pin the language mode to the request so the live loop routes voice correctly,
-    # regardless of what the model echoed back.
+    # 使用请求中的语言设置，避免模型回显偏差改变语音路由。
     plan = plan.model_copy(update={"language_mode": req.language_mode})
     await _mark(state, deps, "question_planner")
     return {"plan": plan}

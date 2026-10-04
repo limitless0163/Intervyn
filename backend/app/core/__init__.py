@@ -1,1 +1,1 @@
-"""Core integration backbone: config, logging, provider adapters, persistence."""
+"""应用配置、日志、追踪和提供方适配器。"""

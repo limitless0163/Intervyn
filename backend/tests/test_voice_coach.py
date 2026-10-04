@@ -1,11 +1,4 @@
-"""Offline tests for the livekit-free spoken Study Coach helpers.
-
-These exercise ONLY the livekit-free logic: the Socratic instructions builder
-(``coach.prompts.coach_agent_instructions``) and the weak-areas summary helper
-(``live.state.weak_areas_summary``). They deliberately do NOT import
-``live.coach_agent`` or ``worker_coach`` (both require the livekit extra). The
-CoachAgent persona + worker entrypoint are integration-tested manually.
-"""
+"""仅验证不依赖 LiveKit 的语音教练指令及弱项摘要，不启动教练角色或工作进程。"""
 
 from __future__ import annotations
 
@@ -48,10 +41,9 @@ def _scorecard(weak: list[str]) -> ScoreCard:
 def test_instructions_are_socratic_and_localized() -> None:
     text = coach_agent_instructions("Weak areas: System Design.", "vi")
     assert isinstance(text, str) and text
-    # Mentions the injected weak-areas context verbatim and the language.
     assert "System Design" in text
     assert "vi" in text
-    # Socratic intent: never just lecture / hand over the answer.
+    # 验证苏格拉底式引导，避免直接灌输示范答案。
     assert "question" in text.lower()
 
 
@@ -62,7 +54,6 @@ def test_weak_areas_summary_lists_weak_competencies() -> None:
 
 
 def test_weak_areas_summary_handles_no_scorecard() -> None:
-    # A session that hasn't been scored yet must still yield a usable, non-empty line.
     summary = weak_areas_summary(None)
     assert isinstance(summary, str) and summary
 

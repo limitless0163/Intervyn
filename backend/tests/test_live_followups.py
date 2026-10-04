@@ -1,4 +1,4 @@
-"""Follow-up state regressions that run without the optional voice SDK."""
+"""不依赖语音 SDK 的追问等待状态回归。"""
 
 from types import SimpleNamespace
 
@@ -27,7 +27,7 @@ def test_followup_waits_for_a_new_candidate_turn(userdata):
     state.add_turn(userdata, "user", "I built a payments ledger.")
     assert state.mark_followup_pending(userdata)
     state.add_turn(userdata, "assistant", "How did you prevent duplicate charges?")
-    # Repeated marking must not consume the original answer as the reply.
+    # 重复标记不能把原回答消耗为追问回答。
     assert state.mark_followup_pending(userdata)
     assert state.followup_is_pending(userdata)
 

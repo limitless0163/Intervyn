@@ -1,8 +1,4 @@
-"""FastAPI application factory for the Intervyn agent API.
-
-Exposes a health check plus the prep and score routers. ``main()`` runs the app
-under uvicorn on the configured port.
-"""
+"""创建智能体 API，初始化观测并注册业务路由及健康检查。"""
 
 from __future__ import annotations
 
@@ -14,9 +10,7 @@ from .core.observability import init_observability
 
 
 def create_app() -> FastAPI:
-    # Sync Settings (.env + env) into the tracer + Sentry/Langfuse once per
-    # process. Idempotent; a no-op for hosted providers without keys, while
-    # local JSONL tracing works out of the box (TRACE_ENABLED=0 disables).
+    # 每个进程初始化本地追踪及可选远程观测；未配置远程密钥时仍可使用本地追踪。
     init_observability(get_settings())
 
     app = FastAPI(title="Intervyn Agent API")

@@ -1,12 +1,6 @@
-"""Local Pydantic mirror of the shared KB wire contracts.
+"""独立侧车内镜像共享知识契约，snake_case 字段须与前端及智能体保持一致。
 
-This service is standalone (it cannot import ``@intervyn/shared`` or the
-agent's ``shared_models``), so the request/response shapes are redefined here.
-They are snake_case identical to ``frontend/packages/shared`` and the agent's mirror, so
-the agent's ``HttpKnowledge`` client can parse responses straight into the shared
-``Citation`` model.
-
-Languages mirror ``frontend/packages/shared`` (EN default, multilingual).
+侧车不导入主智能体包，HTTP 客户端仍可按共享 Citation 模型解析返回结果。
 """
 
 from __future__ import annotations

@@ -1,14 +1,6 @@
-"""Regenerate the pack-index table in ``backend/skills/README.md``.
+"""更新 backend/skills/README.md 的技能索引，使用原始置信度避免随日期变化产生差异。
 
-The index makes the library browsable on GitHub without cloning — a hub only
-grows if its shelves are visible. Deterministic output (raw ``confidence``,
-not the runtime-decayed value) so regenerating without pack changes is a
-no-op and the committed file never churns.
-
-The maintenance entrypoint lives in ``backend/scripts/gen_skill_index.py``.
-Run from the repo root::
-
-    uv --directory backend run python -m scripts.gen_skill_index
+在仓库根目录执行：uv --directory backend run python -m scripts.gen_skill_index。
 """
 
 from __future__ import annotations
@@ -27,7 +19,7 @@ _QUESTION_RE = re.compile(r"^\s*-\s+\S", re.MULTILINE)
 
 
 def _question_count(body_md: str) -> int:
-    """Number of ``- `` items under the ``## Question bank`` section."""
+    """统计 Question bank 章节中的列表题目数量。"""
     parts = re.split(r"^##\s+Question bank\s*$", body_md, flags=re.IGNORECASE | re.MULTILINE)
     if len(parts) < 2:
         return 0
@@ -42,18 +34,18 @@ def _load_packs(skills_dir: Path) -> list[tuple[str, Skill]]:
             continue
         try:
             packs.append((path.name, load_skill(path)))
-        except Exception:  # noqa: BLE001, S112 - unparseable files are the linter's job, not the index's
+        except Exception:  # noqa: BLE001, S112 - 无效技能文件由检查工具报告，索引跳过
             continue
     return packs
 
 
 def render_index(skills_dir: Path | None = None) -> str:
-    """Render the Markdown table for every parseable pack in the live library."""
+    """为正式库中可解析的技能生成 Markdown 索引表。"""
     root = skills_dir or DEFAULT_SKILLS_DIR
     packs = _load_packs(root)
     packs.sort(
         key=lambda item: (
-            item[1].frontmatter.company.lower() != "generic",  # generic packs first
+            item[1].frontmatter.company.lower() != "generic",  # 通用技能排在公司专属技能之前。
             item[1].frontmatter.company.lower(),
             item[1].frontmatter.role,
             _LEVEL_ORDER.get(item[1].frontmatter.level, 99),
@@ -74,7 +66,7 @@ def render_index(skills_dir: Path | None = None) -> str:
 
 
 def update_readme(skills_dir: Path | None = None) -> Path:
-    """Replace the block between the index markers in ``backend/skills/README.md``."""
+    """只替换 README 中索引标记之间的内容，返回更新后的文件路径。"""
     root = skills_dir or DEFAULT_SKILLS_DIR
     readme = root / "README.md"
     text = readme.read_text(encoding="utf-8")

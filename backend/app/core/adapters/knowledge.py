@@ -1,13 +1,6 @@
-"""Knowledge adapter: client for the WP-8 LightRAG knowledge sidecar.
+"""知识侧车的入库和检索客户端；未配置 LIGHTRAG_URL 时使用无状态离线模拟。
 
-``get_knowledge(settings)`` returns :class:`MockKnowledge` (deterministic, offline)
-unless a LightRAG URL is configured, in which case it returns :class:`HttpKnowledge`
-which POSTs to ``${LIGHTRAG_URL}/kb/query``.
-
-The URL is read from ``settings.lightrag_url`` (``LIGHTRAG_URL`` env). Unset (the
-default) keeps everything fully offline. When ``settings.lightrag_api_secret`` is
-set it is sent as the ``X-Internal-Secret`` header so a locked-down sidecar
-accepts the call.
+配置 LIGHTRAG_API_SECRET 后，调用侧车时携带 X-Internal-Secret。
 """
 
 from __future__ import annotations
@@ -22,47 +15,38 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-# Request timeout when querying the knowledge sidecar (seconds).
 _QUERY_TIMEOUT = 20.0
-# Ingest is heavier (parse + embed), so allow longer. Mirrors api/kb.py.
+# 入库涉及解析和嵌入，超时额度高于检索；单位为秒。
 _INGEST_TIMEOUT = 60.0
 
 
 def _stub_track_id(user_id: str, files: list[str]) -> str:
-    """Deterministic offline track id (stable for a given key + file set).
-
-    No ``uuid4``/``hash()`` (non-deterministic across runs) so callers/tests can
-    assert on it.
-    """
+    """根据分区键和文件数量生成稳定的离线任务标识；不区分文件正文。"""
     return f"trk-{user_id}-{len(files)}"
 
 
 @runtime_checkable
 class KnowledgeClient(Protocol):
-    """Grounded retrieval over (and ingestion into) a user's knowledge store."""
+    """以同一分区键执行知识入库和带引用的检索。"""
 
     async def search(
         self, user_id: str, query: str, lang: str
     ) -> tuple[str, list[Citation]]:
-        """Return ``(answer, citations)`` for ``query`` over ``user_id``'s store."""
+        """返回指定知识分区内的回答及引用列表。"""
         ...
 
     async def ingest(self, user_id: str, files: list[str]) -> str:
-        """Ingest ``files`` (raw text or fetchable URLs) into ``user_id``'s store.
+        """入库文本或 URL，返回任务标识；user_id 必须与后续检索使用的分区键一致。
 
-        Returns a ``track_id``. The ``user_id`` key MUST match the one later
-        passed to :meth:`search`, or the ingested docs are unreachable — in the
-        OSS auth-free flow that key is the ``session_id`` (see the prep pipeline
-        and the Study Coach, which both key knowledge by session).
+        开源免登录流程以 session_id 作为该分区键。
         """
         ...
 
 
 class HttpKnowledge:
-    """Calls the knowledge sidecar's ``POST /kb/query`` over HTTP (httpx)."""
+    """通过 HTTP 调用知识侧车的入库和检索接口。"""
 
     def __init__(self, base_url: str, secret: str | None = None) -> None:
-        # Normalise so we can safely join the path.
         self._base_url = base_url.rstrip("/")
         self._secret = secret
 
@@ -99,10 +83,7 @@ class HttpKnowledge:
 
 
 class MockKnowledge:
-    """Deterministic, offline knowledge client (the default).
-
-    Returns a canned grounded answer + two citations. No network, no state.
-    """
+    """返回固定格式的回答与引用；不联网，也不存储入库资料。"""
 
     async def search(
         self, user_id: str, query: str, lang: str
@@ -126,12 +107,12 @@ class MockKnowledge:
         return (answer, citations)
 
     async def ingest(self, user_id: str, files: list[str]) -> str:
-        """Offline no-op: there is no store, so just return a deterministic id."""
+        """不保存资料，仅返回稳定的离线任务标识。"""
         return _stub_track_id(user_id, files)
 
 
 def get_knowledge(settings: Settings) -> KnowledgeClient:
-    """Choose a knowledge client. ``MockKnowledge`` unless a LightRAG URL is set."""
+    """配置侧车地址时使用 HTTP 客户端，否则使用离线模拟。"""
     url = getattr(settings, "lightrag_url", None) or None
     if url:
         return HttpKnowledge(url, getattr(settings, "lightrag_api_secret", None))

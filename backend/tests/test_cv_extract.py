@@ -1,10 +1,4 @@
-"""Offline tests for server-side CV/résumé document extraction.
-
-No network, no real Gemini: the http-fetch path isn't exercised (the prep suite
-covers the unreachable-URL fallback), and the Gemini fallback is monkeypatched.
-markitdown IS exercised for real on text/markdown data URLs — proving an uploaded
-document is decoded and converted, which is the whole point of the fix.
-"""
+"""离线验证粘贴文本和 data URL 的文档提取，本地转换真实执行，多模态调用用替身。"""
 
 from __future__ import annotations
 
@@ -30,7 +24,7 @@ def _data_url(text: str, mime: str = "text/plain") -> str:
 
 
 def test_plain_text_passthrough_unchanged() -> None:
-    """The paste path: arbitrary text is returned verbatim, never parsed."""
+    """粘贴文本必须原样返回。"""
     deps = build_deps()
     text, warnings = asyncio.run(extract_cv_text(_REAL_CV, deps))
     assert text == _REAL_CV
@@ -38,7 +32,7 @@ def test_plain_text_passthrough_unchanged() -> None:
 
 
 def test_data_url_text_is_decoded_and_converted() -> None:
-    """A base64 data: URL of a CV paragraph decodes + markitdown-converts to it."""
+    """base64 文档载荷必须先解码再转换为正文。"""
     deps = build_deps()
     url = _data_url(_REAL_CV, mime="text/plain")
     text, warnings = asyncio.run(extract_cv_text(url, deps))
@@ -48,7 +42,7 @@ def test_data_url_text_is_decoded_and_converted() -> None:
 
 
 def test_markitdown_handles_markdown_data_url() -> None:
-    """markitdown converts a real markdown document data URL to plain text."""
+    """Markdown 文档 data URL 应交给本地转换器处理。"""
     deps = build_deps()
     md = f"# Résumé\n\n## Summary\n\n{_REAL_CV}\n\n- Python\n- Kafka\n"
     url = _data_url(md, mime="text/markdown")
@@ -58,9 +52,8 @@ def test_markitdown_handles_markdown_data_url() -> None:
 
 
 def test_gemini_fallback_used_when_markitdown_empty(monkeypatch) -> None:
-    """When markitdown yields nothing, the Gemini fallback is invoked and used."""
-    # Gemini guard requires provider=gemini AND a key present (deps.llm is the
-    # mock — irrelevant, the fallback uses its own genai client we monkeypatch).
+    """本地转换为空时才调用配置完整的 Gemini 提取兜底。"""
+    # 多模态兜底检查提供方及密钥，与 deps.llm 的模拟适配器无关。
     deps = build_deps(Settings(llm_provider="gemini", gemini_api_key="test-key"))
 
     calls = {"markitdown": 0, "gemini": 0}
@@ -86,7 +79,7 @@ def test_gemini_fallback_used_when_markitdown_empty(monkeypatch) -> None:
 
 
 def test_gemini_fallback_not_called_when_markitdown_succeeds(monkeypatch) -> None:
-    """A successful markitdown extraction short-circuits — Gemini is never called."""
+    """本地提取成功时不得再调用多模态模型。"""
     deps = build_deps(Settings(llm_provider="gemini", gemini_api_key="test-key"))
 
     calls = {"gemini": 0}
@@ -106,8 +99,8 @@ def test_gemini_fallback_not_called_when_markitdown_succeeds(monkeypatch) -> Non
 
 
 def test_unreadable_document_warns_and_returns_empty(monkeypatch) -> None:
-    """Both extractors fail (no Gemini configured) -> empty text + a warning."""
-    deps = build_deps()  # provider=mock, no gemini key -> fallback guard is False
+    """转换全失败时返回空正文和警告，不能把二进制载荷当作简历。"""
+    deps = build_deps()
 
     monkeypatch.setattr(cv_extract, "_markitdown_extract", lambda data, mime: "")
 
@@ -129,15 +122,10 @@ def _prep_request(cv_url: str) -> PrepRequest:
 
 
 def test_fetch_cv_node_is_idempotent_even_when_text_empty(monkeypatch) -> None:
-    """An already-resolved (even empty) cv_text must not be re-parsed.
-
-    Regression guard: the no-op checks key *presence*, not truthiness, so an
-    unreadable document (cv_text == "") doesn't re-run extraction — which would
-    re-warn and re-bill Gemini.
-    """
+    """cv_text 键存在即表示已解析，空正文也不能触发重复提取或模型费用。"""
     called = {"extract": 0}
 
-    async def _boom(cv_url: str, d):  # pragma: no cover - must never run
+    async def _boom(cv_url: str, d):  # pragma: no cover - 此路径不得执行
         called["extract"] += 1
         return "should not be called", []
 

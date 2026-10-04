@@ -1,21 +1,6 @@
-"""Pytest configuration: pin the offline suite to the deterministic mock stack.
+"""默认将测试固定到离线模拟栈，避免开发者 .env 中的提供方、存储或追踪配置泄漏。
 
-Every test module here is documented as offline/MockLLM (no API keys, no network)
-and several assert run-to-run determinism (e.g. ``test_run_score_is_stable_on_rerun``).
-The repo ships a real ``backend/.env`` with live keys and ``LLM_PROVIDER=gemini``
-for the live worker; ``pydantic-settings`` would load that and make ``build_deps()``
-return the real, non-deterministic Gemini adapter — breaking the determinism tests
-and turning a 4-second suite into a multi-minute one that hammers the live key.
-
-We force every provider to ``mock`` via ``os.environ`` BEFORE any test imports
-``get_settings()`` (whose result is ``lru_cache``d). ``os.environ`` takes precedence
-over ``.env`` in pydantic-settings, so this restores the documented offline contract
-regardless of what ``.env`` contains. We likewise BLANK the Supabase creds so
-``get_repository()`` falls back to the in-memory repo: a real ``.env`` now ships a
-Supabase URL + service-role key, and without this the suite would select
-``SupabaseRepository`` and fail on the optional ``supabase`` SDK (not installed in
-the test venv). Set ``INTERVYN_TEST_USE_ENV=1`` to opt out (e.g. a deliberate
-live integration run).
+环境覆盖须在缓存配置首次加载前设置；INTERVYN_TEST_USE_ENV=1 可显式启用集成环境。
 """
 
 from __future__ import annotations
@@ -33,29 +18,22 @@ if os.environ.get("INTERVYN_TEST_USE_ENV") != "1":
         "EMBEDDINGS_PROVIDER",
     ):
         os.environ[_var] = "mock"
-    # Empty string overrides ``.env`` and is falsy, so the
-    # ``settings.supabase_url and settings.supabase_service_role_key`` guard in
-    # ``get_repository()`` is False → deterministic in-memory ``MemoryRepository``.
-    # LIGHTRAG_URL is also blanked so local sidecars cannot replace MockKnowledge.
+    # 空字符串覆盖 .env，强制使用内存仓库和模拟知识客户端。
     for _var in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "LIGHTRAG_URL"):
         os.environ[_var] = ""
-    # Tracing writes JSONL files per run — keep the offline suite hermetic.
-    # Tests for tracing itself (test_tracing.py) opt back in per-test via
-    # ``tracing.init_tracing(enabled=True, trace_dir=tmp_path)``.
+    # 默认关闭追踪写盘；追踪测试通过临时目录显式开启，避免污染仓库。
     os.environ["TRACE_ENABLED"] = "0"
 
 
 @pytest.fixture(autouse=True)
 def offline_http(monkeypatch):
-    """Real HTTP fails immediately; MockTransport and ASGITransport still work.
+    """立即拒绝真实 HTTP 连接，仍允许 MockTransport 和 ASGITransport。
 
-    Example CV URLs must exercise the unreachable-host fallback deterministically,
-    rather than depending on DNS, remote content, or a five-second fetch timeout.
-    HTTP integration tests supply their own transport with explicit responses.
+    示例文档 URL 因而确定性进入读取失败分支，不依赖 DNS、远程内容或等待超时。
     """
     if os.environ.get("INTERVYN_TEST_USE_ENV") == "1":
         return
-    # The independent naive-RAG sidecar has no httpx dependency.
+    # 独立的朴素检索测试环境可能未安装 httpx，缺失时跳过拦截。
     try:
         import httpx
     except ImportError:

@@ -1,14 +1,6 @@
-"""Cross-language parity: Zod-generated JSON Schema vs Pydantic model schema.
+"""将 Zod 与 Pydantic 的 JSON Schema 归一化为字段名、粗粒度类型及必填性并比对。
 
-For each registered model we reduce both JSON Schemas to a shallow shape
-{field_name: (type_category, is_required)} and assert they match. The
-normalization is deliberately forgiving on structure (it resolves $refs,
-collapses int/number, and unwraps nullable unions) so the only thing that can
-break parity is a field's name, coarse type, or required-ness.
-
-The Zod schemas live in frontend/packages/shared/schema/<Name>.json and are produced by
-`pnpm --filter @intervyn/shared gen:schema`. If that directory is empty
-(schemas not yet generated) the parity tests are skipped rather than failed.
+解析引用并兼容可空表示；共享 schema 目录为空时跳过。此检查不覆盖全部校验约束。
 """
 
 import json
@@ -29,7 +21,7 @@ def _defs(schema: dict) -> dict:
 
 
 def _resolve(node: dict, defs: dict) -> dict:
-    """Follow $ref chains until a concrete node is reached."""
+    """沿本地 $ref 链取得实际节点。"""
     seen = set()
     while isinstance(node, dict) and "$ref" in node:
         ref = node["$ref"]
@@ -56,9 +48,7 @@ def _type_category(node: dict, defs: dict):
         return "union"
 
     node_type = node.get("type")
-    # Encoding-agnostic nullable: Pydantic emits anyOf:[X, null] (handled above),
-    # but Zod 4 may emit the compact JSON Schema form type:["string","null"].
-    # Collapse the array form to the single non-null type so both agree.
+    # 兼容 anyOf 与 type 数组两种可空表示，统一取非 null 类型再比较。
     if isinstance(node_type, list):
         non_null = [t for t in node_type if t != "null"]
         if len(non_null) == 1:
@@ -94,7 +84,7 @@ _SCHEMAS_PRESENT = SCHEMA_DIR.exists() and any(SCHEMA_DIR.glob("*.json"))
 
 @pytest.mark.skipif(
     not _SCHEMAS_PRESENT,
-    reason="Zod JSON Schemas not generated; run `pnpm --filter @intervyn/shared gen:schema`",
+    reason="Zod JSON Schemas not generated; run `pnpm --dir frontend --filter @intervyn/shared gen:schema`",
 )
 @pytest.mark.parametrize("name", list(MODELS.keys()))
 def test_schema_parity(name: str) -> None:
@@ -121,13 +111,10 @@ def test_schema_parity(name: str) -> None:
 
 @pytest.mark.skipif(
     not _SCHEMAS_PRESENT,
-    reason="Zod JSON Schemas not generated; run `pnpm --filter @intervyn/shared gen:schema`",
+    reason="Zod JSON Schemas not generated; run `pnpm --dir frontend --filter @intervyn/shared gen:schema`",
 )
 def test_every_generated_schema_has_a_pydantic_mirror() -> None:
-    """Reverse coverage: a TS-only model (new schema/*.json with no Pydantic
-    mirror in MODELS) must fail loudly, not silently escape parity. The forward
-    test only iterates MODELS, so without this a new Zod schema is never checked.
-    """
+    """反向检查生成的每个 TS 契约都有 Pydantic 镜像，避免新增契约逃过正向遍历。"""
     generated = {p.stem for p in SCHEMA_DIR.glob("*.json")}
     registered = set(MODELS)
     missing_mirror = sorted(generated - registered)

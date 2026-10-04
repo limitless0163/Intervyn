@@ -1,14 +1,6 @@
-"""Offline tests for the WP-7 scoring pipeline (MockLLM / MemoryRepository).
+"""用模拟准备流程生成会话，再保存回答并端到端验证评分、状态及降级行为。
 
-These run ``run_prep`` to get a ready session, seed a couple of answers onto the
-persisted ``InterviewContext``, then run ``run_score`` end-to-end with the
-deterministic default adapters — no API keys, no network.
-
-Note on seeding: answers are appended via ``load_context -> ctx.answers.append
--> save_context``, NOT ``repo.append_answer``. For ``MemoryRepository`` only the
-``context`` blob is re-read by ``load_context``; ``append_answer`` writes to a
-separate row field that scoring never sees, so it would silently score every
-question as unanswered.
+回答通过上下文写回，以明确测试输入；仓库追加回答方法也会同步权威上下文。
 """
 
 from __future__ import annotations
@@ -51,7 +43,7 @@ def _answer_for(question_id: str, n: int) -> AnswerRecord:
 
 
 def _seed_answers(session_id: str, deps, count: int = 3) -> InterviewContext:
-    """Append up to ``count`` answers (matching real plan question ids) and persist."""
+    """按计划中的真实题号追加指定数量的答案，并保存上下文。"""
     ctx = asyncio.run(deps.repo.load_context(session_id))
     assert ctx is not None
     questions = ctx.plan.questions
@@ -71,31 +63,28 @@ def _prepare_session(deps) -> tuple[str, InterviewContext]:
 def _assert_valid_scorecard(sc: ScoreCard, ctx: InterviewContext) -> None:
     assert isinstance(sc, ScoreCard)
 
-    # competency_scores non-empty and every score within range.
     assert sc.competency_scores, "expected at least one competency score"
     for cs in sc.competency_scores:
         assert 0.0 <= cs.score <= 5.0, f"score {cs.score} out of 0..5"
         assert cs.level in {"weak", "developing", "solid", "strong"}
 
-    # overall_score is a clamped mean.
     assert 0.0 <= sc.overall_score <= 5.0
 
-    # Loop contract: every competency maps to a planned question's target_competency.
+    # 评分能力须对应计划中的目标能力。
     plan_competencies = {q.target_competency for q in ctx.plan.questions}
     for cs in sc.competency_scores:
         assert cs.competency in plan_competencies, (
             f"competency {cs.competency!r} not in plan target_competencies"
         )
 
-    # weak_competencies is a subset of the scored competencies.
+    # 弱项只能来自已评估能力。
     scored = {cs.competency for cs in sc.competency_scores}
     assert set(sc.weak_competencies) <= scored
 
-    # A model answer per planned question.
+    # 此场景全部作答，每题应有示范答案。
     answered_ids = {ma.question_id for ma in sc.model_answers}
     assert answered_ids == {q.id for q in ctx.plan.questions}
 
-    # Language report is well-formed.
     assert 0.0 <= sc.language_report.fluency_score <= 5.0
     assert 0.0 <= sc.language_report.clarity_score <= 5.0
     assert sc.language_report.filler_word_count >= 0
@@ -108,9 +97,7 @@ def test_run_score_produces_valid_scorecard() -> None:
     sc = asyncio.run(run_score(ScoreRequest(session_id=session_id), deps))
 
     _assert_valid_scorecard(sc, ctx)
-    # Session was marked complete.
     assert deps.repo.get_status(session_id) == "complete"
-    # The scorecard round-trips through validation.
     assert ScoreCard.model_validate(sc.model_dump()) == sc
 
 
@@ -157,9 +144,7 @@ def test_run_score_competencies_map_to_plan() -> None:
 
     plan_competencies = {q.target_competency for q in ctx.plan.questions}
     assert plan_competencies, "plan must define target competencies"
-    # Every scored competency is drawn from the plan (the Prep Coach loop contract).
     assert {cs.competency for cs in sc.competency_scores} <= plan_competencies
-    # weak_competencies likewise stay inside the scored competency space.
     assert set(sc.weak_competencies) <= {cs.competency for cs in sc.competency_scores}
 
 
@@ -170,7 +155,7 @@ def test_run_score_is_stable_on_rerun() -> None:
     first = asyncio.run(run_score(ScoreRequest(session_id=session_id), deps))
     second = asyncio.run(run_score(ScoreRequest(session_id=session_id), deps))
 
-    # Deterministic offline: identical structure and values across runs.
+    # 离线重复评分必须保持结构和值一致。
     assert first.model_dump() == second.model_dump()
     _assert_valid_scorecard(second, ctx)
     assert deps.repo.get_status(session_id) == "complete"
@@ -178,7 +163,7 @@ def test_run_score_is_stable_on_rerun() -> None:
 
 def test_run_score_handles_missing_context() -> None:
     deps = build_deps()
-    # An unknown session has no persisted context -> a valid, empty error card.
+    # 不存在的会话返回空结果，不生成虚假成绩。
     sc = asyncio.run(run_score(ScoreRequest(session_id="sess_does_not_exist"), deps))
 
     assert isinstance(sc, ScoreCard)
@@ -190,34 +175,24 @@ def test_run_score_handles_missing_context() -> None:
 
 
 def test_run_score_skips_when_no_answers() -> None:
-    """A context that exists but has ZERO answers is flagged ``no_answers`` and
-    NOT scored into a misleading all-zeros ``complete`` card (the root-cause fix)."""
+    """没有回答时标记 no_answers，不持久化已完成的零分报告。"""
     deps = build_deps()
-    # run_prep yields a ready session with a plan but no answers seeded.
     session_id = asyncio.run(run_prep(_request(), deps))
     ctx = asyncio.run(deps.repo.load_context(session_id))
     assert ctx is not None and ctx.answers == []
 
     sc = asyncio.run(run_score(ScoreRequest(session_id=session_id), deps))
 
-    # A well-formed empty card is returned (for the direct API caller)...
     assert isinstance(sc, ScoreCard)
     assert sc.competency_scores == []
     assert sc.overall_score == 0.0
     assert sc.coverage_pct == 0.0
     assert ScoreCard.model_validate(sc.model_dump()) == sc
-    # ...but the session is flagged no_answers, NOT marked complete.
     assert deps.repo.get_status(session_id) == "no_answers"
 
 
 def test_run_score_skips_when_all_answers_are_blank() -> None:
-    """Answers whose transcripts are ALL empty/whitespace count as NO answers.
-
-    The guard is ``not any((a.transcript or '').strip() ...)`` — NOT a bare
-    ``if not ctx.answers``. A session whose only records are ``save_answer("")``
-    calls (the model fired the tool with empty text, no recoverable speech)
-    must land on ``no_answers`` with NO persisted scorecard, never flow into
-    evaluate and ship a misleading all-zeros 'complete' card."""
+    """空白答案记录也属于无回答，不能仅凭列表非空进入评分。"""
     deps = build_deps()
     session_id = asyncio.run(run_prep(_request(), deps))
     ctx = asyncio.run(deps.repo.load_context(session_id))
@@ -234,20 +209,19 @@ def test_run_score_skips_when_all_answers_are_blank() -> None:
 
     sc = asyncio.run(run_score(ScoreRequest(session_id=session_id), deps))
 
-    # A well-formed empty card is returned for the direct caller...
     assert isinstance(sc, ScoreCard)
     assert sc.competency_scores == []
     assert sc.overall_score == 0.0
     assert sc.coverage_pct == 0.0
-    # ...the session is flagged no_answers (NOT complete), nothing persisted.
+    # 无回答会话保留 no_answers，不保存成绩单。
     assert deps.repo.get_status(session_id) == "no_answers"
     assert deps.repo._rows[session_id].scorecard is None
 
 
 def test_run_score_reports_partial_coverage() -> None:
-    """Unanswered questions lower coverage_pct and never count as weak."""
+    """未回答题目降低覆盖率，但不得计为弱能力。"""
     deps = build_deps()
-    session_id, ctx = _prepare_session(deps)  # seeds 3 answers
+    session_id, ctx = _prepare_session(deps)
 
     sc = asyncio.run(run_score(ScoreRequest(session_id=session_id), deps))
 
@@ -256,20 +230,14 @@ def test_run_score_reports_partial_coverage() -> None:
     expected = len(answered_ids) / total if total else 1.0
     assert abs(sc.coverage_pct - expected) < 1e-9
 
-    # A competency we never probed must not appear as weak or even as a score.
+    # 未探查的能力不能生成分数或弱项。
     answered_comps = {q.target_competency for q in ctx.plan.questions if q.id in answered_ids}
     assert set(sc.weak_competencies) <= answered_comps
     assert {cs.competency for cs in sc.competency_scores} <= answered_comps
 
 
 def test_run_score_errors_when_evaluate_stage_fails(monkeypatch) -> None:
-    """Total evaluate failure must NOT persist a zero-score 'complete' card.
-
-    Per-question failures are isolated inside ``evaluate``; if the WHOLE stage
-    dies, an answered interview must not read as scoring 0.0. The session is
-    marked errored (retriable — /api/score can re-run from the same context),
-    a valid card is still returned, and nothing is persisted.
-    """
+    """整体能力评估失败时标记可重试的 error，返回空结果但不保存零分报告。"""
     deps = build_deps()
     session_id, _ctx = _prepare_session(deps)
 
@@ -283,18 +251,14 @@ def test_run_score_errors_when_evaluate_stage_fails(monkeypatch) -> None:
     sc = asyncio.run(run_score(ScoreRequest(session_id=session_id), deps))
 
     assert isinstance(sc, ScoreCard)
-    assert sc.competency_scores == []  # evaluation produced nothing
+    assert sc.competency_scores == []
     assert ScoreCard.model_validate(sc.model_dump()) == sc
     assert deps.repo.get_status(session_id) == "error"
-    assert deps.repo._rows[session_id].scorecard is None  # nothing persisted
+    assert deps.repo._rows[session_id].scorecard is None
 
 
 def test_run_score_degrades_when_a_late_stage_fails(monkeypatch) -> None:
-    """A failing NARRATIVE stage still yields a valid, persisted, COMPLETE card.
-
-    Competency scores survived, so the card is persisted in degraded form
-    (numbers kept, narrative empty) rather than discarded.
-    """
+    """叙述阶段失败时仍保存已完成的降级报告，保留能力分数。"""
     deps = build_deps()
     session_id, _ctx = _prepare_session(deps)
 
@@ -308,6 +272,6 @@ def test_run_score_degrades_when_a_late_stage_fails(monkeypatch) -> None:
     sc = asyncio.run(run_score(ScoreRequest(session_id=session_id), deps))
 
     assert isinstance(sc, ScoreCard)
-    assert sc.competency_scores  # evaluated numbers preserved
+    assert sc.competency_scores
     assert ScoreCard.model_validate(sc.model_dump()) == sc
     assert deps.repo.get_status(session_id) == "complete"

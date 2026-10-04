@@ -1,4 +1,4 @@
-"""Reasoning must never reach live captions, TTS or the interview history."""
+"""验证流式推理内容不会进入字幕、语音或面试历史。"""
 
 import asyncio
 import json
@@ -84,7 +84,7 @@ def test_live_node_preserves_tools_usage_and_metadata(monkeypatch):
     assert output[1].delta.tool_calls == [tool]
     assert output[1].delta.extra == {"signature": "keep"}
     assert output[-1].usage == usage
-    assert chunks[1].delta.content == "nking>Save first."  # source stays untouched
+    assert chunks[1].delta.content == "nking>Save first."
 
 
 @pytest.mark.parametrize("model", ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M3.1"])

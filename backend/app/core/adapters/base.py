@@ -1,10 +1,4 @@
-"""Adapter protocols and shared adapter types.
-
-Every external provider is hidden behind one of these ``Protocol``s. The default
-implementations (see ``mock.py``) are deterministic and require no network, so
-the whole stack builds and tests green with zero API keys / SDKs installed.
-STT and TTS adapters are added by WP-5 (the live voice loop).
-"""
+"""模型、搜索和嵌入的可替换接口；默认模拟实现无需网络或提供方 SDK。"""
 
 from __future__ import annotations
 
@@ -23,7 +17,7 @@ class SearchResult(BaseModel):
 
 @runtime_checkable
 class LLMAdapter(Protocol):
-    """Text + structured-JSON completion."""
+    """生成文本或经指定 Pydantic 模型校验的结构化结果。"""
 
     async def complete_text(self, *, system: str, user: str) -> str: ...
 
@@ -32,7 +26,7 @@ class LLMAdapter(Protocol):
 
 @runtime_checkable
 class SearchAdapter(Protocol):
-    """Web search for company research."""
+    """为公司研究提供网页搜索结果。"""
 
     async def search(
         self, query: str, *, lang: str = "en", max_results: int = 6
@@ -41,6 +35,6 @@ class SearchAdapter(Protocol):
 
 @runtime_checkable
 class EmbeddingsAdapter(Protocol):
-    """Text embeddings for the knowledge layer."""
+    """为文本列表生成对应的嵌入向量。"""
 
     async def embed(self, texts: list[str]) -> list[list[float]]: ...

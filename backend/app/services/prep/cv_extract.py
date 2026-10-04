@@ -24,17 +24,16 @@ __all__ = ["extract_cv_text"]
 
 log = get_logger(__name__)
 
-# Keep the document fetch tight so an unreachable host fails fast offline.
+# 限制文件读取等待时间，避免不可达主机长时间阻塞准备。
 _CV_FETCH_TIMEOUT_SEC = 5.0
 
-# Minimum length for an extraction to count as "meaningful" content.
 _MIN_CV_LEN = 30
 
 _UNREADABLE_WARNING = (
     "Couldn't read the uploaded CV file — proceeding with limited candidate info."
 )
 
-# Map common document MIME types to the file suffix markitdown keys conversion on.
+# markitdown 按文件后缀选择转换器，因此从 MIME 映射后缀。
 _MIME_SUFFIX = {
     "application/pdf": ".pdf",
     "application/x-pdf": ".pdf",
@@ -46,7 +45,7 @@ _MIME_SUFFIX = {
     "application/xhtml+xml": ".html",
 }
 
-# Gemini extraction prompt: text only, no commentary, so it round-trips cleanly.
+# 要求仅输出文档正文，避免说明文字混入简历分析。
 _GEMINI_PROMPT = (
     "Extract the full plain-text content of this résumé/CV. "
     "Output only the text, no commentary."
@@ -54,27 +53,25 @@ _GEMINI_PROMPT = (
 
 
 def _suffix_for_mime(mime: str) -> str:
-    """Best file suffix for ``mime`` (defaults to ``.txt`` for unknown types)."""
+    """按 MIME 选择转换器所需的后缀，未知类型使用 .txt。"""
     base = (mime or "").split(";", 1)[0].strip().lower()
     return _MIME_SUFFIX.get(base, ".txt")
 
 
 def _is_meaningful(text: str) -> bool:
-    """True if ``text`` reads like real CV content (reuses the prep heuristics)."""
+    """复用准备输入校验，判断提取正文是否具有有效简历内容。"""
     ok, _ = assess_text(text, kind="cv", min_len=_MIN_CV_LEN)
     return ok
 
 
 def _markitdown_extract(data: bytes, mime: str) -> str:
-    """Convert document ``data`` to text via markitdown (blocking; run in a thread).
+    """将字节写入带 MIME 后缀的临时文件，交由延迟导入的 markitdown 转换。
 
-    Lazy-imports markitdown so the module imports without it installed. Writes the
-    bytes to a temp file with a mime-derived suffix (markitdown dispatches on the
-    extension) and returns the converted text, or ``""`` on any failure.
+    此方法会阻塞，调用方需放在线程执行；失败时返回空字符串。
     """
     try:
         from markitdown import MarkItDown
-    except ImportError as exc:  # pragma: no cover - depends on optional dep
+    except ImportError as exc:  # pragma: no cover - 依赖可选文档转换库
         log.warning("markitdown is not installed; cannot parse CV document (%s)", exc)
         return ""
 
@@ -86,28 +83,27 @@ def _markitdown_extract(data: bytes, mime: str) -> str:
             tmp_path = tmp.name
         result = MarkItDown().convert(tmp_path)
         return (result.text_content or "").strip()
-    except Exception as exc:  # noqa: BLE001 - best-effort: any failure -> empty
+    except Exception as exc:  # noqa: BLE001 - 转换失败时返回空正文
         log.warning("markitdown conversion failed (%s)", exc)
         return ""
     finally:
         if tmp_path:
             try:
                 Path(tmp_path).unlink(missing_ok=True)
-            except OSError:  # pragma: no cover - cleanup is advisory only
+            except OSError:  # pragma: no cover - 临时文件清理失败不影响业务
                 pass
 
 
 async def _gemini_extract(data: bytes, mime: str, deps: Deps) -> str:
-    """Extract CV text from raw bytes via Gemini native multimodal (lazy import).
+    """用延迟导入的 Gemini 多模态接口提取文档正文，供本地转换失败时兜底。
 
-    Used only as a fallback when markitdown yields nothing (e.g. scanned/image
-    PDFs). Returns ``""`` on any failure so the caller degrades gracefully.
+    提供方调用失败时返回空字符串。
     """
     settings = deps.settings
     try:
         from google import genai
         from google.genai import types
-    except ImportError as exc:  # pragma: no cover - depends on optional SDK
+    except ImportError as exc:  # pragma: no cover - 依赖可选 SDK
         log.warning("google-genai is not installed; skipping Gemini CV fallback (%s)", exc)
         return ""
 
@@ -121,13 +117,13 @@ async def _gemini_extract(data: bytes, mime: str, deps: Deps) -> str:
             ],
         )
         return (resp.text or "").strip()
-    except Exception as exc:  # noqa: BLE001 - best-effort: any failure -> empty
+    except Exception as exc:  # noqa: BLE001 - 模型提取失败时返回空正文
         log.warning("Gemini CV extraction failed (%s)", exc)
         return ""
 
 
 def _decode_data_url(cv_url: str) -> tuple[bytes, str] | None:
-    """Decode a ``data:<mime>;base64,<b64>`` URL to ``(bytes, mime)``; else ``None``."""
+    """将 base64 或百分号编码的 data URL 解码为 (bytes, mime)，无效时返回 None。"""
     if not cv_url.startswith("data:"):
         return None
     try:
@@ -140,26 +136,20 @@ def _decode_data_url(cv_url: str) -> tuple[bytes, str] | None:
         if is_base64:
             data = base64.b64decode(payload, validate=False)
         else:
-            # Percent-encoded text data URL (rare for CVs, but handle it).
+            # 兼容百分号编码的文本 data URL。
             from urllib.parse import unquote_to_bytes
 
             data = unquote_to_bytes(payload)
         return data, mime
-    except Exception as exc:  # noqa: BLE001 - malformed data URL -> not a document
+    except Exception as exc:  # noqa: BLE001 - 无效 data URL 不作为文档解析
         log.warning("could not decode data: CV URL (%s)", exc)
         return None
 
 
 def _is_fetchable_url(url: str) -> bool:
-    """SSRF guard for the user-supplied CV URL.
+    """仅允许 HTTP(S)，拒绝本地主机及私有、回环等非公网 IP 字面量。
 
-    Only http(s), and never loopback/private/link-local hosts — the fetch runs
-    server-side, so an attacker-chosen URL could otherwise probe the internal
-    network (e.g. a metadata service or the lightrag sidecar) with the response
-    reflected into the readable session view. Hostname-literal checks only (no
-    DNS resolution); pair with network egress policy for defence in depth. A
-    refused URL degrades exactly like an unreachable one (caller falls back to
-    treating the input as pasted text).
+    不解析域名 DNS；完整防护仍依赖网络出口限制。拒绝时按读取失败降级。
     """
     import ipaddress
     from urllib.parse import urlsplit
@@ -176,7 +166,7 @@ def _is_fetchable_url(url: str) -> bool:
     try:
         addr = ipaddress.ip_address(host)
     except ValueError:
-        return True  # non-IP hostname: allowed (see docstring caveat)
+        return True  # 普通域名只校验字面量，不解析 DNS，限制见函数说明。
     return not (
         addr.is_private
         or addr.is_loopback
@@ -187,7 +177,7 @@ def _is_fetchable_url(url: str) -> bool:
     )
 
 
-# Cap on redirect hops we follow manually (each re-validated for SSRF).
+# 逐跳重新校验目标，并限制手动重定向次数。
 _MAX_CV_REDIRECTS = 5
 
 
@@ -220,22 +210,21 @@ async def _fetch_url_bytes(cv_url: str) -> tuple[bytes, str] | None:
                 return resp.content, resp.headers.get("content-type", "")
             log.warning("fetch_cv: too many redirects for %r", cv_url)
             return None
-    except Exception as exc:  # noqa: BLE001 - best-effort: fetch failure -> caller falls back
+    except Exception as exc:  # noqa: BLE001 - 读取失败由调用方降级
         log.warning("fetch_cv: could not GET %r (%s)", cv_url, exc)
         return None
 
 
 async def _extract_from_bytes(data: bytes, mime: str, deps: Deps) -> tuple[str, list[str]]:
-    """Convert document ``data`` to text: markitdown first, Gemini fallback.
+    """先用 markitdown，必要时用 Gemini；返回 (text, warnings)，全失败时正文为空。
 
-    Returns ``(text, warnings)``. On total failure returns ``("", [warning])`` —
-    never the raw bytes/base64, which would feed garbage into ``cv_analysis``.
+    不把原始字节或 base64 作为简历正文交给分析。
     """
     text = await asyncio.to_thread(_markitdown_extract, data, mime)
     if text and _is_meaningful(text):
         return text, []
 
-    # Fallback: native multimodal document understanding for scanned/image PDFs.
+    # 扫描件等本地解析困难的文档可由多模态模型兜底。
     settings = deps.settings
     gemini_ready = bool(settings.gemini_api_key) and (
         (settings.llm_provider or "").lower() == "gemini"
@@ -245,8 +234,7 @@ async def _extract_from_bytes(data: bytes, mime: str, deps: Deps) -> tuple[str, 
         if fallback and _is_meaningful(fallback):
             return fallback, []
 
-    # markitdown gave us *something* but it didn't pass the meaningfulness bar;
-    # still prefer it over nothing (downstream validation makes the final call).
+    # 本地提取结果未达到有效性阈值时仍优于空正文，由下游输入校验最终判断。
     if text:
         return text, []
 
@@ -262,26 +250,22 @@ async def extract_cv_text(cv_url: str, deps: Deps) -> tuple[str, list[str]]:
     if not cv_url:
         return "", []
 
-    # 1) data: URL of raw file bytes (the no-R2 upload path).
     decoded = _decode_data_url(cv_url)
     if decoded is not None:
         data, mime = decoded
         return await _extract_from_bytes(data, mime, deps)
 
-    # 2) http(s) URL pointing at a document (the R2 / hosted-file path).
     stripped = cv_url.strip()
     if stripped.lower().startswith(("http://", "https://")) and "\n" not in stripped:
         fetched = await _fetch_url_bytes(stripped)
         if fetched is None:
-            # Fetch failed: the URL string is still a meaningful pointer. Preserve
-            # the legacy behaviour the offline prep test depends on (no warning).
+            # 读取失败保留 URL，兼容离线输入，不追加解析警告。
             return cv_url, []
         data, content_type = fetched
         text, warnings = await _extract_from_bytes(data, content_type, deps)
         if text:
             return text, warnings
-        # Couldn't parse the fetched bytes: fall back to the URL as the pointer.
+        # 文档解析失败时保留 URL，同时返回解析警告。
         return cv_url, warnings
 
-    # 3) Plain text — the paste path. Return verbatim, no parsing.
     return cv_url, []

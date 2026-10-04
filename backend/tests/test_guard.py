@@ -1,9 +1,4 @@
-"""Offline tests for the live SessionGuard (WP-5 cost/duration backstop).
-
-The guard talks to the session through a tiny duck-typed surface (``say`` /
-``shutdown``) and takes an injectable clock, so these run with a fake session
-and a fake clock — no livekit, no real time.
-"""
+"""用假会话和可注入时钟离线验证时长、轮数限制及收尾降级。"""
 
 from __future__ import annotations
 
@@ -14,7 +9,7 @@ from app.services.live.guard import SessionGuard
 
 
 class _FakeSession:
-    """Records the guard's say/shutdown calls."""
+    """记录播报和关闭调用的会话替身。"""
 
     def __init__(self) -> None:
         self.said: list[str] = []
@@ -37,7 +32,7 @@ def _ud(turns: int = 0, session_id: str = "sess_test") -> SimpleNamespace:
 
 
 async def _drive(guard: SessionGuard) -> None:
-    """Start the guard and wait for its background task to finish."""
+    """启动限制检查并等待后台任务结束。"""
     guard.start()
     assert guard._task is not None
     await guard._task
@@ -46,14 +41,14 @@ async def _drive(guard: SessionGuard) -> None:
 def test_limit_reached_is_pure() -> None:
     guard = SessionGuard(_FakeSession(), _ud(), max_duration_sec=10, max_turns=3)
     assert guard._limit_reached(5.0) is None
-    assert guard._limit_reached(10.0) is not None  # duration ceiling (>=)
+    assert guard._limit_reached(10.0) is not None
     guard_turns = SessionGuard(_FakeSession(), _ud(turns=3), max_duration_sec=10_000, max_turns=3)
-    assert guard_turns._limit_reached(0.0) is not None  # turn ceiling
+    assert guard_turns._limit_reached(0.0) is not None
 
 
 def test_guard_trips_on_duration() -> None:
     session = _FakeSession()
-    ticks = iter([0.0] + [100.0] * 10)  # start at 0, then elapsed >> max
+    ticks = iter([0.0] + [100.0] * 10)  # 时钟从零跳过上限，避免真实等待。
     guard = SessionGuard(
         session, _ud(), max_duration_sec=10, max_turns=10_000,
         interval_sec=0.0, time_fn=lambda: next(ticks),
@@ -128,8 +123,8 @@ def test_guard_does_not_trip_under_limits_and_closes_cleanly() -> None:
 
     async def _scenario() -> None:
         guard.start()
-        await asyncio.sleep(0.0)  # let one iteration run (then it sleeps)
-        await guard.aclose()  # cancel cleanly
+        await asyncio.sleep(0.0)  # 让后台循环运行一次并进入等待，再验证取消。
+        await guard.aclose()
 
     asyncio.run(_scenario())
 
@@ -139,7 +134,7 @@ def test_guard_does_not_trip_under_limits_and_closes_cleanly() -> None:
 
 
 def test_wrap_up_is_best_effort_when_session_raises() -> None:
-    """A session whose say()/shutdown() raise must not crash the guard."""
+    """播报或关闭失败不能把异常传播到限制任务外。"""
 
     class _AngrySession:
         async def say(self, text: str) -> None:
@@ -152,6 +147,5 @@ def test_wrap_up_is_best_effort_when_session_raises() -> None:
         _AngrySession(), _ud(), max_duration_sec=0, max_turns=10_000,
         interval_sec=0.0, time_fn=lambda: 0.0,
     )
-    # Should complete without propagating the session's exceptions.
     asyncio.run(_drive(guard))
     assert guard.tripped

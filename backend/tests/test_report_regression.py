@@ -1,27 +1,7 @@
-"""End-to-end regression suite for the report feature at the API level.
+"""用离线状态机模拟面试，再经 API 验证结果回写、评分及会话视图的完整链路。
 
-The offline twin of the production flow ``prep -> live -> live-result -> score
--> session view``: a session is prepped with the deterministic adapters
-(MockLLM / MockSearch / MemoryRepository — no keys, no network), the live
-interview is simulated through the pure ``live.state`` machine (the worker's
-livekit wrapper is NOT importable in the test venv), and the worker's shutdown
-write-back is replayed verbatim over the FastAPI app: ``state.reconstruct_answers``
-first (exactly as ``worker._on_shutdown`` does, BEFORE computing ``has_answers``),
-then ``POST /api/session/{id}/live-result``, then ``POST /api/score``, then
-``GET /api/session/{id}``.
-
-The production bug pinned here: sessions with real speech landed on
-``no_answers`` ("no report") whenever the live model never called the
-``save_answer`` tool — everything the candidate said was silently dropped.
-``state.add_turn`` now tags each transcript turn with the active question id and
-``state.reconstruct_answers`` recovers those unsaved answers at shutdown, so the
-report pipeline scores them like any saved answer.
-
-Repo sharing: ``build_deps()`` (used inline by these tests, mirroring
-``test_live._build_context``) and every API route resolve to the SAME cached
-``Deps`` whose repo is the module-singleton ``MemoryRepository`` (conftest blanks
-the Supabase creds), so a session prepped inline is visible to the TestClient
-and vice versa — exactly the pattern ``test_app`` relies on.
+先恢复遗漏回答再判断是否有答案，防止真实发言因未调用工具而落入 no_answers；
+测试与路由复用进程内仓库。
 """
 
 from __future__ import annotations
@@ -41,8 +21,7 @@ from app.services.live import state
 from app.services.live.state import InterviewUserdata
 from app.services.prep import run_prep
 
-# A substantive spoken answer (~50 words): comfortably above any thinness
-# threshold and unambiguously "real speech" for the recovery scenarios.
+# 足量原话确保超过恢复门槛，避免恢复场景与短发言过滤混淆。
 _SPOKEN_ANSWER = (
     "I led the incident response when our payments ledger started double-charging "
     "customers. I traced the bug to a race between the retry worker and the "
@@ -59,7 +38,7 @@ def _client() -> TestClient:
 
 
 def _prep_userdata() -> tuple[Deps, InterviewUserdata]:
-    """Run the offline prep pipeline and wrap the ready context for the live sim."""
+    """运行模拟准备流程，并将已就绪上下文包装为面试状态。"""
     deps = build_deps()
     req = PrepRequest(
         cv_url="https://example.com/cv.pdf",
@@ -74,7 +53,7 @@ def _prep_userdata() -> tuple[Deps, InterviewUserdata]:
 
 
 def _add_behavioral_question(ud: InterviewUserdata) -> None:
-    """Augment the one-question mock plan with a second, different-section question."""
+    """为单题模拟计划追加不同环节的问题，覆盖跨题恢复场景。"""
     first = ud.ctx.plan.questions[0]
     ud.ctx.plan.questions.append(
         first.model_copy(update={"id": "q_behavioral", "section": "behavioral"})
@@ -84,7 +63,7 @@ def _add_behavioral_question(ud: InterviewUserdata) -> None:
 def _post_live_result(
     client: TestClient, ud: InterviewUserdata, status: str | None = None
 ) -> None:
-    """Replay the worker's shutdown write-back through the API (must 200)."""
+    """经 API 重放工作进程结果回写，并校验成功响应。"""
     payload: dict = {
         "context": ud.ctx.model_dump(mode="json"),
         "transcript": ud.transcript,
@@ -108,11 +87,7 @@ def _get_view(client: TestClient, session_id: str) -> dict:
 
 
 def _simulate_unsaved_interview(ud: InterviewUserdata) -> int:
-    """Speak a real answer WITHOUT save_answer, then run the shutdown recovery.
-
-    Mirrors worker._on_shutdown ordering: reconstruct_answers runs BEFORE any
-    has_answers decision or persistence. Returns the recovered-record count.
-    """
+    """仅记录真实发言，再按关闭回调的顺序恢复答案；返回恢复记录数。"""
     state.add_turn(ud, "assistant", "Tell me about a hard production bug you fixed.")
     state.add_turn(ud, "user", _SPOKEN_ANSWER)
     assert ud.ctx.answers == [], "precondition: the model never called save_answer"
@@ -120,14 +95,12 @@ def _simulate_unsaved_interview(ud: InterviewUserdata) -> int:
 
 
 def test_happy_path_saved_answers_yields_complete_view_with_scorecard() -> None:
-    """prep -> save_answer + tagged turns -> live-result -> score -> view shows a
-    'complete' session with a numeric scorecard and the answers preserved."""
+    """已保存答案经回写、评分后，视图须为 complete 且保留回答与成绩单。"""
     _deps, ud = _prep_userdata()
     client = _client()
     q1 = state.current_question(ud)
     assert q1 is not None
 
-    # The live model behaved: it logged turns AND called the save_answer tool.
     state.add_turn(ud, "assistant", q1.text.get("en", "First question."))
     state.add_turn(ud, "user", _SPOKEN_ANSWER)
     state.save_answer(
@@ -146,7 +119,6 @@ def test_happy_path_saved_answers_yields_complete_view_with_scorecard() -> None:
     assert sc is not None
     assert isinstance(sc["overall_score"], (int, float))
     assert 0.0 <= sc["overall_score"] <= 5.0
-    # The answers the worker pushed survive in the served context.
     answers = view["context"]["answers"]
     assert len(answers) == 1
     assert answers[0]["question_id"] == q1.id
@@ -154,10 +126,7 @@ def test_happy_path_saved_answers_yields_complete_view_with_scorecard() -> None:
 
 
 def test_recovery_when_save_answer_never_called_still_reaches_complete() -> None:
-    """THE production bug: real speech but the model never called save_answer.
-
-    reconstruct_answers must recover the spoken answer so the session scores to
-    'complete' with a scorecard — NOT land on no_answers ("no report")."""
+    """有真实发言但未调用保存工具时，恢复答案后仍须生成报告。"""
     _deps, ud = _prep_userdata()
     client = _client()
     q1 = state.current_question(ud)
@@ -168,7 +137,7 @@ def test_recovery_when_save_answer_never_called_still_reaches_complete() -> None
     assert ud.ctx.answers[0].question_id == q1.id
     assert ud.ctx.answers[0].transcript == _SPOKEN_ANSWER
 
-    # has_answers is now True -> the worker sends no terminal status hint.
+    # 有回答时不写终态提示，交由评分流程决定最终状态。
     _post_live_result(client, ud)
     _post_score(client, ud.session_id)
 
@@ -180,8 +149,7 @@ def test_recovery_when_save_answer_never_called_still_reaches_complete() -> None
 
 
 def test_silent_call_stays_no_answers_and_score_does_not_fabricate() -> None:
-    """A call with NO user speech ends honestly: status no_answers, no scorecard
-    — and a later /api/score must not fabricate one or flip the status."""
+    """没有候选人发言时保留 no_answers，后续手动评分也不能编造成绩单。"""
     deps, ud = _prep_userdata()
     client = _client()
 
@@ -190,14 +158,13 @@ def test_silent_call_stays_no_answers_and_score_does_not_fabricate() -> None:
     assert state.reconstruct_answers(ud) == 0
     assert ud.ctx.answers == []
 
-    # has_answers is False -> the worker sends the terminal no_answers hint.
+    # 无回答时由工作进程回写 no_answers。
     _post_live_result(client, ud, status="no_answers")
 
     view = _get_view(client, ud.session_id)
     assert view["status"] == "no_answers"
     assert view["scorecard"] is None
 
-    # Scoring anyway (e.g. a manual retry) must not invent a report.
     body = _post_score(client, ud.session_id)
     assert body["scorecard"]["competency_scores"] == []
     assert body["scorecard"]["overall_score"] == 0.0
@@ -205,42 +172,37 @@ def test_silent_call_stays_no_answers_and_score_does_not_fabricate() -> None:
     view = _get_view(client, ud.session_id)
     assert view["status"] == "no_answers"
     assert view["scorecard"] is None
-    assert deps.repo._rows[ud.session_id].scorecard is None  # nothing persisted
+    assert deps.repo._rows[ud.session_id].scorecard is None
 
 
 def test_mixed_saved_and_recovered_answers_score_and_curated_q1_wins() -> None:
-    """Q1 saved via the tool, Q2 only spoken: recovery adds EXACTLY the Q2 record,
-    never touches the curated Q1 one, and evaluator-style last-wins indexing
-    still resolves Q1 to the curated text."""
+    """第一题已有保存答案、第二题仅有转写时，只恢复第二题并保留第一题原记录。"""
     _deps, ud = _prep_userdata()
     _add_behavioral_question(ud)
     client = _client()
     q1 = state.current_question(ud)
     assert q1 is not None
 
-    # Q1: raw STT turn PLUS a curated save_answer call from the model. The raw
-    # speech clears the substance gate, so ONLY the qid-in-saved guard keeps
-    # recovery from adding a second Q1 record.
+    # 第一题同时有足量转写与已存答案，专门验证恢复不会生成重复记录。
     state.add_turn(ud, "assistant", "First question.")
     state.add_turn(
         ud, "user", "raw stt text for question one with enough words to clear the substance gate"
     )
     state.save_answer(ud, transcript=_CURATED_ANSWER, started_at="", ended_at="")
-    state.advance(ud)  # -> q_behavioral
+    state.advance(ud)
 
-    # Q2: spoken only; the model forgot the tool.
+    # 第二题仅有转写，模拟模型遗漏保存工具。
     state.add_turn(ud, "assistant", "Now a behavioral question.")
     state.add_turn(ud, "user", _SPOKEN_ANSWER)
 
     recovered = state.reconstruct_answers(ud)
     assert recovered == 1
     assert len(ud.ctx.answers) == 2
-    assert ud.ctx.answers[0].transcript == _CURATED_ANSWER  # untouched
+    assert ud.ctx.answers[0].transcript == _CURATED_ANSWER
     assert ud.ctx.answers[1].question_id == "q_behavioral"
     assert ud.ctx.answers[1].transcript == _SPOKEN_ANSWER
 
-    # The evaluator indexes answers by question id, last record winning — Q1
-    # must resolve to the CURATED text, not the raw STT turn.
+    # 评分使用最后记录优先索引，第一题必须仍指向已存答案而非转写副本。
     by_id = {a.question_id: a for a in ud.ctx.answers}
     assert by_id[q1.id].transcript == _CURATED_ANSWER
 
@@ -250,14 +212,12 @@ def test_mixed_saved_and_recovered_answers_score_and_curated_q1_wins() -> None:
     view = _get_view(client, ud.session_id)
     assert view["status"] == "complete"
     sc = ScoreCard.model_validate(view["scorecard"])
-    # Both questions count as answered: full coverage, a model answer for each.
     assert sc.coverage_pct == 1.0
     assert {ma.question_id for ma in sc.model_answers} == {q1.id, "q_behavioral"}
 
 
 def test_tagged_transcript_roundtrips_through_live_result() -> None:
-    """The question_id-tagged transcript persists VERBATIM through live-result,
-    keeping the tags reconstruct_answers (and any future audit) depends on."""
+    """题号标记和原始转录经结果回写后须原样保留，保证后续恢复及审核依据可用。"""
     deps, ud = _prep_userdata()
     client = _client()
     q1 = state.current_question(ud)
@@ -275,8 +235,7 @@ def test_tagged_transcript_roundtrips_through_live_result() -> None:
 
 
 def test_scoring_idempotent_after_recovery_returns_persisted_card() -> None:
-    """A second /api/score after a recovered interview returns the SAME persisted
-    card (no re-scoring, no overwrite) and the session stays 'complete'."""
+    """已恢复并评分的会话再次评分时返回持久化成绩单，不重算或覆盖。"""
     deps, ud = _prep_userdata()
     client = _client()
 
@@ -286,26 +245,21 @@ def test_scoring_idempotent_after_recovery_returns_persisted_card() -> None:
     first = _post_score(client, ud.session_id)
     second = _post_score(client, ud.session_id)
 
-    # Stable field AND the full card agree across calls.
     assert second["scorecard"]["summary"] == first["scorecard"]["summary"]
     assert second["scorecard"] == first["scorecard"]
-    # The second response IS the persisted card, byte-for-byte as a model.
     persisted = ScoreCard.model_validate(deps.repo._rows[ud.session_id].scorecard)
     assert ScoreCard.model_validate(second["scorecard"]) == persisted
     assert _get_view(client, ud.session_id)["status"] == "complete"
 
 
 def test_empty_saved_answer_does_not_block_recovery() -> None:
-    """A save_answer call with a BLANK transcript must not count as 'saved':
-    the spoken answer for the same question is still recovered and scored."""
+    """空的已保存答案不能阻止同题真实发言被恢复和评分。"""
     _deps, ud = _prep_userdata()
     client = _client()
     q1 = state.current_question(ud)
     assert q1 is not None
 
-    # The model called the tool but passed an empty transcript...
     state.save_answer(ud, transcript="", started_at="", ended_at="")
-    # ...while the candidate actually spoke a real answer to the same question.
     state.add_turn(ud, "user", _SPOKEN_ANSWER)
 
     recovered = state.reconstruct_answers(ud)
@@ -313,7 +267,6 @@ def test_empty_saved_answer_does_not_block_recovery() -> None:
     assert ud.ctx.answers[-1].question_id == q1.id
     assert ud.ctx.answers[-1].transcript == _SPOKEN_ANSWER
 
-    # Without recovery this session would have scored as no_answers.
     _post_live_result(client, ud)
     _post_score(client, ud.session_id)
     view = _get_view(client, ud.session_id)
@@ -322,43 +275,35 @@ def test_empty_saved_answer_does_not_block_recovery() -> None:
 
 
 def test_live_result_disallowed_status_complete_is_ignored() -> None:
-    """The live-result status hint is a CLOSED set ({no_answers, error} only):
-    POSTing status='complete' must NOT flip the session to complete without a
-    scorecard — the request succeeds but the hint is dropped, and the view
-    still reads 'ready' with no scorecard. A refactor to a bare
-    ``if req.status: update_status(req.status)`` regresses exactly this."""
+    """结果回写只允许 no_answers 或 error 终态提示，不能凭 complete 跳过评分。"""
     deps, ud = _prep_userdata()
     client = _client()
     state.add_turn(ud, "user", _SPOKEN_ANSWER)
 
-    _post_live_result(client, ud, status="complete")  # asserts the 200 + ok body
+    _post_live_result(client, ud, status="complete")
 
     view = _get_view(client, ud.session_id)
     assert view["status"] == "ready", "disallowed hint must leave the status alone"
     assert view["scorecard"] is None
-    assert deps.repo.get_status(ud.session_id) == "ready"  # nothing hit the store
+    assert deps.repo.get_status(ud.session_id) == "ready"
 
 
 def test_live_result_garbage_status_is_not_persisted_and_view_stays_readable() -> None:
-    """A garbage status must never be written: ``SessionView.status`` is a
-    Literal, so persisting it would make EVERY later ``GET /api/session/{id}``
-    raise ValidationError (500) — the failure class views.py warns about. The
-    write must be ignored and the subsequent GET must still 200."""
+    """任意状态字符串不能进入存储，避免后续读取模型校验失败。"""
     deps, ud = _prep_userdata()
     client = _client()
 
     _post_live_result(client, ud, status="garbage")
 
-    view = _get_view(client, ud.session_id)  # _get_view asserts the GET 200s
+    view = _get_view(client, ud.session_id)
     assert view["status"] == "ready"
     assert deps.repo.get_status(ud.session_id) == "ready"
-    # The context write-back itself still landed (only the status was dropped).
+    # 仅丢弃不允许的状态提示，上下文本身仍须回写。
     assert view["context"] is not None
 
 
 def test_recovered_answer_reaches_report_as_answered_coverage() -> None:
-    """The recovered question id reads as ANSWERED in the report itself: full
-    coverage_pct, a model answer for it, and competencies drawn from the plan."""
+    """恢复后的回答须计入覆盖率、示范答案及对应能力评分。"""
     _deps, ud = _prep_userdata()
     client = _client()
     q1 = state.current_question(ud)
@@ -372,10 +317,8 @@ def test_recovered_answer_reaches_report_as_answered_coverage() -> None:
     assert view["status"] == "complete"
     sc = ScoreCard.model_validate(view["scorecard"])
 
-    # The single-question mock plan was fully covered by the RECOVERED answer.
     assert sc.coverage_pct == 1.0
     assert {ma.question_id for ma in sc.model_answers} == {q1.id}
-    # The recovered answer produced real competency scores mapped to the plan.
     plan_competencies = {q.target_competency for q in ud.ctx.plan.questions}
     assert sc.competency_scores
     assert {cs.competency for cs in sc.competency_scores} <= plan_competencies

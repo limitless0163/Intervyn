@@ -45,6 +45,7 @@ async def get_session(session_id: str) -> SessionView:
     dependencies=[Depends(require_internal_secret)],
 )
 async def post_live_result(session_id: str, req: LiveResultRequest) -> dict:
+    """先核对会话身份与终态，再回写转录和上下文；只采纳允许的终态提示。"""
     deps = build_deps()
     view = await deps.repo.get_session_view(session_id)
     if view is None:

@@ -1,1 +1,1 @@
-"""Application workflows and runtime services."""
+"""面试准备、实时语音、评分、学习教练及技能库服务。"""

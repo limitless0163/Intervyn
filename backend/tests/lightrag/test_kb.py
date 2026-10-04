@@ -1,10 +1,4 @@
-"""Offline tests for the NaiveRAG backend + app wiring.
-
-These exercise the backend directly (``asyncio.run``) rather than via Starlette's
-TestClient, because TestClient pulls in httpx — which is intentionally NOT a
-dependency of this service. The naive backend is fully deterministic and needs no
-network or ML deps.
-"""
+"""离线验证 NaiveRAG 分块、来源引用及用户隔离，不依赖模型或真实网络。"""
 
 from __future__ import annotations
 
@@ -35,7 +29,6 @@ def test_query_returns_relevant_chunk_and_citation() -> None:
     assert "payments" in answer.lower()
     assert len(citations) >= 1
     assert all(isinstance(c, Citation) for c in citations)
-    # The top citation comes from the relevant source and quotes the matched text.
     assert citations[0].title == "cv.txt"
     assert citations[0].url == "cv.txt"
     assert "payments" in (citations[0].snippet or "").lower()
@@ -46,12 +39,11 @@ def test_per_user_isolation() -> None:
     _run(backend.ingest("alice", [("a.txt", "Alice specialises in distributed systems.")]))
     _run(backend.ingest("bob", [("b.txt", "Bob specialises in mobile development.")]))
 
-    # Bob's query must not surface Alice's document.
+    # 用户之间不得检索到对方的资料。
     answer, citations = _run(backend.query("bob", "distributed systems", "en"))
     assert "alice" not in answer.lower()
     assert all(c.title != "a.txt" for c in citations)
 
-    # And the reverse: Alice gets her own content.
     a_answer, a_citations = _run(backend.query("alice", "distributed systems", "en"))
     assert "distributed" in a_answer.lower()
     assert any(c.title == "a.txt" for c in a_citations)
@@ -85,7 +77,7 @@ def test_empty_or_unmatched_query_returns_empty() -> None:
     assert answer == ""
     assert citations == []
 
-    # Unknown user -> empty, no leak.
+    # 未知用户必须返回空结果，不能泄漏已有资料。
     answer2, citations2 = _run(backend.query("nobody", "cooking", "en"))
     assert answer2 == ""
     assert citations2 == []

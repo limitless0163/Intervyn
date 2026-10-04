@@ -1,9 +1,4 @@
-"""Offline tests for prep progress + the GET /api/session read model.
-
-Exercises ``run_prep`` (inline) end-to-end with the deterministic adapters and
-asserts the progress steps, the assembled SessionView, and the rejection path
-for wholly meaningless input — all without network or API keys.
-"""
+"""离线验证准备进度、会话读取模型及输入拒绝路径。"""
 
 from __future__ import annotations
 
@@ -42,7 +37,7 @@ def test_run_prep_records_all_five_progress_steps() -> None:
     view = asyncio.run(deps.repo.get_session_view(session_id))
     assert isinstance(view, SessionView)
     assert view.status == "ready"
-    # All five agents reported completion; order is non-deterministic (fan-out).
+    # 并行分支完成顺序不固定，只核对完成步骤集合。
     assert set(view.progress) == _ALL_STEPS
     assert len(view.progress) == 5, "no duplicate progress entries"
 
@@ -67,7 +62,6 @@ def test_get_session_view_unknown_returns_none() -> None:
 
 def test_run_prep_rejects_garbage_cv_and_jd() -> None:
     deps = build_deps()
-    # Must not crash even though both core inputs are meaningless.
     session_id = asyncio.run(run_prep(_garbage_request(), deps))
 
     view = asyncio.run(deps.repo.get_session_view(session_id))
@@ -75,7 +69,7 @@ def test_run_prep_rejects_garbage_cv_and_jd() -> None:
     assert view.status == "rejected"
     assert view.prep_warnings, "rejection must surface human-readable warnings"
     assert view.context is None
-    # No graph ran -> no progress recorded.
+    # 拒绝发生在图运行前，不应出现完成进度。
     assert view.progress == []
 
 
@@ -93,8 +87,8 @@ def test_run_prep_junk_company_warns_but_completes() -> None:
     assert view is not None
     assert view.status == "ready"
     assert any("company name" in w for w in view.prep_warnings)
-    # company_research still ran (short-circuited) and reported progress.
+    # 公司名无效时研究节点短路，但仍需报告该步骤完成。
     assert set(view.progress) == _ALL_STEPS
-    # Empty-but-valid company intel (no fabricated knowledge).
+    # 空公司资料须保持有效且不能编造信息。
     assert view.context is not None
     assert view.context.company.summary == ""

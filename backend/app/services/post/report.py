@@ -1,15 +1,6 @@
-"""ScoreCard assembly for the WP-7 scoring pipeline.
+"""根据能力分数和语言报告组装评分卡；总分、弱项与覆盖率由代码计算。
 
-:func:`generate_report` takes the per-competency scores and the language report
-and assembles the final :class:`ScoreCard`:
-
-* ``overall_score`` is the mean of the competency scores, clamped to 0-5 (0.0
-  when there are no competencies).
-* ``weak_competencies`` is exactly the set of competencies whose band is
-  ``weak`` or ``developing`` — the list the Prep Coach loop consumes to decide
-  what to teach next. It is a subset of the scorecard's competencies.
-* ``model_answers`` holds one improved answer per planned question.
-* strengths / weaknesses / next_steps / summary are written by the LLM.
+仅为有回答的题目生成示范答案，模型负责报告叙述。
 """
 
 from __future__ import annotations
@@ -31,12 +22,12 @@ log = get_logger(__name__)
 
 _WEAK_LEVELS = frozenset({"weak", "developing"})
 
-# Bound concurrent model-answer drafts (same rationale as the evaluator).
+# 限制示范答案生成的并发量，兼顾阶段时限与提供方请求额度。
 _MAX_CONCURRENT_DRAFTS = 4
 
 
 class _ReportNarrative(BaseModel):
-    """Free-text narrative the LLM fills; numeric fields are assembled separately."""
+    """模型仅生成报告叙述，数值字段由代码另行计算。"""
 
     model_config = ConfigDict(extra="forbid")
     strengths: list[str]
@@ -46,7 +37,7 @@ class _ReportNarrative(BaseModel):
 
 
 def _overall_score(comp_scores: list[CompetencyScore]) -> float:
-    """Mean competency score, clamped to 0-5; 0.0 for an empty list."""
+    """计算能力分数均值并限制到 0 至 5；空列表返回 0。"""
     if not comp_scores:
         return 0.0
     mean = sum(cs.score for cs in comp_scores) / len(comp_scores)
@@ -54,7 +45,7 @@ def _overall_score(comp_scores: list[CompetencyScore]) -> float:
 
 
 def _weak_competencies(comp_scores: list[CompetencyScore]) -> list[str]:
-    """Competencies whose band is weak/developing (de-duplicated, order-preserving)."""
+    """提取 weak 或 developing 能力，去重并保留顺序。"""
     seen: set[str] = set()
     weak: list[str] = []
     for cs in comp_scores:
@@ -65,11 +56,9 @@ def _weak_competencies(comp_scores: list[CompetencyScore]) -> list[str]:
 
 
 def _coverage_pct(ctx: InterviewContext) -> float:
-    """Fraction of planned questions that received a non-empty answer.
+    """按非空回答计算计划题目的覆盖率；没有计划题目时按完全覆盖返回 1.0。
 
-    1.0 when nothing was planned (vacuously complete). This is the signal that
-    tells a low ``overall_score`` from a short/aborted interview apart from one
-    earned by genuinely weak answers.
+    用于区分面试中途结束与已答题表现不足。
     """
     total = len(ctx.plan.questions)
     if total == 0:
@@ -88,12 +77,9 @@ def _competency_lines(comp_scores: list[CompetencyScore]) -> str:
 
 
 async def _model_answers(ctx: InterviewContext, deps: Deps) -> list[ModelAnswer]:
-    """Draft one improved answer per ANSWERED question (concurrent, isolated).
+    """有界并发生成已作答题目的示范答案；单题失败只跳过该答案。
 
-    Only questions the candidate actually reached get a model answer — drafting
-    for never-asked questions burns LLM calls on content the report can't ground
-    (cost rule #5) and risks blowing the single stage timeout on long plans. A
-    failed draft drops that one answer instead of voiding the stage.
+    跳过未答题，避免无依据生成以及额外模型费用。
     """
     by_question = {a.question_id: a for a in ctx.answers}
     answered = [
@@ -103,8 +89,7 @@ async def _model_answers(ctx: InterviewContext, deps: Deps) -> list[ModelAnswer]
     ]
 
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_DRAFTS)
-    # Fit every wave within the stage budget; a single slow draft must not
-    # cancel the narrative and all already-completed model answers.
+    # 按批次数分配调用时限，避免单个慢请求耗尽整个报告阶段的预算。
     waves = max(1, (len(answered) + _MAX_CONCURRENT_DRAFTS - 1) // _MAX_CONCURRENT_DRAFTS)
     draft_timeout = deps.settings.score_stage_timeout_sec * 0.8 / waves
 
@@ -130,7 +115,7 @@ async def generate_report(
     lang_report: LanguageReport,
     deps: Deps,
 ) -> ScoreCard:
-    """Assemble the final :class:`ScoreCard` from the scored components."""
+    """组装分数、语言报告、示范答案和模型叙述，返回最终评分卡。"""
     overall = _overall_score(comp_scores)
     weak = _weak_competencies(comp_scores)
 

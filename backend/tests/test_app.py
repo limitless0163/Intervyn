@@ -1,4 +1,4 @@
-"""Offline tests for the FastAPI app (health + prep flow)."""
+"""离线验证健康检查、准备 API 及输入拒绝流程。"""
 
 from fastapi.testclient import TestClient
 
@@ -31,14 +31,13 @@ def test_prep_endpoint_creates_ready_session() -> None:
     session_id = data["session_id"]
     assert session_id.startswith("sess_")
 
-    # POST returns immediately, but Starlette's TestClient runs the BackgroundTask
-    # to completion before returning, so the session is already 'ready' via GET.
+    # TestClient 等待后台任务结束后才返回，因此此时会话已 ready。
     view = client.get(f"/api/session/{session_id}")
     assert view.status_code == 200
     payload = view.json()
     assert payload["session_id"] == session_id
     assert payload["status"] == "ready"
-    # All five prep agents reported completion (order is non-deterministic).
+    # 并行分支完成顺序不固定，只核对五个完成标记。
     assert set(payload["progress"]) == {
         "cv_analysis",
         "jd_analysis",
@@ -49,8 +48,7 @@ def test_prep_endpoint_creates_ready_session() -> None:
     assert payload["context"] is not None
     assert payload["context"]["session_id"] == session_id
 
-    # The route uses the module-singleton MemoryRepository (no Supabase configured),
-    # so the session it wrote is inspectable here too.
+    # API 与测试共用当前进程的内存单例，便于直接检查写入结果。
     assert repo_mod._MEMORY_REPO.get_status(session_id) == "ready"
 
 
@@ -62,7 +60,6 @@ def test_session_endpoint_404_for_unknown_id() -> None:
 def test_prep_endpoint_rejects_garbage_input() -> None:
     client = _client()
     body = {
-        # Both CV and JD are meaningless -> the session is rejected.
         "cv_url": "asdasdasdasdasdasd",
         "jd_text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
         "company": "Acme Payments",

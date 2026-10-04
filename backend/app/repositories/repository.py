@@ -23,7 +23,7 @@ def _new_session_id() -> str:
 
 @runtime_checkable
 class SessionRepository(Protocol):
-    """Storage contract for interview sessions."""
+    """面试会话的存储契约。"""
 
     async def create_session(self, req: PrepRequest) -> str: ...
 
@@ -52,8 +52,7 @@ class SessionRepository(Protocol):
 class _SessionRow:
     id: str
     status: str = "prep"
-    # Owning user (Supabase auth uid); None for the offline/dev path. Stamped so
-    # the web report's RLS read (auth.uid() = user_id) can see the row.
+    # 写入 Supabase 用户 ID，使报告页可通过 auth.uid() = user_id 的 RLS 读取会话。
     user_id: str | None = None
     company: str | None = None
     cv_url: str | None = None
@@ -149,7 +148,7 @@ class MemoryRepository:
             scorecard=scorecard,
         )
 
-    # --- test / inspection helpers (not part of the protocol) ----------------
+    # 仅供测试和状态检查使用，不属于仓库协议。
     def get_status(self, session_id: str) -> str | None:
         row = self._rows.get(session_id)
         return row.status if row else None
@@ -162,10 +161,9 @@ class MemoryRepository:
 
 
 class SupabaseRepository:
-    """Persist sessions to Supabase ``public.sessions`` (lazy ``supabase`` SDK).
+    """通过延迟导入的 Supabase SDK 持久化 public.sessions。
 
-    Read/modify/write operations are serialized per session within this instance.
-    Multiple processes still require database-level coordination.
+    本实例按会话串行化读改写；跨进程更新仍需数据库级协调。
     """
 
     def __init__(self, url: str, service_role_key: str) -> None:
@@ -179,7 +177,7 @@ class SupabaseRepository:
         if self._client is None:
             try:
                 from supabase import create_client
-            except ImportError as exc:  # pragma: no cover - depends on optional SDK
+            except ImportError as exc:  # pragma: no cover - 依赖可选 SDK
                 raise RuntimeError(
                     "supabase is not installed; install the 'supabase' extra."
                 ) from exc
@@ -197,8 +195,7 @@ class SupabaseRepository:
         payload = {
             "id": session_id,
             "status": "prep",
-            # Stamp the owner so the web report's RLS read (auth.uid() = user_id)
-            # can see this row. None on the offline/dev path (column is nullable).
+            # 持久化所属用户以满足报告页 RLS；离线路径允许为空。
             "user_id": req.user_id,
             "company": req.company,
             "cv_url": req.cv_url,
@@ -318,12 +315,11 @@ _MEMORY_REPO = MemoryRepository()
 
 
 def get_repository(settings: Settings) -> SessionRepository:
-    """Return a repository: Supabase if fully configured, else the memory singleton."""
+    """完整配置 Supabase 时使用持久化仓库，否则复用当前进程的内存仓库。"""
     if settings.supabase_url and settings.supabase_service_role_key:
         return SupabaseRepository(settings.supabase_url, settings.supabase_service_role_key)
     if settings.supabase_url or settings.supabase_service_role_key:
-        # Half-configured Supabase is almost always a deployment mistake; say so
-        # loudly instead of silently dropping every session into process memory.
+        # 半配置通常是部署错误，显式告警以免误以为会话已持久化。
         log.error(
             "Supabase is PARTIALLY configured (need BOTH SUPABASE_URL and "
             "SUPABASE_SERVICE_ROLE_KEY); falling back to the in-memory store — "

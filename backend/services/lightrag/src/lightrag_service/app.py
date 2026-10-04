@@ -24,7 +24,7 @@ from .models import (
 if TYPE_CHECKING:
     from .backend import RagBackend
 
-# How long to wait when fetching a file URL (seconds).
+# 文件 URL 的读取时限，单位为秒。
 _FETCH_TIMEOUT = 15.0
 
 
@@ -45,7 +45,7 @@ def _is_public_http_url(url: str) -> bool:
     try:
         addr = ipaddress.ip_address(host)
     except ValueError:
-        return True  # non-IP hostname: allowed (see docstring caveat)
+        return True  # 普通域名不解析 DNS，防护边界见函数说明。
     return not (
         addr.is_private
         or addr.is_loopback
@@ -59,7 +59,7 @@ def _is_public_http_url(url: str) -> bool:
 async def require_secret(
     x_internal_secret: str | None = Header(default=None),
 ) -> None:
-    """Enforce ``LIGHTRAG_API_SECRET`` when configured; no-op otherwise (offline)."""
+    """配置 LIGHTRAG_API_SECRET 时校验内部密钥，未配置时跳过。"""
     expected = os.environ.get("LIGHTRAG_API_SECRET")
     if not expected:
         return
@@ -93,7 +93,7 @@ async def _resolve_file(ref: str) -> tuple[str, str]:
 
 
 def create_app(backend: RagBackend | None = None) -> FastAPI:
-    """Build the FastAPI app. A ``backend`` may be injected (tests); else selected."""
+    """构造知识 API；可注入检索后端，未注入时按环境配置选择。"""
     backend = backend or get_backend()
     app = FastAPI(title="Intervyn Knowledge Sidecar", version="0.0.0")
 
@@ -131,7 +131,7 @@ app = create_app()
 
 
 def main() -> None:
-    """Run the service with uvicorn on ``$LIGHTRAG_PORT`` (default 9621)."""
+    """使用 LIGHTRAG_PORT 指定端口运行 uvicorn，默认端口为 9621。"""
     import uvicorn
 
     port = int(os.environ.get("LIGHTRAG_PORT", "9621"))

@@ -1,4 +1,4 @@
-"""Regressions for silent startup failures with MiniMax and LiveKit STT."""
+"""回归 MiniMax 开场消息和 LiveKit 转写配置导致的静默启动问题。"""
 
 from types import SimpleNamespace
 
@@ -29,7 +29,7 @@ def test_minimax_opener_adds_request_only_message(monkeypatch, has_user):
     monkeypatch.setattr(openai.LLM, "chat", chat)
     model = MiniMaxLLM(model="test", api_key="test")
     assert model.chat(chat_ctx=ctx, tools=[]) == "stream"
-    assert ctx.items == original  # no fake answer in conversation/scoring
+    assert ctx.items == original  # 补充请求消息不能成为候选人原话或评分依据。
     outgoing = captured["chat_ctx"]
     assert any(item.role == "user" for item in outgoing.items)
     if has_user:

@@ -1,4 +1,4 @@
-"""Interview pause tolerance and coherent TTS chunks, using the installed SDK."""
+"""使用实际语音 SDK 验证思考停顿设置及完整句子的合成分块。"""
 
 import asyncio
 
@@ -35,7 +35,7 @@ def test_endpointing_fallback_preserves_thinking_pause(monkeypatch, language):
     assert handling["endpointing"]["min_delay"] == 5.0
     assert handling["endpointing"]["max_delay"] == 10.0
 
-    # Exercise actual SDK option parsing, rather than just checking our dict.
+    # 通过实际 SDK 解析配置，避免只检查字典却遗漏版本接口不兼容。
     async def run():
         session = AgentSession(turn_handling=handling)
         assert session.options.endpointing["mode"] == "dynamic"

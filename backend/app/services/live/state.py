@@ -14,24 +14,16 @@ from ...schemas.shared_models import AnswerRecord
 if TYPE_CHECKING:
     from ...schemas.shared_models import InterviewContext, PlannedQuestion, ScoreCard, Section
 
-# A directional hint the live model MAY consider when adapting question depth.
-# Purely advisory: nothing here moves the cursor or mutates interview state.
+# 难度方向仅为建议，不推进游标或修改状态。
 Recommendation = Literal["harder", "easier", "advance", "wrap"]
 
-# Deterministic answer-substance thresholds (word counts of the saved answer
-# transcript). Mid-call we have no rubric scores yet, so substance is the
-# strongest reproducible signal of how the candidate is coping with the section.
+# 以回答长度作为可复现的节奏信号，仅为启发式，不等同于能力评分。
 _THIN_WORDS = 12
 _RICH_WORDS = 80
-# Planned difficulty is on the documented 1-5 band; only suggest "harder" when
-# there is a higher rung left to climb to.
+# 计划难度已在最高档时不再建议加难。
 _MAX_DIFFICULTY = 5
 
-# Minimum substance (word count) for a transcript-recovered answer — reuses the
-# _THIN_WORDS difficulty threshold. Below it, a question's user speech is small
-# talk or fragments (the reply to the greeting, "yes", "thanks, goodbye"), not
-# an answer: recovering it would fire the full LLM scoring pipeline on junk and
-# produce a misleading near-zero report instead of the honest no_answers state.
+# 恢复回答须达到最小内容长度，避免问候或零碎发言触发误导性的低分报告。
 _MIN_RECOVERED_WORDS = _THIN_WORDS
 
 
@@ -50,7 +42,7 @@ class InterviewUserdata:
 
 
 def spoken_answer(ud: InterviewUserdata) -> str:
-    """Actual candidate speech for the active question, including follow-ups."""
+    """收集当前题的候选人原始发言，包含追问回答。"""
     q = current_question(ud)
     if q is None:
         return ""
@@ -62,6 +54,7 @@ def spoken_answer(ud: InterviewUserdata) -> str:
 
 
 def current_answer_saved(ud: InterviewUserdata) -> bool:
+    """当前题须同时有真实发言及至少一条非空已存答案，才允许工具推进。"""
     q = current_question(ud)
     return q is not None and bool(spoken_answer(ud)) and any(
         a.question_id == q.id and a.transcript.strip() for a in ud.ctx.answers
@@ -69,7 +62,7 @@ def current_answer_saved(ud: InterviewUserdata) -> bool:
 
 
 def current_question(ud: InterviewUserdata) -> PlannedQuestion | None:
-    """Return the question at the current cursor, or ``None`` if past the end."""
+    """返回游标指向的问题，越过计划末尾时返回 None。"""
     questions = ud.ctx.plan.questions
     cursor = ud.ctx.cursor
     if 0 <= cursor < len(questions):
@@ -78,18 +71,18 @@ def current_question(ud: InterviewUserdata) -> PlannedQuestion | None:
 
 
 def current_section(ud: InterviewUserdata) -> Section | None:
-    """Return the section of the current question, or ``None`` if past the end."""
+    """返回当前问题的环节，计划结束时返回 None。"""
     q = current_question(ud)
     return q.section if q is not None else None
 
 
 def advance(ud: InterviewUserdata) -> None:
-    """Move the cursor forward by one question (may land past the end)."""
+    """游标前进一题，允许越过计划末尾。"""
     ud.ctx.cursor += 1
 
 
 def is_complete(ud: InterviewUserdata) -> bool:
-    """True once the cursor has moved past the last planned question."""
+    """判断游标是否已越过最后一道计划题。"""
     return ud.ctx.cursor >= len(ud.ctx.plan.questions)
 
 
@@ -117,16 +110,10 @@ def save_answer(
 
 
 def next_section(ud: InterviewUserdata) -> PlannedQuestion | None:
-    """Advance the cursor to the first question whose section differs from the
-    current one, and return it (or ``None`` if there is no later section).
-
-    Skips the remainder of the current section. If already past the end, the
-    cursor is left at the end and ``None`` is returned.
-    """
+    """跳过当前环节余题，返回后续首个不同环节的问题；无后续环节时游标置于末尾。"""
     questions = ud.ctx.plan.questions
     starting_section = current_section(ud)
 
-    # Already past the end -> nothing to advance to.
     if starting_section is None:
         ud.ctx.cursor = len(questions)
         return None
@@ -139,11 +126,9 @@ def next_section(ud: InterviewUserdata) -> PlannedQuestion | None:
 
 
 def add_turn(ud: InterviewUserdata, role: str, text: str) -> None:
-    """Append a turn to the flat running transcript log.
+    """记录真实发言并标注发言时的题号，供关闭时恢复未保存回答。
 
-    Each turn is tagged with the question active at the time it was spoken so
-    :func:`reconstruct_answers` can recover unsaved answers on shutdown. An
-    empty ``question_id`` means the cursor was already past the planned end.
+    游标越界时题号为空；转录保留原话而非工具提供的摘要。
     """
     q = current_question(ud)
     question_id = q.id if q is not None else ""
@@ -174,13 +159,13 @@ def mark_followup_pending(ud: InterviewUserdata) -> bool:
 
 
 def followup_was_asked(ud: InterviewUserdata) -> bool:
-    """Whether the current planned question already had its optional follow-up."""
+    """判断当前计划题是否已经提出过可选追问。"""
     q = current_question(ud)
     return q is not None and q.id in ud.followup_asked_question_ids
 
 
 def followup_is_pending(ud: InterviewUserdata) -> bool:
-    """Whether the candidate still owes a response to the current follow-up."""
+    """判断当前追问是否还在等待新的候选人发言；失效标记会被清除。"""
     qid = ud.followup_pending_question_id
     if not qid:
         return False
@@ -241,16 +226,14 @@ def reconstruct_answers(ud: InterviewUserdata) -> int:
     return added
 
 
-# --- adaptive difficulty (pure, livekit-free, deterministic) -----------------
+# 不依赖 LiveKit 的自适应难度启发式。
 
 
 @dataclass(frozen=True)
 class DifficultySignal:
-    """An advisory read of how the candidate is doing in the *current* section.
+    """从计划、游标和已保存回答推导当前环节的难度建议，不修改状态。
 
-    Fully derived from the plan + cursor + answer log; never mutates anything.
-    ``recommendation`` is the directional hint; ``rationale`` is a short, lean
-    string suitable for handing to the live model.
+    recommendation 为方向，rationale 为可直接提供给实时模型的简短理由。
     """
 
     recommendation: Recommendation
@@ -263,7 +246,7 @@ class DifficultySignal:
 
 
 def _answers_by_question_id(ud: InterviewUserdata) -> dict[str, AnswerRecord]:
-    """Last saved answer per question id (later answers win)."""
+    """按题号索引已保存回答，重复题号取最后一条。"""
     by_id: dict[str, AnswerRecord] = {}
     for a in ud.ctx.answers:
         by_id[a.question_id] = a
@@ -306,7 +289,7 @@ def evaluate_difficulty(ud: InterviewUserdata) -> DifficultySignal:
     current_difficulty = current.difficulty if current is not None else 0
 
     if answered_in_section == 0:
-        # No evidence yet this section; keep the interview on plan.
+        # 当前环节尚无有效证据，保持原计划。
         return DifficultySignal(
             recommendation="advance",
             section=section,
@@ -353,18 +336,13 @@ def evaluate_difficulty(ud: InterviewUserdata) -> DifficultySignal:
 
 
 def difficulty_hint(ud: InterviewUserdata) -> str:
-    """A lean one-line hint string for the live model: ``"<rec>: <rationale>"``."""
+    """生成 recommendation: rationale 格式的简短模型提示。"""
     sig = evaluate_difficulty(ud)
     return f"{sig.recommendation}: {sig.rationale}"
 
 
 def compact_summary(ud: InterviewUserdata) -> str:
-    """A short candidate summary string for the lean live prompt.
-
-    Combines the role/level being interviewed for with the precomputed 120-word
-    candidate summary. Intentionally compact: the live prompt injects ONLY this
-    plus the current question and recent turns — never the whole CV/JD/company.
-    """
+    """拼接候选人摘要及目标岗位，供实时指令使用，不加入完整简历、职位或公司资料。"""
     cand = ud.ctx.candidate
     job = ud.ctx.job
     role = f"{job.title} ({job.seniority}) at {job.company_name}"
@@ -376,12 +354,7 @@ def compact_summary(ud: InterviewUserdata) -> str:
 
 
 def weak_areas_summary(scorecard: ScoreCard | None) -> str:
-    """A short, spoken-coach-friendly summary of the candidate's weak areas.
-
-    Pure + livekit-free (testable) so the coach worker can inject a lean context
-    line into the live coach prompt. Returns an encouraging fallback when the
-    session has not been scored yet, or has no flagged weaknesses.
-    """
+    """按评分卡弱项原顺序生成语音教练摘要；未评分或无弱项时返回鼓励性引导。"""
     if scorecard is None:
         return (
             "No scorecard yet for this session. Ask the candidate which area they "

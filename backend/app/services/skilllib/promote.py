@@ -1,14 +1,6 @@
-"""Promote a reviewed draft into the live skill library (WP-10 quality gate).
+"""审核后将草稿发布到正式库，不自动调用。
 
-:func:`promote` is the *only* path from the review queue into the live
-``backend/skills/`` library, and it is NEVER called automatically — a human/LLM reviewer
-invokes it after approving a draft in ``backend/skills/_review/``.
-
-If a matching live skill already exists (same ``{company}-{role}-{level}`` slug),
-the draft is **merged/deduped**: ``version`` bumps, ``source_runs`` increments,
-the question bank is merged uniquely, ``confidence`` rises modestly (capped),
-``last_verified`` updates, and ``status`` becomes ``promoted``. Otherwise a new
-skill file is created. ``scrub_pii`` runs again as a safety net before writing.
+相同公司、岗位及级别的技能合并去重并升级版本；写入前再次清除正文个人信息。
 """
 
 from __future__ import annotations
@@ -25,12 +17,12 @@ _QUESTION_BANK_HEADING = "## Question bank"
 
 
 def _parse_draft(draft_path: str | Path) -> Skill:
-    """A draft on disk is a frontmatter+body skill file; load it as a Skill."""
+    """将待审文件按正式技能的元数据及正文格式解析。"""
     return load_skill(draft_path)
 
 
 def _extract_question_bank(body: str) -> list[str]:
-    """Return the ``- `` bullet lines under the '## Question bank' section."""
+    """提取 Question bank 章节的题目列表行。"""
     lines = body.splitlines()
     bank: list[str] = []
     in_section = False
@@ -44,7 +36,7 @@ def _extract_question_bank(body: str) -> list[str]:
 
 
 def _merge_question_banks(existing_body: str, draft_body: str) -> str:
-    """Append unique question-bank bullets from the draft to the existing body."""
+    """将草稿中新题目追加到既有题库，按完整列表行去重。"""
     existing = _extract_question_bank(existing_body)
     incoming = _extract_question_bank(draft_body)
     seen = set(existing)
@@ -57,13 +49,13 @@ def _merge_question_banks(existing_body: str, draft_body: str) -> str:
     in_section = False
     for line in existing_body.splitlines():
         if line.strip().startswith("## "):
-            # Leaving the question-bank section: flush new lines before the next heading.
+            # 退出题库章节前插入新增题目，避免落到下一章节。
             if in_section and not inserted:
                 out_lines.extend(new_lines)
                 inserted = True
             in_section = line.strip() == _QUESTION_BANK_HEADING
         out_lines.append(line)
-    # Question bank was the last section (no trailing heading after it).
+    # 题库位于文末时仍需补入新增题目。
     if in_section and not inserted:
         out_lines.extend(new_lines)
         inserted = True
@@ -73,7 +65,7 @@ def _merge_question_banks(existing_body: str, draft_body: str) -> str:
 def _merge_frontmatter(
     existing: SkillFrontmatter, draft: SkillFrontmatter
 ) -> SkillFrontmatter:
-    """Bump version, increment runs, raise confidence, merge competencies."""
+    """升级版本、累加来源次数、提高置信度并合并能力标签。"""
     merged_competency = sorted(set(existing.competency) | set(draft.competency))
     new_confidence = min(_CONFIDENCE_CAP, round(existing.confidence + _CONFIDENCE_STEP, 4))
     return existing.model_copy(
@@ -92,10 +84,7 @@ def promote(
     draft_path: str | Path,
     skills_dir: str | Path | None = None,
 ) -> Path:
-    """Promote a reviewed draft into the live library; return the written path.
-
-    NEVER called automatically — a reviewer runs this after approving a draft.
-    """
+    """发布已审核草稿并返回写入路径；必须由审核流程显式调用。"""
     root = Path(skills_dir) if skills_dir is not None else DEFAULT_SKILLS_DIR
     draft = _parse_draft(draft_path)
     dfm = draft.frontmatter
@@ -104,16 +93,14 @@ def promote(
     target_path = root / f"{slug}.md"
 
     if target_path.exists():
-        # Dedupe / merge into the existing skill.
         existing = load_skill(target_path)
         frontmatter = _merge_frontmatter(existing.frontmatter, dfm)
         body = _merge_question_banks(existing.body_md, draft.body_md)
     else:
-        # First promotion: take the draft, flip status to promoted.
         frontmatter = dfm.model_copy(update={"id": slug, "status": "promoted"})
         body = draft.body_md
 
-    # Safety net: scrub PII again before anything enters the live library.
+    # 再次清除正文个人信息，避免待审期间新增内容绕过落盘前检查。
     body = scrub_pii(body, names=[])
 
     skill = Skill(frontmatter=frontmatter, body_md=body)

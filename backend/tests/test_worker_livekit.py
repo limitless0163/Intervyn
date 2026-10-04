@@ -1,38 +1,7 @@
-"""Regression tests for the livekit-COUPLED pieces of the WP-5 worker.
+"""依赖 livekit 扩展的工作进程回归测试，扩展缺失时跳过。
 
-Unlike ``test_live.py`` (which pins the pure ``live.state`` machine), this module
-imports ``app.services.live.worker`` — which imports ``livekit.agents`` at load
-time — so it SKIPS cleanly wherever the optional ``livekit`` extra is absent
-(plain CI venv) and RUNS inside the worker docker image (``uv sync --extra
-livekit``). Everything stays offline and deterministic: no provider construction
-here performs network I/O (verified against the installed plugin source — the
-Deepgram ``STT.__init__`` only validates kwargs and builds an ``STTOptions``
-dataclass), and the ``InterviewContext`` comes from the WP-6 prep pipeline with
-the mock adapters forced by ``conftest.py``.
-
-What is pinned, and why it must not regress:
-
-* ``wire_transcript_capture`` — the shutdown-time answer recovery
-  (``state.reconstruct_answers``) can only recover what this wiring captured,
-  tagged with the question active when it was spoken. If the
-  ``conversation_item_added`` hookup or its question_id tagging breaks, sessions
-  with real speech silently land on ``no_answers`` ("no report") again.
-* ``_deepgram_stt`` / ``build_stt`` — plugin kwargs are passed positionally by
-  name into ``deepgram.STT``; a plugin signature drift would raise at session
-  start and break EVERY interview. The language→model routing (non-English →
-  nova-2) exists because nova-3 streams NO Vietnamese transcripts (confirmed
-  live 2026-06-10), and the per-model ``endpointing_ms`` split (25 vs 300)
-  keeps Vietnamese answers from being chopped into fragments.
-* ``entrypoint``'s REAL ``_on_shutdown`` closure — driven end-to-end with every
-  livekit-coupled seam faked (no room, no providers, no network). This is the
-  write-back that fixed the production "no report" bug, and it only exists as
-  a closure: ``state.reconstruct_answers`` must run BEFORE ``has_answers`` is
-  computed, the live-result POST must carry the ``no_answers`` hint only for
-  truly answer-less sessions, the API→repo fallback order (and the
-  save_context-failure → ``error`` branch) must hold, the payload built from
-  python-mode ``ctx.model_dump()`` must stay JSON-encodable AND parse as the
-  API's ``LiveResultRequest``, and scoring must fire only after a successful
-  persist of a session with real answers.
+离线验证真实插件构造、转录监听、语言路由及本地组件选择；
+以房间、提供方和 HTTP 替身驱动真实关闭回调，核对恢复、回写及评分顺序。
 """
 
 from __future__ import annotations
@@ -60,11 +29,9 @@ from app.services.live import state, worker
 from app.services.live.state import InterviewUserdata
 from app.services.prep import run_prep
 
-# --- helpers (same construction as tests/test_live.py) -----------------------
-
 
 def _build_context() -> InterviewContext:
-    """Run the offline prep pipeline and load the resulting InterviewContext."""
+    """运行模拟准备流程并读取有效面试上下文。"""
     deps = build_deps()
     req = PrepRequest(
         cv_url="https://example.com/cv.pdf",
@@ -79,12 +46,7 @@ def _build_context() -> InterviewContext:
 
 
 def _userdata_two_sections() -> InterviewUserdata:
-    """Userdata whose plan has a second question in a different section.
-
-    The mock plan carries exactly one question (section ``intro``); a second
-    one lets the tests observe the question_id tag CHANGE when the cursor
-    advances.
-    """
+    """为单题模拟计划追加不同环节的题目，观察游标推进后的题号标记。"""
     ctx = _build_context()
     first = ctx.plan.questions[0]
     second = first.model_copy(update={"id": "q_behavioral", "section": "behavioral"})
@@ -93,13 +55,9 @@ def _userdata_two_sections() -> InterviewUserdata:
 
 
 class FakeAgentSession:
-    """Minimal stand-in for the ``AgentSession`` event surface the worker uses.
+    """模拟 AgentSession 的事件注册接口，支持装饰器与直接回调两种注册方式。
 
-    ``wire_transcript_capture`` registers via the EventEmitter decorator form
-    ``@session.on("conversation_item_added")`` — i.e. ``.on(event)`` with no
-    callback returns a decorator (mirrors ``livekit.agents``' ``EventEmitter.on``,
-    which also accepts ``.on(event, callback)`` directly). ``emit`` then fires
-    the registered handlers synchronously, exactly like the SDK does.
+    emit 同步执行已注册处理器，复现转录监听所依赖的 SDK 行为。
     """
 
     def __init__(self) -> None:
@@ -124,19 +82,12 @@ class FakeAgentSession:
 
 
 def _item_event(role: Any, text: Any) -> SimpleNamespace:
-    """A fake ``conversation_item_added`` event: ``ev.item.role`` / ``.text_content``."""
+    """构造包含角色和正文的会话发言事件替身。"""
     return SimpleNamespace(item=SimpleNamespace(role=role, text_content=text))
 
 
-# --- wire_transcript_capture --------------------------------------------------
-
-
 def test_wire_transcript_capture_tags_turns() -> None:
-    """Committed turns land in userdata.transcript tagged with the ACTIVE question.
-
-    This tag is what ``state.reconstruct_answers`` keys on at shutdown — lose it
-    and unsaved answers can no longer be recovered per question.
-    """
+    """每个已提交轮次须带发言时的活动题号，供关闭时按题恢复答案。"""
     ud = _userdata_two_sections()
     q1 = state.current_question(ud)
     assert q1 is not None
@@ -159,8 +110,7 @@ def test_wire_transcript_capture_tags_turns() -> None:
         }
     ]
 
-    # Advance the cursor to the second question: subsequent turns must carry
-    # the NEW question's id, not the stale one.
+    # 推进后的新发言必须使用新题号，不能沿用上一题标记。
     state.advance(ud)
     session.emit(
         "conversation_item_added",
@@ -175,7 +125,7 @@ def test_wire_transcript_capture_tags_turns() -> None:
 
 
 def test_wire_transcript_capture_ignores_non_turns() -> None:
-    """Events without a user/assistant role or without text must not append."""
+    """非候选人或智能体角色，以及空正文事件，均不能进入转录。"""
     ud = _userdata_two_sections()
     session = FakeAgentSession()
     worker.wire_transcript_capture(session, ud)
@@ -189,20 +139,8 @@ def test_wire_transcript_capture_ignores_non_turns() -> None:
     assert ud.transcript == []
 
 
-# --- Deepgram STT construction + routing --------------------------------------
-
-
 def test_deepgram_stt_kwargs_are_valid() -> None:
-    """Both tuned kwarg sets must CONSTRUCT against the installed plugin.
-
-    ``_deepgram_stt`` passes its kwargs straight into ``deepgram.STT``; a plugin
-    signature drift (renamed/removed kwarg) raises here instead of at the start
-    of every live session. Construction is offline: the plugin ``__init__`` only
-    validates and stores options, so a dummy ``api_key="x"`` suffices. Also pins
-    the documented per-model endpointing split: nova-3 rides the semantic EOU
-    model (25ms), nova-2 needs Deepgram's own 300ms silence window so languages
-    with within-utterance pauses (e.g. Vietnamese) aren't fragmented.
-    """
+    """用实际 Deepgram 插件校验参数签名及两种端点时窗，构造时不建立网络连接。"""
     pytest.importorskip("livekit.plugins.deepgram")
 
     stt_en = worker._deepgram_stt("en", "nova-3", api_key="x")
@@ -215,25 +153,16 @@ def test_deepgram_stt_kwargs_are_valid() -> None:
     assert stt_vi._opts.model == "nova-2"
     assert stt_vi._opts.language == "vi"
     assert stt_vi._opts.endpointing_ms == 300
-    # smart_format=True applies to both tiers (language-native number/date
-    # formatting).
     assert stt_vi._opts.smart_format is True
     assert stt_en._opts.smart_format is True
 
-    # numerals stays on the nova-3 tier only: the nova-2 tier keeps a minimal
-    # flag set because unsupported combos fail SILENTLY with zero transcripts
-    # (the exact vi failure mode debugged live 2026-06-10).
+    # nova-2 不启用 nova-3 专用数字参数，避免非英语流式转写无结果。
     assert stt_en._opts.numerals is True
     assert stt_vi._opts.numerals is False
 
 
 def test_build_stt_language_routing() -> None:
-    """build_stt routes language → model: vi→nova-2, en→nova-3, mixed→multi/nova-3.
-
-    nova-3 streams NO Vietnamese transcripts (confirmed live 2026-06-10), so
-    every non-English/multi language MUST route to nova-2; code-switching
-    sessions use Deepgram's "multi" on nova-3.
-    """
+    """验证固定路由：越南语使用 nova-2，英语及 mixed 会话使用 nova-3。"""
     pytest.importorskip("livekit.plugins.deepgram")
     settings = SimpleNamespace(stt_provider="deepgram", deepgram_api_key="x")
 
@@ -247,15 +176,7 @@ def test_build_stt_language_routing() -> None:
     assert (mixed._opts.model, str(mixed._opts.language)) == ("nova-3", "multi")
 
 
-# --- the REAL _on_shutdown closure (entrypoint driven with faked seams) --------
-#
-# ``_on_shutdown`` is a closure inside ``worker.entrypoint``; it cannot be
-# imported, only registered. So these tests run the genuine ``entrypoint`` with
-# every livekit-coupled collaborator replaced by an offline fake (the session,
-# room, director, guard, providers, and httpx), capture the callback it
-# registers via ``ctx.add_shutdown_callback``, mutate the live state exactly as
-# a real call would, and then invoke the callback. Whatever ordering bug is
-# reintroduced inside the closure fails HERE, not in production.
+# 关闭逻辑是入口内部回调，需驱动真实入口捕获注册函数，再替换外部接口验证顺序。
 
 _SPOKEN = (
     "I led the incident response when our payments ledger started double-charging "
@@ -265,13 +186,7 @@ _SPOKEN = (
 
 
 class _RecordingHttpx:
-    """Stand-in for ``httpx.AsyncClient``: records POSTs, never touches the network.
-
-    ``json.dumps`` runs at the exact boundary where the real client serializes
-    ``json=`` — so a non-JSON-encodable field (datetime/enum) sneaking into the
-    worker's python-mode ``ctx.model_dump()`` payload fails here exactly as it
-    would in production.
-    """
+    """记录 HTTP 请求而不联网，并在 json 参数边界执行 JSON 编码以复现真实客户端约束。"""
 
     def __init__(self, live_result_ok: bool = True) -> None:
         self.posts: list[tuple[str, Any]] = []
@@ -287,7 +202,7 @@ class _RecordingHttpx:
         class _Client:
             def __init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-            async def __aenter__(self) -> _Client:  # noqa: PYI034 - minimal test double
+            async def __aenter__(self) -> _Client:  # noqa: PYI034 - 最小接口测试替身
                 return self
 
             async def __aexit__(self, *exc: object) -> bool:
@@ -296,7 +211,7 @@ class _RecordingHttpx:
             async def post(
                 self, url: str, json: Any = None, headers: Any = None
             ) -> SimpleNamespace:
-                dumps(json)  # what the real client does with json=
+                dumps(json)  # 模拟真实客户端在 json 参数处的编码边界。
                 recorder.posts.append((url, json))
                 if url.endswith("/live-result") and not recorder.live_result_ok:
                     raise RuntimeError("api unreachable")
@@ -306,7 +221,7 @@ class _RecordingHttpx:
 
 
 class _RecordingRepo:
-    """Wraps the real repo, recording the direct-store calls the fallback makes."""
+    """包装真实仓库并记录 API 失败后直接回写的调用顺序。"""
 
     def __init__(self, inner: Any, fail_save_context: bool = False) -> None:
         self.inner = inner
@@ -332,9 +247,7 @@ class _RecordingRepo:
 
 
 class _FakeRoom(FakeAgentSession):
-    """Bare room surface: ``.on`` decorators plus the identity fields read by
-    ``wire_audio_path_logging`` / ``_session_id_from_room`` (metadata=None →
-    the session id is the room name)."""
+    """提供房间身份字段及事件注册接口；元数据为空时以房间名作为会话 ID。"""
 
     def __init__(self, name: str) -> None:
         super().__init__()
@@ -357,7 +270,7 @@ class _FakeJobContext:
 
 
 class _FakeLifecycle:
-    """Stands in for Director / SessionGuard: sync start(), async aclose()."""
+    """替代后台 Director 和 SessionGuard，提供同步启动与异步关闭。"""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None: ...
 
@@ -380,12 +293,9 @@ def _drive_entrypoint(
     fail_save_context: bool = False,
     fail_trace_close: bool = False,
 ) -> SimpleNamespace:
-    """Run the real ``worker.entrypoint`` offline and capture its shutdown closure.
+    """离线运行真实 entrypoint 并捕获注册的关闭回调，仅替换外部协作接口。
 
-    Only livekit/network seams are faked; the persistence ordering, the
-    has_answers decision, the payload construction and the scoring trigger all
-    run the REAL closure code. Returns the registered shutdown callback, the
-    live userdata, and the http/repo recorders.
+    返回回调、会话状态及 HTTP/仓库记录器，供验证实际恢复、回写和评分分支。
     """
     interview_ctx = _build_context()
     session_id = interview_ctx.session_id
@@ -410,8 +320,7 @@ def _drive_entrypoint(
             return None
 
     monkeypatch.setattr(worker, "_load_context_via_api", _fake_load)
-    # This fixture replaces the room and every provider with offline doubles.
-    # Do not make shutdown regression tests depend on real LiveKit credentials.
+    # 房间及提供方均已替换，关闭回归不能要求真实 LiveKit 凭据。
     monkeypatch.setattr(worker, "_require_live_providers", lambda settings: None)
     monkeypatch.setattr(worker, "build_deps", lambda settings=None: deps)
     monkeypatch.setattr(worker, "AgentSession", _FakeSession)
@@ -460,11 +369,7 @@ def _drive_entrypoint(
 def test_shutdown_recovers_unsaved_answers_before_deciding_has_answers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """THE production-bug ordering, in the real closure: real speech with NO
-    save_answer call must reach the live-result payload as a recovered answer
-    with status hint None — and scoring must fire AFTER the persist. Deleting
-    or reordering ``state.reconstruct_answers`` (or computing ``has_answers``
-    before it) flips the payload to ``no_answers`` and kills the score POST."""
+    """真实关闭回调须先恢复原话再判断有无答案，回写成功后才触发评分。"""
     drive = _drive_entrypoint(monkeypatch)
     ud = drive.userdata
     q1 = state.current_question(ud)
@@ -485,18 +390,18 @@ def test_shutdown_recovers_unsaved_answers_before_deciding_has_answers(
     answers = payload["context"]["answers"]
     assert [a["question_id"] for a in answers] == [q1.id]
     assert answers[0]["transcript"] == _SPOKEN
-    # Persist first, score second — and only against this session.
+    # 持久化成功后才评分，且必须作用于当前会话。
     score_url, score_body = drive.http.posts[1]
     assert score_url.endswith("/api/score/start")
     assert score_body == {"session_id": drive.session_id}
-    # The API persist succeeded, so the direct-repo fallback must stay untouched.
+    # API 回写成功后不得再执行直接仓库兜底。
     assert drive.repo.calls == []
 
 
 def test_shutdown_continues_persist_and_scoring_when_trace_close_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Optional tracing failures must not strand an answered session at ready."""
+    """追踪关闭失败不能阻止已有回答的会话持久化和评分。"""
     drive = _drive_entrypoint(monkeypatch, fail_trace_close=True)
     state.add_turn(drive.userdata, "user", _SPOKEN)
 
@@ -509,10 +414,7 @@ def test_shutdown_continues_persist_and_scoring_when_trace_close_fails(
 def test_shutdown_payload_is_json_encodable_and_parses_as_live_result_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The worker builds its payload with python-mode ``ctx.model_dump()`` and
-    hands it to httpx ``json=``: it must stay ``json.dumps``-encodable AND
-    validate as the API's ``LiveResultRequest`` (the worker→API wire contract).
-    A datetime/enum field added to InterviewContext breaks this first."""
+    """工作进程载荷须可 JSON 编码，并满足 API 的 LiveResultRequest 契约。"""
     drive = _drive_entrypoint(monkeypatch)
     ud = drive.userdata
     state.add_turn(ud, "user", _SPOKEN)
@@ -527,7 +429,7 @@ def test_shutdown_payload_is_json_encodable_and_parses_as_live_result_request(
 
     url, payload = drive.http.posts[0]
     assert url.endswith("/live-result")
-    json.dumps(payload)  # the fake client also dumps at the boundary
+    json.dumps(payload)
     req = LiveResultRequest.model_validate(payload)
     assert req.transcript == ud.transcript
     assert [a.transcript for a in req.context.answers] == [_SPOKEN]
@@ -537,8 +439,7 @@ def test_shutdown_payload_is_json_encodable_and_parses_as_live_result_request(
 def test_shutdown_silent_call_sends_no_answers_hint_and_skips_scoring(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A call with no user speech must POST the terminal ``no_answers`` hint and
-    must NOT trigger scoring (which would read an answer-less context)."""
+    """没有候选人发言时回写 no_answers 且不触发评分。"""
     drive = _drive_entrypoint(monkeypatch)
     state.add_turn(drive.userdata, "assistant", "Hello? Are you still there?")
 
@@ -554,9 +455,7 @@ def test_shutdown_silent_call_sends_no_answers_hint_and_skips_scoring(
 def test_shutdown_blank_saved_answers_still_count_as_no_answers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``has_answers`` uses the non-empty-transcript rule, not list truthiness:
-    a lone ``save_answer("")`` with no recoverable speech keeps the
-    ``no_answers`` hint and skips scoring (no all-zeros card downstream)."""
+    """空答案列表项不算有效回答，没有可恢复原话时仍须跳过评分。"""
     drive = _drive_entrypoint(monkeypatch)
     state.save_answer(drive.userdata, transcript="", started_at="", ended_at="")
 
@@ -569,10 +468,7 @@ def test_shutdown_blank_saved_answers_still_count_as_no_answers(
 def test_shutdown_falls_back_to_repo_when_api_post_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """API-first, direct-repo second: when the live-result POST raises, the
-    fallback persists transcript THEN context (answers included) to the shared
-    store, leaves the status untouched for an answered session, and scoring
-    still fires off the successful repo persist."""
+    """API 回写失败后按转录、上下文顺序回写仓库；有答案且回写成功后继续触发评分。"""
     drive = _drive_entrypoint(monkeypatch, live_result_ok=False)
     ud = drive.userdata
     q1 = state.current_question(ud)
@@ -581,31 +477,27 @@ def test_shutdown_falls_back_to_repo_when_api_post_fails(
 
     asyncio.run(drive.shutdown())
 
-    # The API path was attempted FIRST...
+    # 先尝试 API 回写，再进入仓库兜底。
     assert drive.http.urls()[0].endswith("/live-result")
-    # ...then the repo fallback persisted everything, in write order.
+    # 兜底须按转录、上下文顺序回写。
     assert drive.repo.calls == [
         ("save_transcript", drive.session_id),
         ("save_context", drive.session_id),
     ]
-    repo = build_deps().repo  # the memory singleton behind the recorder
+    repo = build_deps().repo
     persisted = asyncio.run(repo.load_context(drive.session_id))
     assert persisted is not None
     assert [a.question_id for a in persisted.answers] == [q1.id]
     assert persisted.answers[0].transcript == _SPOKEN
-    # has_answers is True -> the fallback must NOT flip the status to no_answers.
+    # 有有效答案时不能被兜底写成 no_answers。
     assert repo.get_status(drive.session_id) == "ready"
-    # Repo persist succeeded for an answered session -> scoring still triggered.
     assert drive.http.urls()[-1].endswith("/api/score/start")
 
 
 def test_shutdown_repo_save_context_failure_marks_error_and_skips_scoring(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The only ready→error transition on the live path: when BOTH the API POST
-    and the fallback ``save_context`` fail, answers were NOT persisted — the
-    session is marked ``error`` (honest report, not zeros) and scoring is
-    skipped (it would score the answer-less prep-time context)."""
+    """API 和上下文兜底写入都失败时标记 error，不能按旧的无回答上下文评分。"""
     drive = _drive_entrypoint(monkeypatch, live_result_ok=False, fail_save_context=True)
     state.add_turn(drive.userdata, "user", _SPOKEN)
 
@@ -616,13 +508,7 @@ def test_shutdown_repo_save_context_failure_marks_error_and_skips_scoring(
     assert not any(u.endswith("/api/score/start") for u in drive.http.urls())
 
 
-# --- local providers: the "no cloud model keys" path --------------------------
-#
-# Construction-only, like the Deepgram tests above: none of these plugin
-# __init__s perform network I/O (each only builds an AsyncClient), so the whole
-# block stays offline. Every assertion here pins a failure mode that is SILENT
-# in production — wrong audio branch, wrong language token, a cloud provider
-# quietly substituted for the local one.
+# 仅构造本地组件，不连接服务；验证音频分支、语言参数及本地配置优先级。
 
 
 def _local_settings(**overrides):
@@ -652,12 +538,7 @@ def _local_settings(**overrides):
 
 
 def test_build_llm_ollama_points_at_local_server() -> None:
-    """LLM_PROVIDER=ollama must build a local client, never the keyless default.
-
-    worker.build_llm's last resort is ``openai.LLM()`` — which talks to
-    api.openai.com. If the ollama branch is ever removed or reordered, the
-    "runs locally" path silently becomes a cloud call.
-    """
+    """显式本地模型必须指向本地地址，不能意外进入云端默认客户端。"""
     pytest.importorskip("livekit.plugins.openai")
     llm = worker.build_llm(_local_settings(llm_provider="ollama"))
     assert str(llm._client.base_url).startswith("http://localhost:11434")
@@ -665,13 +546,7 @@ def test_build_llm_ollama_points_at_local_server() -> None:
 
 
 def test_build_llm_local_live_tier_overrides_the_prep_model() -> None:
-    """OLLAMA_MODEL_LIVE must win on the turn path when it is set.
-
-    The prep model is sized for a pipeline nobody is waiting on; the live loop
-    needs time-to-first-token. If this override is ever dropped, the split
-    silently collapses back to one model and the latency work is undone with no
-    error to notice.
-    """
+    """配置 OLLAMA_MODEL_LIVE 时实时路径须优先使用该型号。"""
     pytest.importorskip("livekit.plugins.openai")
     llm = worker.build_llm(
         _local_settings(llm_provider="ollama", ollama_model_live="qwen3:1.7b")
@@ -681,25 +556,14 @@ def test_build_llm_local_live_tier_overrides_the_prep_model() -> None:
 
 
 def test_build_llm_local_live_tier_falls_back_when_unset() -> None:
-    """Unset means "same model as prep" — never an empty model id.
-
-    The default is empty on purpose (a smaller default would 404 for anyone who
-    pulled only the prep model), so the fallback is what keeps every existing
-    local install working. Passing "" through to the plugin would break the
-    turn path for exactly the users who changed nothing.
-    """
+    """实时型号留空时复用准备型号，不能将空型号传给插件或切到未下载模型。"""
     pytest.importorskip("livekit.plugins.openai")
     llm = worker.build_llm(_local_settings(llm_provider="ollama", ollama_model_live=""))
     assert llm._opts.model == "qwen3:8b"
 
 
 def test_build_stt_whisper_wraps_in_stream_adapter() -> None:
-    """openai.STT is a BATCH client; unwrapped it cannot drive a live session.
-
-    Its capabilities are streaming=use_realtime (False here), so it must be
-    wrapped in the SDK's StreamAdapter, which VAD-segments the mic and re-exposes
-    streaming=True. Without the wrapper AgentSession has no streaming STT.
-    """
+    """批量 Whisper 必须通过 VAD 的 StreamAdapter 包装，才能驱动实时麦克风流。"""
     pytest.importorskip("livekit.plugins.openai")
     from livekit.plugins import openai as lk_openai
 
@@ -711,12 +575,7 @@ def test_build_stt_whisper_wraps_in_stream_adapter() -> None:
 
 
 def test_build_stt_whisper_code_switching_uses_detect_language() -> None:
-    """mixed=True must NOT send "multi" — that is a Deepgram model name.
-
-    _stt_lang returns "multi" for code-switching sessions. Whisper rejects it and
-    returns NO transcripts at all — the same silent failure class as the
-    nova-3+vi bug. Whisper's own mechanism is detect_language.
-    """
+    """混合语言使用 detect_language，不能把 Deepgram 的 multi 标记传给 Whisper。"""
     pytest.importorskip("livekit.plugins.openai")
     stt = worker.build_stt(
         _local_settings(stt_provider="whisper"), "vi", mixed=True, vad=SimpleNamespace()
@@ -726,21 +585,14 @@ def test_build_stt_whisper_code_switching_uses_detect_language() -> None:
 
 
 def test_build_tts_kokoro_uses_the_audio_branch_not_sse() -> None:
-    """The model id decides the transport, and the wrong one is SILENT.
-
-    openai.TTS routes to AudioChunkedStream only for models in
-    AUDIO_STREAM_MODELS; anything else goes to SSEChunkedStream, which parses
-    "data:" lines. Kokoro returns raw audio, so that branch emits no frames and
-    raises nothing — the agent simply never speaks.
-    """
+    """Kokoro 型号必须选择音频字节分支，误入 SSE 分支会静默丢失语音。"""
     pytest.importorskip("livekit.plugins.openai")
     from livekit.plugins.openai.tts import AUDIO_STREAM_MODELS
 
     tts = worker.build_tts(_local_settings(tts_provider="kokoro"), "en")
     assert tts._wrapped_tts._opts.model in AUDIO_STREAM_MODELS
     assert tts._wrapped_tts._opts.response_format == "pcm"
-    # Wrapped for sentence-at-a-time synthesis: openai.TTS is non-streaming, so
-    # unwrapped the agent would buffer a whole answer before speaking.
+    # 批量 TTS 用流适配器逐句合成，避免等待整段回答才开始播报。
     assert tts.capabilities.streaming is True
 
 
@@ -750,12 +602,11 @@ def test_build_tts_kokoro_coerces_a_model_that_would_be_silent() -> None:
 
 
 def test_build_tts_kokoro_picks_the_voice_from_the_language() -> None:
-    """Kokoro encodes language in the voice-id prefix, so voice IS language."""
+    """按声音 ID 选择语言，显式声音配置仍应优先。"""
     en = worker.build_tts(_local_settings(tts_provider="kokoro"), "en")
     ja = worker.build_tts(_local_settings(tts_provider="kokoro"), "ja")
     assert en._wrapped_tts._opts.voice == "af_heart"
     assert ja._wrapped_tts._opts.voice == "jf_alpha"
-    # An explicit KOKORO_VOICE always wins.
     pinned = worker.build_tts(
         _local_settings(tts_provider="kokoro", kokoro_voice="bf_emma"), "en"
     )
@@ -763,12 +614,7 @@ def test_build_tts_kokoro_picks_the_voice_from_the_language() -> None:
 
 
 def test_build_tts_kokoro_beats_the_cloud_language_reroute() -> None:
-    """An explicit local selection must never be upgraded to a paid vendor.
-
-    build_tts reroutes languages Cartesia can't speak to ElevenLabs/Gemini. A
-    stray ELEVENLABS_API_KEY in .env must not turn the "100% local" path into a
-    cloud call for a language Kokoro DOES speak.
-    """
+    """本地支持的语言不能因环境中的云端密钥而被意外切换到付费提供方。"""
     tts = worker.build_tts(
         _local_settings(tts_provider="kokoro", elevenlabs_api_key="x"), "ja"
     )
@@ -776,8 +622,7 @@ def test_build_tts_kokoro_beats_the_cloud_language_reroute() -> None:
 
 
 def test_build_tts_kokoro_falls_back_for_a_language_it_cannot_speak() -> None:
-    """Kokoro has no Vietnamese voice; speaking vi with an English one is worse
-    than honestly falling through to the cloud chain."""
+    """本地没有对应语言声音时允许云端回退，避免用错误语言声音朗读。"""
     pytest.importorskip("livekit.plugins.elevenlabs")
     from livekit.plugins import elevenlabs
 
@@ -786,11 +631,7 @@ def test_build_tts_kokoro_falls_back_for_a_language_it_cannot_speak() -> None:
 
 
 def test_build_conn_options_only_widens_for_local_providers() -> None:
-    """The SDK's 10s per-request ceiling kills local turns before the first token.
-
-    Cloud path must keep the SDK default (None), or this change would silently
-    alter production timeout behaviour for every existing deployment.
-    """
+    """本地组件组合扩大调用时限，普通云端组合保持 SDK 默认值。"""
     assert worker.build_conn_options(_local_settings()) is None
     assert worker.build_conn_options(_local_settings(llm_provider="gemini")) is None
 
@@ -798,41 +639,30 @@ def test_build_conn_options_only_widens_for_local_providers() -> None:
     assert opts is not None
     assert opts.llm_conn_options.timeout == 30.0
     assert opts.stt_conn_options.timeout == 30.0
-    # A local endpoint that is down stays down: don't wedge the turn on retries.
+    # 限制本地重试次数，避免服务离线时长期卡住轮次。
     assert opts.llm_conn_options.max_retry == 1
 
 
 def test_unreachable_local_providers_names_the_url_and_env_var() -> None:
-    """A local server that isn't running is the local path's missing API key.
-
-    Without this the candidate joins and only THEN does the first turn fail.
-    """
+    """本地服务不可达时启动检查须指出地址及配置名，避免首轮才暴露失败。"""
     settings = _local_settings(llm_provider="ollama", ollama_base_url="http://127.0.0.1:1/v1")
     problems = worker._unreachable_local_providers(settings)
     assert len(problems) == 1
     assert "OLLAMA_BASE_URL" in problems[0]
     assert "http://127.0.0.1:1/v1" in problems[0]
 
-    # Blank URL is reported as missing config, not as a connection failure.
+    # 空地址属于配置缺失，不能误报为连接失败。
     blank = worker._unreachable_local_providers(
         _local_settings(tts_provider="kokoro", kokoro_base_url="")
     )
     assert blank == ["KOKORO_BASE_URL (TTS_PROVIDER=kokoro)"]
 
-    # All-cloud selection probes nothing.
+    # 云端配置不应触发本地探测。
     assert worker._unreachable_local_providers(_local_settings(llm_provider="gemini")) == []
 
 
 def test_local_provider_values_are_case_insensitive_and_aliased() -> None:
-    """The provider value names a CONTRACT, not a vendor — and case must not matter.
-
-    Two things this pins. First, the builders once compared the raw string while
-    preflight lowercased it, so ``STT_PROVIDER=Whisper`` passed the credential
-    check and then fell through to the DEEPGRAM default — a cloud call on the
-    "no cloud keys" path. Second, any server speaking the OpenAI shape works
-    (Whisper, Qwen3-ASR, vLLM, LM Studio), so each stage accepts aliases and the
-    neutral value ``local``.
-    """
+    """预检和工厂须共用忽略大小写的别名规则，防止本地配置被误选为云端。"""
     from livekit.plugins import openai as lk_openai
 
     for value in ("whisper", "Whisper", "QWEN3-ASR", "qwen-asr", "local", " speaches "):
@@ -850,17 +680,11 @@ def test_local_provider_values_are_case_insensitive_and_aliased() -> None:
         tts = worker.build_tts(_local_settings(tts_provider=value), "en")
         assert tts._wrapped_tts._opts.voice == "af_heart", value
 
-    # And an unknown value must NOT be treated as local.
+    # 未知提供方名称不能被视为本地服务。
     assert worker._unreachable_local_providers(_local_settings(stt_provider="deepgram")) == []
 
 
-# --- explicit dispatch: session id resolution (issue #67) ----------------------
-#
-# The web token now carries an explicit RoomAgentDispatch whose metadata holds
-# {"session_id": ...}. The worker must prefer it over room metadata/name —
-# otherwise a dispatched job for room X could resolve the wrong session when
-# room metadata is absent or stale, and the interview would load no context
-# (worker aborts → "Connecting your interviewer…" forever).
+# 优先读取显式派发的会话 ID，避免陈旧房间元数据使工作进程读取错误上下文。
 
 
 def _job_ctx(room_name: str, *, job_metadata=None, room_metadata=None):
@@ -896,13 +720,7 @@ def test_session_id_tolerates_malformed_job_metadata() -> None:
 
 
 def test_worker_agent_name_default_matches_web_token() -> None:
-    """Worker and web must agree on the dispatch name.
-
-    The web token requests `LIVEKIT_AGENT_NAME` (default
-    "intervyn-interviewer") via roomConfig.agents; the worker registers
-    under the same name. A mismatch means the dispatch matches nothing and the
-    interviewer never joins.
-    """
+    """工作进程派发名称须与网页令牌一致，否则房间无法分配智能体。"""
     from app.core.config import Settings
 
     assert Settings().livekit_agent_name == "intervyn-interviewer"
@@ -911,12 +729,7 @@ def test_worker_agent_name_default_matches_web_token() -> None:
 def test_load_context_with_retry_waits_for_prep(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Joining while prep is still running must not abort the job.
-
-    The interview page is joinable in `prep` status, so the first fetch can
-    legitimately see "no ready context". The worker must poll until the plan
-    lands instead of returning with no agent in the room (issue #67).
-    """
+    """准备期间加入房间时须持续等待上下文，不因首次未就绪就退出。"""
     ctx = _build_context()
     calls = {"n": 0}
 

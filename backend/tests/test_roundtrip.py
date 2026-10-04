@@ -1,4 +1,4 @@
-"""Round-trip + invariant tests for the Pydantic mirror of frontend/packages/shared."""
+"""验证共享 Pydantic 镜像的序列化往返及字段不变量。"""
 
 import json
 from pathlib import Path
@@ -22,7 +22,6 @@ def test_interview_context_round_trips() -> None:
     data = _load_fixture()
     ctx = InterviewContext.model_validate(data)
     dumped = ctx.model_dump()
-    # Re-validating the dumped dict must yield an equal model.
     reparsed = InterviewContext.model_validate(dumped)
     assert reparsed == ctx
     assert reparsed.model_dump() == dumped

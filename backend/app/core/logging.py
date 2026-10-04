@@ -1,4 +1,4 @@
-"""Minimal stdlib logging helper shared across the agent package."""
+"""统一初始化标准库日志，供后端各模块获取具名日志器。"""
 
 from __future__ import annotations
 
@@ -19,6 +19,6 @@ def _ensure_configured() -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Return a configured logger for ``name``."""
+    """初始化全局日志配置并返回具名日志器。"""
     _ensure_configured()
     return logging.getLogger(name)

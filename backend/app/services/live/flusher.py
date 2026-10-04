@@ -43,7 +43,7 @@ class TranscriptFlusher:
             self._task = asyncio.create_task(self._run())
 
     async def aclose(self) -> None:
-        """Stop the flusher (idempotent)."""
+        """取消并等待检查点任务结束，可重复调用。"""
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -51,7 +51,7 @@ class TranscriptFlusher:
             self._task = None
 
     async def _checkpoint(self) -> None:
-        """Persist the current transcript if it grew since the last checkpoint."""
+        """仅在转录条数增长时保存快照，成功后更新已保存水位。"""
         transcript = list(self._ud.transcript)
         if len(transcript) <= self._last_len:
             return
@@ -68,7 +68,7 @@ class TranscriptFlusher:
             while True:
                 await asyncio.sleep(self._interval)
                 await self._checkpoint()
-        except asyncio.CancelledError:  # pragma: no cover - cancellation path
+        except asyncio.CancelledError:  # pragma: no cover - 后台任务取消路径
             raise
         except Exception:
             log.exception("transcript_flusher: checkpoint loop error (ignored)")

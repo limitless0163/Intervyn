@@ -1,10 +1,4 @@
-"""Offline tests for the WP-6 prep pipeline (LangGraph + MockLLM).
-
-These exercise ``run_prep`` end-to-end with the deterministic default adapters
-(MockLLM / MockSearch / MemoryRepository), so they require no API keys and no
-network. The CV URL points at an unreachable host on purpose, to confirm
-``fetch_cv`` tolerates an offline fetch and the pipeline still completes.
-"""
+"""用默认模拟适配器离线验证完整准备图；不可达简历 URL 用于测试读取失败回退。"""
 
 from __future__ import annotations
 
@@ -36,14 +30,12 @@ def test_run_prep_produces_ready_interview_context() -> None:
     assert isinstance(ctx, InterviewContext)
     assert ctx.session_id == session_id
 
-    # Every sub-document is present and valid (model_validate ran on load).
     assert ctx.candidate is not None
     assert ctx.job is not None
     assert ctx.company is not None
     assert ctx.gap is not None
     assert ctx.plan is not None
 
-    # The plan must carry at least one well-formed question.
     assert ctx.plan.questions, "expected a non-empty question plan"
     for q in ctx.plan.questions:
         assert 1 <= q.difficulty <= 5, f"difficulty {q.difficulty} out of 1..5"
@@ -52,7 +44,6 @@ def test_run_prep_produces_ready_interview_context() -> None:
         assert q.target_competency, "each question needs a target_competency"
         assert q.rubric, "each question needs >= 1 rubric item"
 
-    # Session status was flipped to ready (MemoryRepository inspection helper).
     assert deps.repo.get_status(session_id) == "ready"
 
 
@@ -62,7 +53,7 @@ def test_run_prep_pins_language_mode_for_non_english() -> None:
 
     ctx = asyncio.run(deps.repo.load_context(session_id))
     assert ctx is not None
-    # run_prep pins the plan's language_mode to the request.
+    # 计划的语言设置必须来自请求，避免模型回显改变语音路由。
     assert ctx.plan.language_mode.primary == "vi"
     assert ctx.plan.language_mode.mixed is True
 
@@ -73,7 +64,6 @@ def test_run_prep_maps_search_results_into_company_citations() -> None:
 
     ctx = asyncio.run(deps.repo.load_context(session_id))
     assert ctx is not None
-    # MockSearch returns results, which the company_research node maps to citations.
     assert ctx.company.citations, "expected company citations from search results"
     for c in ctx.company.citations:
         assert c.title
@@ -81,8 +71,7 @@ def test_run_prep_maps_search_results_into_company_citations() -> None:
 
 
 class _RecordingKnowledge:
-    """Knowledge adapter spy: records ingest calls so a test can assert that prep
-    closed the WP-8 loop with the right key + documents."""
+    """记录知识入库键和资料的适配器替身。"""
 
     def __init__(self) -> None:
         self.ingests: list[tuple[str, list[str]]] = []
@@ -96,9 +85,7 @@ class _RecordingKnowledge:
 
 
 def test_run_prep_ingests_materials_keyed_by_session_id(monkeypatch) -> None:
-    """Prep must ingest the CV/JD/company intel into the knowledge store keyed by
-    session_id — the SAME key the Study Coach retrieves with — so the grounded
-    coach loop is reachable (the WP-8 acceptance was structurally unmet before)."""
+    """准备资料必须按 session_id 入库，与后续教练检索键保持一致。"""
     deps = build_deps()
     recorder = _RecordingKnowledge()
     monkeypatch.setattr(deps, "knowledge", recorder)
@@ -107,18 +94,17 @@ def test_run_prep_ingests_materials_keyed_by_session_id(monkeypatch) -> None:
 
     assert recorder.ingests, "prep must ingest the prep materials"
     key, files = recorder.ingests[0]
-    # Keyed by session_id (not user.id) — aligns ingest with the coach's query key.
+    # 以 session_id 作为知识分区键，不使用用户身份 ID。
     assert key == session_id
     blob = "\n\n".join(files)
     assert "CANDIDATE CV" in blob
     assert "JOB DESCRIPTION" in blob
-    # The actual JD content is carried through, not just a header.
+    # 验证入库载荷包含职位正文，避免只写入标题。
     assert "distributed payment systems" in blob
 
 
 def test_run_prep_ingest_failure_does_not_break_prep(monkeypatch) -> None:
-    """A knowledge-ingest failure must NEVER turn a successful prep into 'error':
-    ingestion is strictly best-effort and self-contained."""
+    """知识入库失败不能把已成功准备的会话变为 error。"""
     deps = build_deps()
 
     class _BoomKnowledge(_RecordingKnowledge):

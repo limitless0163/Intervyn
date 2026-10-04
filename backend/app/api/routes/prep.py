@@ -1,9 +1,6 @@
-"""``POST /api/prep`` — kick off the prep pipeline for a CV + JD + company.
+"""创建 prep 状态的会话后在后台执行准备流程，客户端通过会话接口轮询进度。
 
-Returns immediately with a ``session_id`` (status ``prep``); the heavy pipeline
-runs in a FastAPI ``BackgroundTask`` and the client polls ``GET /api/session/{id}``
-for progress + the final context. (Under Starlette's ``TestClient`` the background
-task runs to completion before the response is returned.)
+Starlette TestClient 会等待后台任务完成后才返回响应。
 """
 
 from __future__ import annotations
@@ -16,11 +13,9 @@ from ...services.prep import run_prep_for_session
 
 router = APIRouter()
 
-# Route-level size ceilings (Starlette imposes NO default body limit). Enforced
-# here rather than as max_length on the shared contract models so the generated
-# JSON Schemas stay in TS<->Pydantic parity. cv_url is generous because the
-# offline path sends the whole CV as pasted text / a data: URL in this field.
-_MAX_CV_URL_LEN = 2_000_000  # ~1.5MB data-URL CV
+# 在路由层限制字符数，避免影响共享契约的 TS/Pydantic 一致性。
+# cv_url 可承载粘贴文本或文件 data URL，因此预留较大额度。
+_MAX_CV_URL_LEN = 2_000_000  # 包含编码后文件内容的字符数上限。
 _MAX_JD_LEN = 200_000
 _MAX_COMPANY_LEN = 500
 

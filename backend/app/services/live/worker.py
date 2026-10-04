@@ -1,19 +1,7 @@
-"""LiveKit Agents worker entrypoint for the Intervyn live voice loop (WP-5).
+"""面试语音工作进程，需安装 livekit 扩展并配置 LiveKit 及语音提供方。
 
-REQUIRES the optional ``livekit`` extra and live keys to RUN:
-
-    uv sync --extra livekit
-    # plus LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET and an STT/TTS/LLM
-    # provider + key (Deepgram / Cartesia / OpenAI / Gemini); falls back to the
-    # most basic available component when a provider/key is missing.
-
-    python -m app.services.live.worker dev      # or: start / connect
-
-This module imports ``livekit.agents`` at load time, so it is never imported by
-the offline test path. It wires a precomputed ``InterviewContext`` (built by the
-WP-6 prep pipeline) into a lean live :class:`Interviewer` session: heavy
-reasoning already happened in prep; the turn path stays cheap. Persistence +
-scoring are deferred to a shutdown callback so they never block a turn.
+运行：python -m app.services.live.worker dev（生产模式为 start）。
+从 API 读取准备上下文，实时工具只改本地状态；后台保存检查点，关闭时回写并请求后台评分。
 """
 
 from __future__ import annotations
@@ -45,12 +33,7 @@ log = get_logger(__name__)
 
 
 def wire_audio_path_logging(ctx: JobContext, session) -> None:
-    """INFO-level tracing of the candidate→agent audio path.
-
-    The default SDK logs are silent about track publish/subscribe and user
-    speech state, which made a "the agent never hears the candidate" failure
-    undiagnosable from logs. One line per lifecycle event, low volume.
-    """
+    """记录音轨发布、订阅及说话状态，便于定位候选人音频未送达的问题。"""
 
     def _kind(pub) -> str:
         return str(getattr(pub, "kind", "?"))
@@ -102,19 +85,9 @@ def wire_audio_path_logging(ctx: JobContext, session) -> None:
 def wire_transcript_capture(
     session, userdata: InterviewUserdata, *, tag_questions: bool = True
 ) -> None:
-    """Capture every committed conversation turn into the flat transcript log.
+    """监听已提交的候选人转写及智能体发言，将原话存入内存转录并由回写流程保存。
 
-    ``conversation_item_added`` fires for both the candidate's real STT
-    transcript and the agent's actually-spoken replies, so the persisted
-    transcript reflects what was said — it no longer depends on the LLM
-    remembering to call ``save_answer``, and an abrupt disconnect keeps every
-    turn committed so far. Answers for scoring come from ``save_answer`` ->
-    ``ctx.answers``, with ``state.reconstruct_answers`` recovering any unsaved
-    ones from this log at shutdown.
-
-    ``tag_questions=False`` skips the per-turn question-id tag for sessions
-    that reuse an interview context but are not answering its plan (the study
-    coach) — otherwise coach chat would carry stale interview question ids.
+    关闭时可从转录恢复工具未保存的回答；tag_questions=False 用于不属于答题的教练会话。
     """
 
     @session.on("conversation_item_added")
@@ -123,10 +96,7 @@ def wire_transcript_capture(
         role = getattr(item, "role", None)
         text = getattr(item, "text_content", None)
         if role in ("user", "assistant") and text:
-            # Land every committed turn in the live trace too (role + size only,
-            # never the verbatim text), so `intervyn traces show` replays
-            # the interview's shape. No-op when tracing is disabled or when no
-            # live trace is open (e.g. the study-coach session).
+            # 追踪只记录角色及文本长度，不保存原话；没有活动追踪或禁用时跳过。
             add_event("turn", {"role": role, "chars": len(text)})
             log.info("transcript: committed role=%s chars=%d cursor=%d interrupted=%s",
                      role, len(text), userdata.ctx.cursor, getattr(item, "interrupted", False))
@@ -136,15 +106,10 @@ def wire_transcript_capture(
                 userdata.transcript.append({"role": role, "text": text})
 
 
-# --- component factories -----------------------------------------------------
-# Each returns the configured provider plugin, or the most basic available
-# fallback when the selected provider's key is missing (English-first defaults).
+# 工厂按提供方配置构造组件；配置不足的兜底组件仍可能依赖 SDK 环境凭据。
 
 
-# Map our primary-language code onto the speech providers so STT transcribes —
-# and TTS speaks — in the candidate's language, not just English. Deepgram
-# nova-3 and Cartesia sonic-3 are multilingual; codes default to English when a
-# language isn't mapped. `mixed` (code-switching) uses Deepgram's "multi" model.
+# 语音提供方使用会话主语言；混合语言的 Deepgram 路径使用 multi 标记。
 _STT_LANG = {"en": "en", "vi": "vi", "es": "es", "zh": "zh", "fr": "fr", "de": "de", "ja": "ja"}
 _TTS_LANG = {"en": "en", "vi": "vi", "es": "es", "zh": "zh", "fr": "fr", "de": "de", "ja": "ja"}
 
@@ -154,28 +119,14 @@ def _stt_lang(language: str, mixed: bool) -> str:
 
 
 def _deepgram_stt(lang: str, model: str, api_key=None):
-    """Return a configured deepgram.STT instance with tuned params for each language tier.
+    """按模型设置 Deepgram 端点时窗及数字格式化：nova-3 更短，nova-2 保留更长静音。
 
-    nova-3 (en/multi):
-      - endpointing_ms=25: aggressive VAD is fine; semantic EOU model handles turns.
-      - numerals=True: gated to this tier to keep the nova-2 flag set minimal —
-        bad flag combos on non-English streams fail SILENTLY with zero
-        transcripts (see the nova-3+vi note in build_stt), and smart_format
-        already covers number formatting where supported.
-      - keyterm: not set here (per-session domain terms could be injected later).
-
-    nova-2 (all other languages incl. vi):
-      - endpointing_ms=300: Deepgram's own server-side silence window; 25ms fires
-        too eagerly for languages with more within-utterance pauses (e.g. Vietnamese),
-        flooding us with fragmented partials before our LiveKit 1.2s window acts.
-
-    smart_format=True applies to BOTH tiers (broadly language-supported:
-    number/date formatting).
+    避免非英语回答中的自然停顿被过早切成多个片段。
     """
     from livekit.plugins import deepgram
 
     is_nova3 = model == "nova-3"
-    kwargs = dict(  # noqa: C408 - kwargs dict is mutated/expanded below; dict() reads better here
+    kwargs = dict(  # noqa: C408 - 后续需修改和展开关键字参数字典
         language=lang,
         model=model,
         punctuate=True,
@@ -191,24 +142,10 @@ def _deepgram_stt(lang: str, model: str, api_key=None):
 
 
 def _local_whisper_stt(settings, language: str, mixed: bool, vad=None):
-    """Local Whisper (any OpenAI-compatible ``/v1/audio/transcriptions`` server).
+    """以 VAD 将麦克风流切成语句，再通过兼容接口批量转写并包装为流式能力。
 
-    The openai plugin's STT is a BATCH client: its capabilities are
-    ``streaming=use_realtime``, and ``use_realtime=True`` speaks OpenAI's
-    proprietary Realtime WebSocket, which local Whisper servers don't implement.
-    So it is wrapped in the SDK's ``StreamAdapter``, which uses the (already
-    prewarmed) Silero VAD to cut the mic stream into utterances and calls the
-    batch endpoint per utterance, re-exposing ``streaming=True``.
-
-    The trade-off is real and documented: **no interim results** on this path —
-    captions land per utterance instead of word by word. The semantic
-    end-of-turn model reads final transcripts, so turn-taking still works.
-
-    Code-switching does NOT go through ``_stt_lang`` here. That helper returns
-    the string ``"multi"``, which is a *Deepgram model name*; Whisper rejects it
-    and every transcript comes back empty — the same silent-no-transcripts class
-    of failure as the nova-3+vi bug above. Whisper's own mechanism is
-    ``detect_language``, which blanks the language and lets it auto-detect.
+    仅提供语句级最终结果，不提供逐词中间字幕；混合语言使用 detect_language，
+    不把 Deepgram 的 multi 标记作为 Whisper 语言代码。
     """
     from livekit.agents import stt as agents_stt
     from livekit.plugins import openai
@@ -219,7 +156,7 @@ def _local_whisper_stt(settings, language: str, mixed: bool, vad=None):
             language=_STT_LANG.get(language, "en"),
             detect_language=mixed,
             base_url=settings.whisper_base_url,
-            # Local servers want no auth, but the plugin rejects an empty key.
+            # 本地服务无需鉴权，但插件要求非空占位密钥。
             api_key=settings.local_api_key,
         ),
         vad=vad or build_vad(),
@@ -227,22 +164,20 @@ def _local_whisper_stt(settings, language: str, mixed: bool, vad=None):
 
 
 def build_stt(settings, language="en", mixed=False, vad=None):
+    """按提供方与语言构造转写组件；本地批量接口用 VAD 适配为语音流。"""
     lang = _stt_lang(language, mixed)
     provider = _provider(settings, "stt")
-    # Local path: no key, a base URL instead. Checked before the cloud branches
-    # so an explicit local selection is never overridden.
+    # 先匹配显式本地配置，避免意外回退到云端。
     if provider in _LOCAL_STT:
         return _local_whisper_stt(settings, language, mixed, vad=vad)
     if provider == "livekit":
         from livekit.agents import inference
 
         kwargs = {"model": settings.livekit_stt_model}
-        # In mixed-language sessions let Gemini detect the language itself.
+        # 混合语言不指定固定语言，由提供方自行识别。
         if not mixed:
             kwargs["language"] = lang
-        # Inference uses its own gateway (or LIVEKIT_INFERENCE_URL), not the
-        # room's LIVEKIT_URL. The room endpoint returns HTTP 200 to /stt,
-        # which fails the WebSocket handshake and silently strands the call.
+        # 推理服务使用独立网关，房间 URL 不提供转写 WebSocket 接口。
         for name, value in (
             ("api_key", settings.livekit_api_key),
             ("api_secret", settings.livekit_api_secret),
@@ -250,11 +185,7 @@ def build_stt(settings, language="en", mixed=False, vad=None):
             if value:
                 kwargs[name] = value
         return inference.STT(**kwargs)
-    # CONFIRMED in live testing (2026-06-10): nova-3 + language=vi returns NO
-    # transcripts on Deepgram's streaming API (English worked end-to-end in the
-    # same build) — the exact failure this comment predicted. Non-English
-    # languages therefore route to nova-2, which supports them in streaming;
-    # nova-3 stays for en/multi where it has the lower WER.
+    # 非 en/multi 走 nova-2，避开曾出现的越南语流式转写无结果问题。
     model = "nova-3" if lang in ("en", "multi") else "nova-2"
     provider = _provider(settings, "stt")
     if provider == "deepgram" and settings.deepgram_api_key:
@@ -268,13 +199,9 @@ def build_stt(settings, language="en", mixed=False, vad=None):
 
 
 def _require_live_providers(settings) -> None:
-    """Fail fast when a selected real live provider is missing its credential.
+    """会话启动前检查 LiveKit 必要配置、已选提供方密钥及本地服务连通性。
 
-    The live loop cannot recover from a missing/typo'd key mid-call — the
-    candidate joins, then the first turn errors (or the whole session runs on a
-    keyless default). Catch it before the session starts. Mock/unset providers
-    are left alone (the offline path); only *selected real* providers are
-    checked, so this raises solely on genuine misconfiguration.
+    仅检查密钥是否存在，不验证密钥有效性；未选择的提供方不要求其密钥。
     """
     missing: list[str] = []
     for name, value in (
@@ -309,17 +236,12 @@ def _require_live_providers(settings) -> None:
         )
 
 
-# Accepted values per stage for the local path. These name a *contract* — "an
-# OpenAI-compatible server at a base URL" — not a vendor, so each stage takes
-# aliases: whatever you actually run, the adapter is identical. Whisper and
-# Qwen3-ASR both serve /v1/audio/transcriptions; Ollama, vLLM, LM Studio and
-# llama.cpp all serve /v1/chat/completions; Kokoro serves /v1/audio/speech.
-# `local` works everywhere as the neutral name.
+# 本地别名均指向兼容 OpenAI 的接口契约；预检与工厂必须使用同一别名集合。
 _LOCAL_LLM = frozenset({"ollama", "vllm", "llamacpp", "lmstudio", "local"})
 _LOCAL_STT = frozenset({"whisper", "faster-whisper", "qwen3-asr", "qwen-asr", "speaches", "local"})
 _LOCAL_TTS = frozenset({"kokoro", "local"})
 
-# Selected local provider -> (base-URL setting, env var named in the error).
+# 本地阶段映射到地址字段及错误提示中的环境变量名。
 _LOCAL_PROVIDERS = {
     "llm_provider": (_LOCAL_LLM, "ollama_base_url", "OLLAMA_BASE_URL"),
     "stt_provider": (_LOCAL_STT, "whisper_base_url", "WHISPER_BASE_URL"),
@@ -328,24 +250,14 @@ _LOCAL_PROVIDERS = {
 
 
 def _provider(settings, stage: str) -> str:
-    """Normalized provider value for a stage.
-
-    Case matters more than it looks: the builders compared the raw string while
-    preflight lowercased it, so ``STT_PROVIDER=Whisper`` passed the credential
-    check and then fell through to the *Deepgram* default — a cloud call on the
-    "no cloud keys" path. One normalizer, used by both.
-    """
+    """统一去空白并转小写，使预检与组件工厂按同一提供方名称选择路径。"""
     return (getattr(settings, f"{stage}_provider", "") or "").strip().lower()
 
 
 def _unreachable_local_providers(settings) -> list[str]:
-    """Local providers have no credential — an unreachable server is the failure.
+    """对已选本地服务做限时连通探测，返回带地址及配置名的问题列表。
 
-    A missing API key is caught above; the local path's equivalent is "the model
-    server isn't running", which otherwise surfaces only once the candidate has
-    joined and the first turn errors. One bounded GET per selected local
-    provider, before the greeting, turns that into a startup error naming the
-    URL and the env var. Never on the turn path.
+    只检查是否能建立 HTTP 连接，不验证模型是否已下载或接口功能完整。
     """
     import httpx
 
@@ -361,22 +273,19 @@ def _unreachable_local_providers(settings) -> list[str]:
             continue
         try:
             httpx.get(f"{base}/models", timeout=settings.local_probe_timeout_sec)
-        except Exception as exc:  # noqa: BLE001 - any failure to reach it is fatal
-            # A 4xx/5xx still proves something is listening; only transport
-            # failures (refused/DNS/timeout) mean "server isn't there".
+        except Exception as exc:  # noqa: BLE001 - 本地服务无法连接时阻止启动
+            # HTTP 错误码仍证明服务可连接，此探测只将连接、DNS 或超时错误视为不可达。
             problems.append(f"{env_name}={base} unreachable ({type(exc).__name__}: {exc})")
     return problems
 
 
 def build_llm(settings):
+    """构造实时模型，优先采用显式本地配置及独立的语音型号。"""
     provider = _provider(settings, "llm")
     if provider in _LOCAL_LLM:
         from livekit.plugins import openai
 
-        # Local LLM on the turn path via Ollama's OpenAI-compatible endpoint.
-        # Live tier when set (see Settings.ollama_model_live): the prep model is
-        # sized for a pipeline nobody is waiting on, the turn loop is not.
-        # Falling back to ollama_model keeps the un-tuned path byte-identical.
+        # 语音模型可单独选较小型号；留空时复用已配置的准备模型。
         model = settings.ollama_model_live or settings.ollama_model
         if settings.ollama_model_live:
             log.info(
@@ -404,7 +313,7 @@ def build_llm(settings):
     if provider == "gemini" and settings.gemini_api_key:
         from livekit.plugins import google
 
-        # Live tier: lowest-latency flash on the real-time turn path.
+        # 语音路径使用单独配置的实时模型。
         return google.LLM(model=settings.gemini_model_live, api_key=settings.gemini_api_key)
     log.warning("build_llm: no configured LLM provider/key; using OpenAI default")
     from livekit.plugins import openai
@@ -412,16 +321,11 @@ def build_llm(settings):
     return openai.LLM()
 
 
-# Languages Cartesia sonic speaks. Notably EXCLUDES Vietnamese — anything not in
-# this set is routed to ElevenLabs Flash v2.5 (low-latency, speaks vi) when an
-# ElevenLabs key is set, else to Gemini native TTS as a slower last resort.
+# 本实现使用的 Cartesia 语言集合；集合外优先 ElevenLabs，再按密钥尝试 Gemini。
 _CARTESIA_LANGS = {"en", "es", "fr", "de", "ja", "zh", "pt", "hi", "it", "ko", "nl", "pl", "ru", "sv", "tr"}
 
 
-# Kokoro-82M encodes the language in the voice id's prefix, so picking a voice
-# IS picking a language: leaving the English default on a Japanese session would
-# read Japanese text with an American accent. Notably absent: Vietnamese —
-# Kokoro has no vi voice, so vi sessions fall through to the cloud chain.
+# Kokoro 通过声音 ID 前缀选择语言；不支持的语言由工厂进入云端回退。
 _KOKORO_VOICE = {
     "en": "af_heart",
     "ja": "jf_alpha",
@@ -435,21 +339,12 @@ _KOKORO_VOICE = {
 
 
 def _local_kokoro_tts(settings, language="en"):
-    """Local Kokoro (kokoro-fastapi's OpenAI-compatible ``/v1/audio/speech``).
-
-    Wrapped in the SDK's TTS ``StreamAdapter`` because the openai plugin's TTS
-    declares ``streaming=False``: unwrapped, the agent would synthesize a whole
-    answer before speaking a word. The adapter's sentence tokenizer feeds it one
-    sentence at a time as the LLM streams, so speech starts after the first
-    sentence — the same shape as the streaming cloud voices.
-    """
+    """按句包装本地 Kokoro 的批量合成，减少等待整段回答后才开始播报的延迟。"""
     from livekit.agents import tts as agents_tts
     from livekit.plugins import openai
     from livekit.plugins.openai.tts import AUDIO_STREAM_MODELS
 
-    # Guard the silent-failure mode: a model id outside AUDIO_STREAM_MODELS
-    # sends synthesis down the plugin's SSE branch, which yields no audio and
-    # raises nothing. Never let that happen quietly.
+    # 限制为插件的音频字节型号，避免误入 SSE 分支后无声且不报错。
     model = settings.kokoro_model
     if model not in AUDIO_STREAM_MODELS:
         log.warning(
@@ -461,8 +356,7 @@ def _local_kokoro_tts(settings, language="en"):
         )
         model = "tts-1"
 
-    # An explicit KOKORO_VOICE always wins; otherwise the voice is derived from
-    # the session language so the accent matches the words.
+    # 显式声音配置优先，否则按会话语言选择。
     voice = settings.kokoro_voice or _KOKORO_VOICE.get(language, "af_heart")
 
     return agents_tts.StreamAdapter(
@@ -477,14 +371,12 @@ def _local_kokoro_tts(settings, language="en"):
 
 
 def build_tts(settings, language="en"):
+    """优先匹配显式提供方，并按本实现的语言支持表选择可用回退声音。"""
     lang = _TTS_LANG.get(language, "en")
     provider = _provider(settings, "tts")
     needs_non_cartesia = language not in _CARTESIA_LANGS
 
-    # Local path first: an explicit local selection must never be silently
-    # overridden by the cloud language-routing chain below. Kokoro can't speak
-    # every language we support, so an unsupported one falls through to the
-    # cloud voices rather than reading the text in the wrong language.
+    # 显式本地选择优先；无对应语言声音且未指定声音时才尝试云端回退。
     if provider in _LOCAL_TTS:
         if language in _KOKORO_VOICE or settings.kokoro_voice:
             return _local_kokoro_tts(settings, language)
@@ -506,28 +398,19 @@ def build_tts(settings, language="en"):
             speed=getattr(settings, "minimax_tts_speed", 1.0),
             emotion="neutral",
             text_normalization=True,
-            # Give each synthesis chunk enough context for consistent prosody.
-            # Keep sentence boundaries; don't split Chinese at commas or send
-            # short acknowledgements as isolated synthesis requests.
+            # 按完整句子合成并保留足够上下文，避免中文逗号及短回应导致韵律碎片化。
             tokenizer=blingfire.SentenceTokenizer(
                 min_token_len=50 if language in {"zh", "ja"} else 120,
             ),
-            # MiniMax flushes each sentence on its WebSocket stream. PCM
-            # avoids reusing an MP3 decoder that a previous flush has closed.
+            # 逐句刷新使用 PCM，避免复用已被上一句关闭的 MP3 解码器。
             audio_format="pcm",
         )
 
-    # ElevenLabs Flash v2.5 (~75ms, 32 languages incl. vi) is the low-latency
-    # multilingual voice: it wins when explicitly selected, and it's the preferred
-    # voice for any language Cartesia can't speak (e.g. Vietnamese) — replacing the
-    # much slower Gemini native TTS, which now only serves as the vi fallback when
-    # no ElevenLabs key is configured.
+    # 显式选择 ElevenLabs 或语言不在 Cartesia 集合内时，优先使用已配置的 ElevenLabs。
     if (provider == "elevenlabs" or needs_non_cartesia) and settings.elevenlabs_api_key:
         from livekit.plugins import elevenlabs
 
-        # "Sarah" is a free-tier-allowed default voice; the shared voice library
-        # 402s on free plans. Flash v2.5 supports per-request language enforcement
-        # — pass the ISO code so Vietnamese is pronounced as vi, not guessed.
+        # 显式传入语言代码，避免多语言文字被按错误语言读出。
         return elevenlabs.TTS(
             api_key=settings.elevenlabs_api_key,
             model=settings.elevenlabs_model,
@@ -535,8 +418,7 @@ def build_tts(settings, language="en"):
             language=lang,
         )
 
-    # No ElevenLabs key but the language is outside Cartesia's set (e.g. vi): fall
-    # back to Gemini native TTS so it is spoken correctly, just slower.
+    # 集合外语言且无 ElevenLabs 密钥时，尝试已配置的 Gemini 语音。
     if needs_non_cartesia and provider != "elevenlabs" and settings.gemini_api_key:
         from livekit.plugins.google.beta import GeminiTTS
 
@@ -553,41 +435,22 @@ def build_tts(settings, language="en"):
     return cartesia.TTS(language=lang)
 
 
-# Languages the LiveKit multilingual end-of-turn model can judge semantically.
-# Vietnamese is NOT among them — for unsupported languages the session falls
-# back to silence-based endpointing, where the default 0.5s cutoff chops
-# natural mid-sentence pauses into separate turns (confirmed in vi testing:
-# fragmented one-clause "answers" with the agent jumping in between).
+# 本实现启用语义轮次检测的语言集合；其余采用较长静音端点，容纳句中停顿。
 _EOU_MODEL_LANGS = frozenset(
     {"en", "es", "fr", "de", "it", "pt", "nl", "zh", "ja", "ko", "id", "tr", "ru"}
 )
 
 
 def build_turn_handling(language: str = "en", *, settings=None) -> dict:
-    """Turn-handling config shared by the interview and coach sessions.
+    """面试与教练共用轮次设置：容纳思考停顿，确认回答结束后才生成响应。
 
-    Defenses on top of the SDK defaults:
-
-    * ``min_words: 3`` — an interruption only registers once the candidate has
-      actually SAID a few transcribed words. The default (0) lets raw VAD
-      energy interrupt, so a door slam or background chatter cuts the
-      interviewer off mid-sentence.
-    * Semantic end-of-turn (``MultilingualModel``) for languages it supports —
-      "is the candidate done?" is judged from the transcript instead of
-      waiting for clean silence.
-    * Dynamic endpointing starts at 5s and learns the candidate's thinking
-      pauses up to 10s. An unfinished sentence uses the longer bound.
-    * Without semantic detection, use at least 4s of silence (within the
-      configured bounds), since syntax cannot protect a mid-answer pause.
-    * Generate only after turn confirmation: speculative replies are a poor
-      fit for long answers and tools that save answers or advance the plan.
+    支持的语言使用语义检测，其余采用较长静音窗口；中日文提高打断字数门槛。
     """
     min_delay = getattr(settings, "interview_min_endpointing_delay_sec", 5.0)
     max_delay = getattr(settings, "interview_max_endpointing_delay_sec", 10.0)
     handling: dict = {
         "interruption": {
-            # The SDK counts each Chinese character as a word. Three characters
-            # made brief acknowledgements/echo cut questions in half.
+            # SDK 将中日文字符计作词，提高门槛以免短回应或回声打断题目。
             "min_words": 6 if language in {"zh", "ja"} else 3,
             "min_duration": 1.0,
             "resume_false_interruption": True,
@@ -604,28 +467,20 @@ def build_turn_handling(language: str = "en", *, settings=None) -> dict:
 
             handling["turn_detection"] = MultilingualModel()
             return handling
-        except Exception:  # noqa: BLE001 - optional model; fall through to endpointing
+        except Exception:  # noqa: BLE001 - 可选语义模型失败时回退到静音检测
             log.warning("build_turn_handling: turn-detector unavailable; using endpointing")
     handling["endpointing"]["min_delay"] = min(max_delay, max(min_delay, 4.0))
     return handling
 
 
 def build_room_options(settings, *, delete_room_on_close: bool = False):
-    """Room I/O options: BVC noise cancellation, strictly opt-in (ENABLE_BVC).
+    """构造房间输入输出配置；仅显式启用且使用 Cloud 地址时尝试加载 BVC。
 
-    BVC strips background noise BEFORE VAD/STT see it, but its native filter
-    failed to initialize in the slim arm64 container and the input audio
-    stream it was attached to delivered NO frames — the agent heard nothing
-    for the whole session. So it is off unless ENABLE_BVC=true AND the
-    deployment is LiveKit Cloud (BVC is a Cloud feature). Noise robustness
-    otherwise comes from the semantic turn detector + min_words gate.
-    Text streams are published immediately, independently of BVC.
+    BVC 初始化失败时回退原始音频；文本立即发布，不等待音频同步。
     """
     from livekit.agents.voice.room_io import RoomOptions, TextOutputOptions
 
-    # MiniMax provides no word timestamps. Estimated text/audio pacing can lag
-    # behind its Chinese speech and trim the tail on interruption. Publish the
-    # generated text immediately so the full question is always readable.
+    # 缺少词级时间戳时音文估算可能滞后，立即发布文本可避免打断时截掉题尾。
     options = RoomOptions(
         text_output=TextOutputOptions(sync_transcription=False),
         delete_room_on_close=delete_room_on_close,
@@ -644,16 +499,9 @@ def build_room_options(settings, *, delete_room_on_close: bool = False):
 
 
 def build_conn_options(settings):
-    """Widen the SDK's 10s per-request ceiling when a local model is selected.
+    """本地提供方使用配置的较长调用时限；仅 MiniMax 云端时只延长模型等待。
 
-    ``APIConnectOptions.timeout`` defaults to 10s — comfortable for a cloud
-    model, but a local one that is cold, swapping, or sharing a GPU regularly
-    needs longer just to emit its first token. At the default, every turn aborts
-    before the model answers and the interview is silently dead.
-
-    Returns ``None`` for the all-cloud path so its behaviour is bit-for-bit
-    unchanged. ``max_retry=1`` because a local endpoint that is down stays down:
-    three 30s retries would wedge the session for a minute and a half.
+    其余云端组合返回 None 使用 SDK 默认值；限制重试次数以免故障时长时间卡住。
     """
     is_minimax = _provider(settings, "llm") == "minimax"
     has_local = any(
@@ -667,8 +515,7 @@ def build_conn_options(settings):
     from livekit.agents.voice.agent_session import SessionConnectOptions
 
     if is_minimax and not has_local:
-        # The default 10s timeout aborted a real MiniMax turn in the logs.
-        # Widen only LLM startup; STT/TTS keep their own SDK defaults.
+        # 仅延长 MiniMax 模型等待，语音识别和合成保留各自默认配置。
         return SessionConnectOptions(
             llm_conn_options=APIConnectOptions(timeout=30.0, max_retry=1)
         )
@@ -683,7 +530,7 @@ def build_conn_options(settings):
 
 
 def build_vad(proc: JobProcess | None = None):
-    """Return the Silero VAD, preferring the prewarmed per-process instance."""
+    """优先复用进程预热的 Silero VAD，缺失时按需加载。"""
     if proc is not None and "vad" in proc.userdata:
         return proc.userdata["vad"]
     from livekit.plugins import silero
@@ -692,17 +539,14 @@ def build_vad(proc: JobProcess | None = None):
 
 
 def prewarm(proc: JobProcess) -> None:
-    """Load the VAD model once per job process (LiveKit prewarm best practice).
+    """在分配任务前预热 VAD 及较慢的模块导入，避免阻塞实时事件循环。
 
-    Loading Silero inside the entrypoint adds model-load latency to every job
-    and blocks the event loop; ``prewarm_fnc`` runs before jobs are assigned.
+    轮次检测模型需要任务执行器，留到 entrypoint 中构造。
     """
     from livekit.plugins import silero
 
     proc.userdata["vad"] = silero.VAD.load(max_buffered_speech=300.0)
-    # Resolve slow imports before serving a live turn (observed 155ms stall).
-    # Model construction needs JobContext's inference executor, which does not
-    # exist during prewarm. Leave that to build_turn_handling in the entrypoint.
+    # 预热阶段只导入慢模块；任务执行器尚不存在，模型实例需在入口构造。
     try:
         import importlib
 
@@ -712,58 +556,48 @@ def prewarm(proc: JobProcess) -> None:
         log.exception("prewarm: turn-detector unavailable; using endpointing")
 
 
-# --- session id --------------------------------------------------------------
-
-
 def _api_base(settings) -> str:
-    """Base URL for the prep/score API: AGENT_API_URL, else same-host default."""
+    """优先使用 AGENT_API_URL，未设置时访问同主机 API 端口。"""
     return (settings.agent_api_url or f"http://localhost:{settings.agent_api_port}").rstrip("/")
 
 
 def _internal_headers(settings) -> dict[str, str]:
-    """Auth header for the agent API's guarded write endpoints when configured."""
+    """配置内部密钥时返回回写和评分接口所需的请求头。"""
     secret = getattr(settings, "internal_api_secret", None)
     return {"X-Internal-Secret": secret} if secret else {}
 
 
 def _session_id_from_room(ctx: JobContext) -> str:
-    """Derive the session id for this job.
+    """依次从显式派发任务元数据、房间元数据、房间名读取 session_id。
 
-    Resolution order (first hit wins):
-      1. explicit-dispatch job metadata JSON ``{"session_id": ...}`` — what the
-         web token's ``roomConfig.agents[0].metadata`` carries (issue #67 fix);
-      2. room metadata JSON (legacy path);
-      3. room name (the interview page pins room = session id).
+    JSON 元数据无效时继续回退，不让旧格式阻断会话定位。
     """
     job_metadata = getattr(getattr(ctx, "job", None), "metadata", None)
     if job_metadata:
         try:
             return RoomMetadata.model_validate_json(job_metadata).session_id
-        except Exception as exc:  # noqa: BLE001 - tolerate malformed metadata
+        except Exception as exc:  # noqa: BLE001 - 无效元数据继续回退
             log.warning("worker: bad job metadata, trying room metadata (%s)", exc)
     metadata = getattr(ctx.room, "metadata", None)
     if metadata:
         try:
             return RoomMetadata.model_validate_json(metadata).session_id
-        except Exception as exc:  # noqa: BLE001 - tolerate malformed metadata
+        except Exception as exc:  # noqa: BLE001 - 无效元数据继续回退
             log.warning("worker: bad room metadata, using room name (%s)", exc)
     return ctx.room.name
 
 
 async def _load_context_via_api(session_id: str, settings) -> InterviewContext | None:
-    """Fetch the prepped InterviewContext from the prep API over HTTP.
+    """通过 API 读取准备上下文，因为工作进程与 API 的内存仓库不共享。
 
-    The worker runs in a SEPARATE process from the API (``cli.run_app`` spawns its
-    own job process), so the in-memory repo is not shared. Read the context from
-    the API's ``GET /api/session/{id}`` SessionView instead. (With Supabase
-    configured both processes share the store and either path works.)
+    配置 Supabase 时虽共享存储，仍优先以 API 的会话视图为准。
     """
     import httpx
 
     url = f"{_api_base(settings)}/api/session/{session_id}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url)  # GET read path is unguarded
+            resp = await client.get(url)  # 此读取接口不要求内部密钥。
     except Exception:
         log.exception("worker: failed to reach %s", url)
         return None
@@ -778,13 +612,7 @@ async def _load_context_via_api(session_id: str, settings) -> InterviewContext |
 
 
 async def _load_context_with_retry(session_id: str, settings, *, timeout_sec: float = 60.0) -> InterviewContext | None:
-    """Poll for the prepped context until prep finishes or the deadline hits.
-
-    The interview page is joinable while prep is still running, so a candidate
-    can enter the room seconds before the plan lands. A single fetch would see
-    "no ready context" and abort — leaving the browser on "Connecting your
-    interviewer…" with a healthy room and no agent (issue #67). Poll instead.
-    """
+    """在截止时间内轮询上下文，允许候选人入场时准备流程尚未结束。"""
     import asyncio
 
     import httpx
@@ -806,24 +634,19 @@ async def _load_context_with_retry(session_id: str, settings, *, timeout_sec: fl
         await asyncio.sleep(2.0)
 
 
-# --- entrypoint --------------------------------------------------------------
-
-
 async def entrypoint(ctx: JobContext) -> None:
+    """加载准备上下文并启动语音会话，注册最终回写、回答恢复及评分派发回调。"""
     settings = get_settings()
     init_observability(settings)
     deps = build_deps(settings)
 
-    # Fail fast on a misconfigured live provider before the candidate connects,
-    # rather than mid-interview on the first turn.
+    # 会话启动前检查必要配置，减少首轮才暴露的连接或密钥缺失。
     _require_live_providers(settings)
 
     await ctx.connect()
     session_id = _session_id_from_room(ctx)
 
-    # The room is joinable while prep is still running — wait for the plan
-    # instead of aborting on the first "not ready yet" (which strands the
-    # candidate on "Connecting your interviewer…", issue #67).
+    # 房间允许准备期间加入，需等待计划可用而非首次未就绪就退出。
     interview_ctx = await _load_context_with_retry(session_id, settings)
     if interview_ctx is None:
         log.error("worker: no InterviewContext for session %s; aborting", session_id)
@@ -831,14 +654,10 @@ async def entrypoint(ctx: JobContext) -> None:
 
     userdata = InterviewUserdata(ctx=interview_ctx, session_id=session_id)
 
-    # Route STT/TTS by the interview's primary language so a non-English session
-    # (e.g. Vietnamese) is both understood and spoken — not just prompted for.
+    # 按主语言选择识别与合成组件，使语音与提示词语言保持一致。
     lang_mode = interview_ctx.plan.language_mode
 
-    # Trace the live session: turn events (wire_transcript_capture, below) land
-    # here so `intervyn traces show` / GET /api/traces/{id} replay the
-    # interview's shape. The trace spans the whole job — opened here, closed in
-    # the shutdown callback the SDK always runs at job end. No-op when disabled.
+    # 追踪覆盖语音任务并在正常关闭时结束；事件仅记录轮次形态。
     _live_trace = start_trace(
         "live",
         session_id=session_id,
@@ -849,8 +668,7 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     _live_trace.__enter__()
     add_event("live.start", {"questions": len(interview_ctx.plan.questions)})
-    # Built once and shared: the local Whisper STT needs a VAD to segment the
-    # mic stream, and loading Silero twice would waste the prewarm.
+    # 本地转写与会话共用预热 VAD，避免重复加载。
     vad = build_vad(ctx.proc)
     conn_options = build_conn_options(settings)
     session: AgentSession[InterviewUserdata] = AgentSession(
@@ -859,15 +677,13 @@ async def entrypoint(ctx: JobContext) -> None:
         llm=build_llm(settings),
         tts=build_tts(settings, lang_mode.primary),
         vad=vad,
-        # Only set for local providers; None keeps the SDK defaults (see
-        # build_conn_options), so the cloud path is untouched.
+        # 本地或 MiniMax 组合可覆盖调用时限；None 保留 SDK 默认配置。
         **({"conn_options": conn_options} if conn_options else {}),
-        # Wait for the full answer before generation and progression tools.
+        # 确认回答结束后再生成，避免保存或推进工具抢在候选人回答之前。
         turn_handling=build_turn_handling(lang_mode.primary, settings=settings),
     )
 
-    # Persisted transcript = real committed turns (STT + agent speech), not
-    # whatever the LLM chose to pass to save_answer.
+    # 持久化真实提交的转写和智能体发言，不使用模型提供的回答摘要代替原话。
     wire_transcript_capture(session, userdata)
     wire_audio_path_logging(ctx, session)
 
@@ -876,9 +692,7 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     director.start()
 
-    # Hard in-room cost/duration backstop (Golden Rule #5): ends the session if
-    # it runs past the configured ceilings, independent of the web-layer cap on
-    # interview creation. Started after the session is live (see below).
+    # 房间内独立限制时长及轮数，不依赖网页创建额度；会话启动后才运行。
     guard = SessionGuard(
         session,
         userdata,
@@ -888,8 +702,7 @@ async def entrypoint(ctx: JobContext) -> None:
         answer_grace_sec=settings.interview_answer_grace_sec,
     )
 
-    # Cost discipline (Golden Rule #5): collect per-session STT/LLM/TTS usage so
-    # voice cost is observable, and log the summary at shutdown.
+    # 收集各提供方用量，关闭时汇总，便于核对语音费用。
     usage_collector = metrics.UsageCollector()
 
     @session.on("metrics_collected")
@@ -899,13 +712,9 @@ async def entrypoint(ctx: JobContext) -> None:
     api_base = _api_base(settings)
 
     async def _persist_via_api(has_answers: bool) -> bool:
-        """Persist the live result through the API process.
+        """优先通过 API 回写，以更新默认内存模式下 API 所属的权威仓库。
 
-        The worker runs in a SEPARATE process: with no Supabase configured the
-        API's in-memory repo is the canonical store, so writing through our own
-        ``deps.repo`` would land in a repo nobody reads (answers lost, never
-        scored). POST the result to the API instead; direct repo writes below
-        are the fallback for shared-store (Supabase) deployments.
+        失败返回 False；直接仓库回写只在共享持久化存储下能更新同一会话。
         """
         import httpx
 
@@ -927,11 +736,9 @@ async def entrypoint(ctx: JobContext) -> None:
             return False
 
     async def _flush_checkpoint(context, transcript: list[dict]) -> None:
-        """Off-path partial persist for the TranscriptFlusher (non-terminal).
+        """通过 API 保存非终态检查点，异常交给 flusher 重试。
 
-        Best-effort: any failure is swallowed by the flusher. Never marks the
-        session terminal — a checkpoint is a mid-interview snapshot, and the
-        live-result endpoint refuses writes once a session is terminal anyway.
+        不设置终态；会话已有终态时，结果接口拒绝迟到写入。
         """
         import httpx
 
@@ -955,7 +762,7 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     async def _persist_via_repo(has_answers: bool) -> bool:
-        """Direct-store fallback (correct when both processes share Supabase)."""
+        """直接仓库回写的兜底路径；只有两进程共享持久化存储时才更新同一会话。"""
         try:
             await deps.repo.save_transcript(session_id, userdata.transcript)
         except Exception:
@@ -968,7 +775,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 "skipping scoring to avoid a blank scorecard",
                 session_id,
             )
-            # Mark errored so the report shows an honest message, not zeros.
+            # 标记 error，避免上下文写入失败后误报零分。
             try:
                 await deps.repo.update_status(session_id, "error")
             except Exception:
@@ -982,8 +789,8 @@ async def entrypoint(ctx: JobContext) -> None:
         return True
 
     async def _on_shutdown() -> None:
-        # Close the live trace first so the full session (turns + answers) is
-        # queryable the moment the job drains.
+        # 先结束追踪，便于任务收尾时读取完整事件。
+        """先停止检查点，再恢复有效回答并回写；成功且有回答时才请求后台评分。"""
         try:
             add_event(
                 "live.end",
@@ -995,18 +802,13 @@ async def entrypoint(ctx: JobContext) -> None:
                 },
             )
         finally:
-            # Observability must never prevent the authoritative persist and
-            # scoring trigger below. LiveKit executes shutdown callbacks in a
-            # different asyncio Context from the entrypoint that opened this
-            # trace; tracing handles that normally, and this boundary remains
-            # a final guard against any optional tracing backend failure.
+            # 关闭回调可能位于不同异步上下文，追踪清理失败不能阻断后续回写与评分。
             try:
                 _live_trace.__exit__(None, None, None)
             except Exception:
                 log.exception("worker: live trace close failed for %s; continuing", session_id)
 
-        # Stop the checkpointer first so it can't race the final, authoritative
-        # persist below.
+        # 先停止检查点，避免中途快照与最终回写发生竞争。
         await flusher.aclose()
         await guard.aclose()
         await director.aclose()
@@ -1017,10 +819,7 @@ async def entrypoint(ctx: JobContext) -> None:
         except Exception:
             log.exception("worker: usage summary failed for %s", session_id)
 
-        # Recover answers the save_answer tool never committed (model forgot to
-        # call it, or the candidate hung up mid-question) from the verbatim
-        # transcript — otherwise real answers are dropped and the session lands
-        # on "no_answers" with no report.
+        # 从原始转录恢复工具遗漏的有效回答，避免有实际发言却误判 no_answers。
         recovered = state.reconstruct_answers(userdata)
         if recovered:
             log.info(
@@ -1029,12 +828,10 @@ async def entrypoint(ctx: JobContext) -> None:
                 recovered,
             )
 
-        # An answer only counts if it has a non-empty transcript — a bare
-        # save_answer("") must not flip the session into the scoring path.
+        # 仅非空回答触发评分，空记录不能改变无回答分支。
         has_answers = any((a.transcript or "").strip() for a in userdata.ctx.answers)
 
-        # Persist BEFORE scoring; if nothing persisted, do NOT score (run_score
-        # would read the prep-time answer-less context -> blank card).
+        # 先确认上下文回写成功再触发评分，否则评分会读到准备阶段的无回答状态。
         persisted = await _persist_via_api(has_answers)
         if not persisted:
             persisted = await _persist_via_repo(has_answers)
@@ -1043,8 +840,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 log.info("worker: session %s has no answers; skipping scoring", session_id)
             return
 
-        # Let the API own the scoring task. Waiting for the full pipeline here
-        # exceeded the SDK's 60s process shutdown budget and killed the worker.
+        # 评分交给 API 后台执行，避免完整评分耗尽工作进程关闭时限。
         try:
             import httpx
 
@@ -1063,8 +859,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     @session.on("close")
     def _finish_job(ev) -> None:
-        # Closing AgentSession alone leaves the job alive until a participant
-        # disconnects. Persist and dispatch scoring as soon as speech drains.
+        # 仅关闭语音会话不会立即退出任务，显式结束任务以触发回写和评分。
         ctx.shutdown(reason=f"interview session closed: {getattr(ev, 'reason', 'finished')}")
 
     room_options = build_room_options(settings, delete_room_on_close=True)
@@ -1075,22 +870,17 @@ async def entrypoint(ctx: JobContext) -> None:
         **start_kwargs,
     )
 
-    # Start the guard only once the session is live (it calls session.say /
-    # session.shutdown); it runs detached until a ceiling trips or shutdown.
+    # 会话启动后才启动限制检查，因为收尾需要调用会话的播报和关闭接口。
     guard.start()
-    # Checkpoint the transcript off the turn path so a hard crash (before the
-    # shutdown callback) loses at most one interval, not the whole interview.
+    # 后台检查点减少硬退出损失；连续回写失败时仍可能丢失多个间隔的内容。
     flusher.start()
 
 
 def main() -> None:
-    # livekit-agents reads LIVEKIT_URL/API_KEY/API_SECRET from os.environ; we keep
-    # them in Settings (.env), so pass them through explicitly to WorkerOptions.
+    # 显式将 Settings 中的 .env 凭据传入 SDK。
     settings = get_settings()
     init_observability(settings)
-    # Register inference runners in the parent BEFORE WorkerOptions is built.
-    # A job-only import in build_turn_handling is too late: the worker then
-    # has no inference executor to handle the model's end-of-turn requests.
+    # 在父进程构造选项前注册推理模块，避免子任务找不到轮次检测执行器。
     try:
         import importlib
 
@@ -1104,18 +894,10 @@ def main() -> None:
             ws_url=settings.livekit_url,
             api_key=settings.livekit_api_key,
             api_secret=settings.livekit_api_secret,
-            # Explicit-dispatch name: the web token's roomConfig.agents requests
-            # THIS name, and LiveKit Cloud Agents routes the job to the worker
-            # registered under it. Without it the room joins with no agent
-            # listening ("Connecting your interviewer…" forever, issue #67).
-            # Local `livekit-server --dev` honors the same dispatch, so the
-            # local path keeps working once the token carries roomConfig.
+            # 派发名称须与网页 roomConfig.agents 中一致，房间任务才能分配给此工作进程。
             agent_name=getattr(settings, "livekit_agent_name", None)
             or "intervyn-interviewer",
-            # All persistence (transcript + context + scoring trigger) happens in
-            # the shutdown callback; the SDK default 10s can kill the job process
-            # mid-write (the live-result POST alone allows 20s). Give shutdown
-            # real headroom so a graceful drain finishes persisting.
+            # 最终回写和评分派发需足够关闭时间，避免工作进程被提前终止。
             shutdown_process_timeout=settings.shutdown_process_timeout_sec,
         )
     )

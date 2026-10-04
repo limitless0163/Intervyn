@@ -1,11 +1,6 @@
-"""Trace viewer routes: easy tracking of agent work over HTTP.
+"""只读本地 JSONL 追踪列表和详情；此路由未配置内部密钥校验。
 
-``GET /api/traces`` lists recent traces (newest first, optional
-``?session_id=`` + ``?limit=``); ``GET /api/traces/{trace_id}`` returns the
-full nested detail for one trace. Both read the local JSONL store written by
-:mod:`core.tracing` — no keys, no extra deps. Read-only and unguarded (same
-posture as the session GET); trace events hold timings/metadata and prompt
-text only when ``TRACE_INCLUDE_PROMPTS=1``.
+仅显式开启 TRACE_INCLUDE_PROMPTS 时记录提示词预览。
 """
 
 from __future__ import annotations

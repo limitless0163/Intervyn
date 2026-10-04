@@ -1,9 +1,6 @@
-"""API-only view models (not part of the wire contract in ``frontend/packages/shared``).
+"""API 专用读取模型，不纳入 TypeScript/Pydantic 共享契约校验。
 
-``SessionView`` is the read model behind ``GET /api/session/{id}``. It deliberately
-lives here — NOT in ``shared_models`` — so the TS↔Pydantic parity check stays
-untouched. It reports live prep progress (which agents have finished), any
-input-quality warnings, and the assembled :class:`InterviewContext` once ready.
+会话视图返回准备进度、输入警告、面试上下文及评分结果。
 """
 
 from __future__ import annotations
@@ -16,20 +13,13 @@ from .shared_models import InterviewContext, ScoreCard
 
 __all__ = ["PROGRESS_STEPS", "SessionStatus", "SessionView"]
 
-# "complete" is the terminal state set by the post-interview scoring step
-# (see post/__init__.py); it must be a valid status or GET /api/session/{id}
-# 500s on any read after an interview ends, blocking re-joins.
-# "no_answers" is a terminal state for a session whose interview produced no
-# answers (ended without answering, or answers never persisted) — scoring is
-# skipped and no blank scorecard is written, so the UI can show an honest empty
-# state instead of a misleading all-zeros report.
+# complete 表示评分完成；no_answers 表示无回答并跳过评分，避免生成误导性的零分报告。
 SessionStatus = Literal[
     "scoring",
     "prep", "ready", "rejected", "error", "complete", "no_answers"
 ]
 
-# The canonical ordered set of prep steps a session progresses through. Reported
-# back as completed-step keys (a subset/permutation of these) in SessionView.
+# 准备步骤的规范顺序；实际完成顺序可能受并行分支影响。
 PROGRESS_STEPS: tuple[str, ...] = (
     "cv_analysis",
     "jd_analysis",
@@ -40,7 +30,7 @@ PROGRESS_STEPS: tuple[str, ...] = (
 
 
 class SessionView(BaseModel):
-    """Read model for a single session's status, progress and context."""
+    """供会话查询返回状态、准备进度及已生成的上下文和报告。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -49,7 +39,5 @@ class SessionView(BaseModel):
     progress: list[str] = Field(default_factory=list)
     prep_warnings: list[str] = Field(default_factory=list)
     context: InterviewContext | None = None
-    # The assembled scorecard once post-interview scoring has run (status
-    # "complete"). Surfaced here so the web report can read it through the agent
-    # API — no Supabase/RLS/auth on the read path (OSS runs without sign-in).
+    # 评分完成后供网页通过 API 读取报告，支持没有 Supabase 的部署。
     scorecard: ScoreCard | None = None

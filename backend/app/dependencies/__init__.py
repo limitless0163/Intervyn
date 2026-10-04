@@ -1,1 +1,1 @@
-"""FastAPI dependency providers and request authentication."""
+"""FastAPI 依赖组装与可选请求密钥校验。"""

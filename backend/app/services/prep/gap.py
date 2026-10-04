@@ -1,4 +1,4 @@
-"""Code-owned gap structure; optional model prose never supplies its fields."""
+"""差距结构由代码计算；模型只能补充文字说明。"""
 
 import re
 
@@ -6,11 +6,9 @@ from ...schemas.shared_models import CandidateProfile, GapAnalysis, JobSpec
 
 
 def basic_gap_analysis(candidate: CandidateProfile, job: JobSpec) -> GapAnalysis:
-    """Match explicit skill labels only; unverified requirements remain probes.
+    """仅按显式技能标签做忽略大小写的匹配，排除上游 mock 占位值。
 
-    Exact, case-insensitive matches cannot establish proficiency, and an
-    unmatched requirement cannot establish inability. Avoid semantic guesses
-    and exclude mock placeholders from upstream fallback profiles/specs.
+    匹配不代表熟练，未匹配也不代表不会；未证实的要求应作为面试探查目标。
     """
     def key(text: str) -> str:
         return " ".join(text.split()).casefold()
@@ -43,7 +41,7 @@ def basic_gap_analysis(candidate: CandidateProfile, job: JobSpec) -> GapAnalysis
 
 
 def with_gap_narrative(gap: GapAnalysis, narrative: str) -> GapAnalysis:
-    """Store prose as a string only; never interpret it as structured fields."""
+    """清除推理块后仅追加文字说明，不从模型正文提取或覆盖结构化字段。"""
     narrative = re.sub(
         r"<(think|thinking)>.*?</\1>", "", narrative, flags=re.DOTALL | re.IGNORECASE,
     )
@@ -52,8 +50,7 @@ def with_gap_narrative(gap: GapAnalysis, narrative: str) -> GapAnalysis:
     ).strip()
     if not narrative:
         raise ValueError("empty_gap_narrative")
-    # Bounded context for the downstream planner; the deterministic summary
-    # always remains visible even if the model supplies a very long answer.
+    # 限制模型补充长度，确保下游规划仍能看到代码生成的确定性摘要。
     return gap.model_copy(update={
         "summary": f"{gap.summary}\n\nInterview considerations: {narrative[:3000]}",
     })

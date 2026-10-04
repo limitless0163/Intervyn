@@ -1,4 +1,4 @@
-"""Offline tests for the deterministic mock adapters + local provider selection."""
+"""离线验证模拟适配器确定性及本地模型工厂选择。"""
 
 import asyncio
 from types import SimpleNamespace
@@ -38,7 +38,6 @@ def test_mock_llm_complete_json_schema_valid() -> None:
 
     ctx = _run(MockLLM().complete_json(system="s", user="u", schema=InterviewContext))
     assert isinstance(ctx, InterviewContext)
-    # Defaulted fields stay at their defaults.
     assert ctx.cursor == 0
     assert ctx.answers == []
     assert ctx.scorecard is None
@@ -72,21 +71,14 @@ def test_mock_embeddings_deterministic_and_dim() -> None:
     assert a == b
     assert len(a) == 2
     assert all(len(v) == MockEmbeddings.DIM for v in a)
-    # Different text -> different vector.
     assert a[0] != a[1]
 
 
-# --- local provider selection (the offline half of the "no cloud keys" path) ---
-#
-# These pin the FACTORY, not the servers: constructing an adapter performs no
-# network I/O, so they stay hermetic and run in plain CI (no extras needed).
-# What must not regress is the contract that a misconfigured local provider
-# degrades to the mock instead of raising — and, just as importantly, that a
-# correctly configured one does NOT silently stay on the mock.
+# 仅验证适配器选择，不连接模型服务；错误配置降级，完整配置不得停留在模拟实现。
 
 
 def _settings(**overrides):
-    """Real Settings with env ignored, so a developer's .env can't sway a test."""
+    """显式覆盖环境相关字段，隔离开发者配置。"""
     base = {
         "llm_provider": "mock",
         "ollama_base_url": "http://localhost:11434/v1",
@@ -99,18 +91,12 @@ def _settings(**overrides):
 
 
 def test_get_llm_ollama_returns_local_adapter() -> None:
-    """LLM_PROVIDER=ollama + a base URL selects the local adapter, not the mock.
-
-    The failure this guards against is silent: a local provider that falls
-    through to MockLLM still "works", and every generated question comes back
-    titled "mock" (see the _loads_json docstring in core/adapters/llm.py).
-    """
+    """配置本地模型时必须选择真实本地适配器，避免悄悄回退到通用模拟题。"""
     llm = get_llm(_settings(llm_provider="ollama"))
     assert isinstance(llm, OllamaLLM)
     assert llm._base_url == "http://localhost:11434/v1"
     assert llm._model == "qwen3:8b"
-    # No cloud credential is involved: the key is the non-empty placeholder the
-    # openai SDK requires, never a real one.
+    # 本地密钥只是 SDK 所需的非空占位值。
     assert llm._api_key == "local"
 
 
@@ -120,12 +106,7 @@ def test_get_llm_ollama_without_base_url_falls_back_to_mock() -> None:
 
 
 def test_ollama_llm_retries_once_on_unparseable_json() -> None:
-    """A small local model's first reply is often unparseable; one retry saves it.
-
-    Gemini/GPT are single-shot; this retry exists only on the local path, where
-    the keystone QuestionPlan call is the one most likely to come back wrapped
-    in prose or a <think> block.
-    """
+    """本地模型首次 JSON 无法解析时只重试一次，第二次有效结果须保留。"""
     calls: list[str] = []
     llm = OllamaLLM("local", "qwen3:8b", 90.0, base_url="http://x/v1")
 
@@ -135,7 +116,7 @@ def test_ollama_llm_retries_once_on_unparseable_json() -> None:
             raise ValueError("Expecting value: line 1 column 1 (char 0)")
         return build_mock(schema)
 
-    # Patch the inherited OpenAI implementation the subclass delegates to.
+    # 替换父类调用，直接验证本地子类的重试行为。
     import app.core.adapters.llm as llm_mod
 
     original = llm_mod.OpenAILLM.complete_json

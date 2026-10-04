@@ -1,9 +1,4 @@
-"""``/api/coach`` — Study Coach plan + grounded chat (WP-4).
-
-``POST /api/coach/plan`` takes a ``ScoreCard`` (the client already holds it from
-the report) and returns a ``StudyPlan``. ``POST /api/coach/chat`` answers a
-learner question, grounded in the knowledge base.
-"""
+"""根据评分卡生成学习计划，并通过知识检索回答学习问题。"""
 
 from __future__ import annotations
 

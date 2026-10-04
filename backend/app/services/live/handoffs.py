@@ -1,18 +1,6 @@
-"""Specialist interviewer personas reachable via native LiveKit handoffs.
+"""通过 LiveKit 角色交接切换编码和行为面试，需安装 livekit 扩展。
 
-REQUIRES the optional ``livekit-agents`` extra (``uv sync --extra livekit``);
-this module imports ``livekit.agents`` (via ``interviewer``) at load time and
-must NOT be imported by ``live/__init__.py`` (keep the offline
-``import ...live.state`` path clean).
-
-Each persona SUBCLASSES :class:`Interviewer` — in LiveKit Agents 1.x function
-tools are per-agent, so a persona must inherit the shared interview tools
-(save_answer, get_next_question, ...) or the model is ordered to call tools
-that do not exist and the cursor/answer log silently stop advancing. The
-handoff site passes the running ``chat_ctx`` so the persona keeps the
-conversation history (a bare ``Agent`` starts from an empty context), and each
-persona overrides ``on_enter`` to drive its round opening proactively — a
-handoff that returns only an Agent generates no reply on its own.
+各角色继承 Interviewer 以保留工具，并传入 chat_ctx 保留历史；进入后主动开启当前环节。
 """
 
 from __future__ import annotations
@@ -38,7 +26,7 @@ _BEHAVIORAL_INSTRUCTIONS = (
 
 
 class _RoundPersona(Interviewer):
-    """Shared base for round personas: full interview tools + a round opener."""
+    """共享完整面试工具，并为新环节提供主动开场。"""
 
     _round_label = "next"
 
@@ -53,7 +41,7 @@ class _RoundPersona(Interviewer):
         raise NotImplementedError
 
     async def on_enter(self) -> None:
-        """Open the round proactively (no greeting — the interview is mid-flight)."""
+        """主动过渡到新环节并询问当前题，避免面试中途重复自我介绍。"""
         ud = self.session.userdata
         primary = ud.ctx.plan.language_mode.primary
         q = state.current_question(ud)
@@ -72,7 +60,7 @@ class _RoundPersona(Interviewer):
 
 
 class CodingRoundAgent(_RoundPersona):
-    """Persona for the live coding round."""
+    """编码面试角色。"""
 
     _round_label = "coding"
 
@@ -81,7 +69,7 @@ class CodingRoundAgent(_RoundPersona):
 
 
 class BehavioralAgent(_RoundPersona):
-    """Persona for the behavioral round."""
+    """行为面试角色。"""
 
     _round_label = "behavioral"
 

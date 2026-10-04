@@ -1,10 +1,4 @@
-"""LLM adapter factory + real adapters (lazy-imported SDKs).
-
-``get_llm(settings)`` returns the deterministic :class:`MockLLM` unless an LLM
-provider is selected *and* its API key is present; otherwise it logs a warning
-and falls back to the mock. Real adapters import their SDK inside methods so the
-module imports cleanly with no SDK installed.
-"""
+"""按配置选择模型适配器；配置不足时回退到离线模拟，提供方 SDK 延迟导入。"""
 
 from __future__ import annotations
 
@@ -23,8 +17,7 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-# Per-call ceiling so a stalled provider call can never hang a pipeline forever
-# (the prep graph's per-node try/except only fires once the call RETURNS).
+# 每次调用均设超时，避免节点一直等待提供方而无法进入降级分支。
 _DEFAULT_TIMEOUT_SEC = 90.0
 
 
@@ -52,7 +45,7 @@ def _tool_schema(schema: type) -> dict[str, Any]:
     if schema.__name__ == "QuestionPlan":
         from ...schemas.shared_models import LANGUAGES
 
-        # JSON Schema 不包含 AfterValidator 的约束，工具定义也需要求英语回退键。
+        # JSON Schema 不包含 AfterValidator 约束，工具定义也需显式要求英语回退键。
         result["properties"]["questions"]["items"]["properties"]["text"] = {
             "type": "object",
             "properties": {lang: {"type": "string"} for lang in LANGUAGES},
@@ -86,7 +79,7 @@ def _normalize_arrays(value: Any, contract: dict[str, Any]) -> Any:
                     if isinstance(normalized, list):
                         flattened.extend(normalized)
                     else:
-                        # Unknown objects/numbers must still fail validation.
+                        # 未知对象或数值仍需校验失败，不能被兼容逻辑转换为有效数组。
                         flattened.append(normalized)
                 return flattened
             return [_normalize_arrays(v, items) for v in value]
@@ -97,12 +90,9 @@ def _normalize_arrays(value: Any, contract: dict[str, Any]) -> Any:
 
 
 def _schema_prompt(system: str, schema: type) -> str:
-    """Append the JSON Schema to the system prompt (provider-agnostic).
+    """将 JSON Schema 加入系统提示词，由 JSON 模式输出，再用 Pydantic 校验。
 
-    Both Gemini's ``response_schema`` and OpenAI's strict structured outputs
-    reject free-form maps like our ``LocalizedText = dict[str, str]``
-    (additionalProperties), so the reliable cross-provider pattern is JSON mode
-    + the schema in the prompt + Pydantic validation of the result.
+    LocalizedText 等开放字典不适配严格结构化输出，此路径保留其动态键。
     """
     schema_json = json.dumps(schema.model_json_schema())
     return (
@@ -136,11 +126,9 @@ def _loads_json(text: str, schema: type | None = None, *, normalize_arrays: bool
     t = re.sub(r"<(think|thinking)>.*?</\1>", "", t, flags=re.DOTALL | re.IGNORECASE).strip()
     # 未闭合的推理块视为截断，其后的内容不能作为回答解析。
     t = re.sub(r"<(think|thinking)>.*\Z", "", t, flags=re.DOTALL | re.IGNORECASE).strip()
-    # Strip a wrapping ```json ... ``` / ``` ... ``` markdown fence, if present.
     if t.startswith("```"):
         t = re.sub(r"^```[^\n]*\n?", "", t)
         t = re.sub(r"\n?```\s*$", "", t).strip()
-    # Fast path: a single clean JSON value.
     try:
         obj = json.loads(t)
     except json.JSONDecodeError:
@@ -178,7 +166,7 @@ def _loads_json(text: str, schema: type | None = None, *, normalize_arrays: bool
 
 
 class GeminiLLM:
-    """Google Gemini via ``google-genai`` (lazy import)."""
+    """通过延迟导入的 google-genai SDK 调用 Gemini。"""
 
     def __init__(
         self,
@@ -186,8 +174,7 @@ class GeminiLLM:
         model: str,
         timeout_sec: float = _DEFAULT_TIMEOUT_SEC,
     ) -> None:
-        # No default model: ids retire fast, so the current id lives in ONE
-        # place (Settings.gemini_model) and must be passed in explicitly.
+        # 模型 ID 统一由 Settings 指定，避免适配器默认值与配置漂移。
         self._api_key = api_key
         self._model = model
         self._timeout = timeout_sec
@@ -195,7 +182,7 @@ class GeminiLLM:
     def _client(self) -> Any:
         try:
             from google import genai
-        except ImportError as exc:  # pragma: no cover - depends on optional SDK
+        except ImportError as exc:  # pragma: no cover - 依赖可选 SDK
             raise RuntimeError(
                 "google-genai is not installed; install the 'gemini' extra."
             ) from exc
@@ -214,8 +201,7 @@ class GeminiLLM:
         return resp.text or ""
 
     async def complete_json(self, *, system: str, user: str, schema: type) -> Any:
-        # JSON mode + schema-in-prompt (see _schema_prompt for why not
-        # ``response_schema``).
+        # 开放字典采用 JSON 模式加提示词契约，原因见 _schema_prompt。
         client = self._client()
         resp = await asyncio.wait_for(
             client.aio.models.generate_content(
@@ -232,12 +218,7 @@ class GeminiLLM:
 
 
 class OpenAILLM:
-    """OpenAI — and any OpenAI-compatible server — via the ``openai`` SDK.
-
-    ``base_url`` is what makes the local path possible: pointed at Ollama's
-    ``/v1`` it drives the whole prep/post pipeline with no cloud key. See
-    :class:`OllamaLLM`.
-    """
+    """通过 OpenAI SDK 调用云端或兼容服务；base_url 可指向本地模型。"""
 
     def __init__(
         self,
@@ -246,8 +227,7 @@ class OpenAILLM:
         timeout_sec: float = _DEFAULT_TIMEOUT_SEC,
         base_url: str | None = None,
     ) -> None:
-        # No default model — see GeminiLLM.__init__; Settings.openai_model is
-        # the single source of truth.
+        # 模型 ID 统一由 Settings 指定。
         self._api_key = api_key
         self._model = model
         self._timeout = timeout_sec
@@ -256,7 +236,7 @@ class OpenAILLM:
     def _client(self) -> Any:
         try:
             from openai import AsyncOpenAI
-        except ImportError as exc:  # pragma: no cover - depends on optional SDK
+        except ImportError as exc:  # pragma: no cover - 依赖可选 SDK
             raise RuntimeError(
                 "openai is not installed; install the 'openai' extra."
             ) from exc
@@ -277,11 +257,7 @@ class OpenAILLM:
         return resp.choices[0].message.content or ""
 
     async def complete_json(self, *, system: str, user: str, schema: type) -> Any:
-        # JSON mode + schema-in-prompt, NOT strict structured outputs: OpenAI's
-        # strict mode rejects free-form maps (additionalProperties) like our
-        # ``LocalizedText = dict[str, str]``, which would silently break the
-        # question planner (every plan falling back to mock). Same pattern as
-        # the Gemini adapter; Pydantic validates the result either way.
+        # 开放字典采用 JSON 模式加提示词契约，最终仍由 Pydantic 校验。
         client = self._client()
         resp = await asyncio.wait_for(
             client.chat.completions.create(
@@ -298,12 +274,9 @@ class OpenAILLM:
 
 
 class MiniMaxLLM(OpenAILLM):
-    """MiniMax through its OpenAI-compatible Chat Completions endpoint.
+    """通过 MiniMax 的兼容接口生成结果，以函数参数承载结构化输出并校验。
 
-    MiniMax's documented Chat Completions API doesn't list OpenAI's
-    ``response_format`` JSON mode, so structured pipeline responses rely on
-    a function's parameter schema and Pydantic validation instead. The function
-    is only an output envelope; no tool is executed.
+    函数仅用作输出封装，不执行工具；不依赖 response_format JSON 模式。
     """
 
     _RETRY_NUDGE = (
@@ -313,7 +286,7 @@ class MiniMaxLLM(OpenAILLM):
     )
 
     async def complete_text(self, *, system: str, user: str) -> str:
-        """Plain prose without a tool/schema contract or inline reasoning."""
+        """生成普通文本，不附加工具契约，并要求提供方将推理与正文分离。"""
         extra_body: dict[str, Any] = {"reasoning_split": True}
         if self._model.lower() == "minimax-m3":
             extra_body["thinking"] = {"type": "disabled"}
@@ -356,10 +329,9 @@ class MiniMaxLLM(OpenAILLM):
         if self._model.lower() == "minimax-m3" and schema.__name__ in {
             "CandidateProfile", "JobSpec", "CompanyIntel", "GapAnalysis", "QuestionPlan",
         }:
-            # M3 defaults to thinking, which can exhaust the 90s call ceiling
-            # before emitting data. M3.1/M2 cannot disable thinking.
+            # M3 默认推理可能耗尽调用时限；仅对支持关闭推理的型号设置开关。
             extra_body["thinking"] = {"type": "disabled"}
-        # Own retries here; nested SDK retries make latency unpredictable.
+        # 由此处统一重试，避免 SDK 叠加重试使等待时间失控。
         client = self._client().with_options(max_retries=0, timeout=self._timeout)
         try:
             for attempt in range(2):
@@ -390,8 +362,7 @@ class MiniMaxLLM(OpenAILLM):
                         return _loads_json(
                             tool_calls[0].function.arguments, schema, normalize_arrays=True,
                         )
-                    # Compatible gateways may emit content instead of a tool
-                    # envelope. It still has to pass the same validation.
+                    # 兼容网关可能直接返回正文，仍须通过同一契约校验。
                     return _loads_json(choice.message.content or "", schema, normalize_arrays=True)
                 except Exception as exc:
                     status = getattr(exc, "status_code", None)
@@ -403,7 +374,7 @@ class MiniMaxLLM(OpenAILLM):
                     )
                     if attempt or not retryable:
                         raise
-                    # Log only error types/field paths, never CV/JD/output data.
+                    # 仅记录错误类型及字段路径，避免简历、职位或模型正文进入日志。
                     detail = type(exc).__name__
                     if isinstance(exc, ValidationError):
                         fields = [
@@ -430,20 +401,9 @@ class MiniMaxLLM(OpenAILLM):
 
 
 class OllamaLLM(OpenAILLM):
-    """A local Ollama server through its OpenAI-compatible ``/v1`` endpoint.
+    """通过兼容 OpenAI 的本地接口调用 Ollama，传入 SDK 所需的非空占位密钥。
 
-    Ollama needs no credential, so a non-empty placeholder key is passed (the
-    SDK requires *something*). Behaviourally this differs from the cloud path in
-    one way that matters: **it retries once when the response doesn't parse.**
-
-    Why only here. Small local models are markedly worse at emitting strict JSON
-    than Gemini/GPT, and this pipeline's largest schema (``QuestionPlan``) is
-    also its keystone — when it fails, ``prep.nodes.question_planner`` silently
-    swaps in the generic mock plan and the candidate sits through an interview
-    whose questions are titled "mock". That exact failure has shipped before.
-    One cheap retry with a blunter instruction converts most near-misses
-    (a stray preamble, a truncated trailing brace) into a usable plan; the cloud
-    adapters stay single-shot so their latency and cost are unchanged.
+    调用、解析或校验失败时强化输出指令并重试一次，减少通用模拟计划回退。
     """
 
     _RETRY_NUDGE = (
@@ -454,7 +414,7 @@ class OllamaLLM(OpenAILLM):
     async def complete_json(self, *, system: str, user: str, schema: type) -> Any:
         try:
             return await super().complete_json(system=system, user=user, schema=schema)
-        except Exception as exc:  # noqa: BLE001 - any parse/validation miss earns one retry
+        except Exception as exc:  # noqa: BLE001 - 调用或结果校验失败时允许重试一次
             log.warning("OllamaLLM: unparseable JSON (%s); retrying once.", exc)
             return await super().complete_json(
                 system=f"{system}\n\n{self._RETRY_NUDGE}", user=user, schema=schema
@@ -462,7 +422,7 @@ class OllamaLLM(OpenAILLM):
 
 
 def get_llm(settings: Settings) -> LLMAdapter:
-    """Choose an LLM adapter from settings, falling back to the mock."""
+    """按配置选择模型适配器；云端缺少密钥或本地缺少地址时回退到模拟实现。"""
     provider = (settings.llm_provider or "mock").lower()
     if provider == "mock":
         return MockLLM()
@@ -488,9 +448,7 @@ def get_llm(settings: Settings) -> LLMAdapter:
         log.warning("llm_provider=minimax but minimax_api_key is missing; using MockLLM.")
         return MockLLM()
     if provider in {"ollama", "vllm", "llamacpp", "lmstudio", "local"}:
-        # Local: a base URL takes the place of an API key. Everything else in
-        # the factory contract is unchanged — missing config still degrades to
-        # the mock rather than failing the pipeline.
+        # 本地服务以地址替代云端密钥；地址缺失时仍按工厂约定回退到模拟实现。
         if settings.ollama_base_url:
             return OllamaLLM(
                 settings.local_api_key,

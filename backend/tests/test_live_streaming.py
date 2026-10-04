@@ -1,4 +1,4 @@
-"""Exercise spoken output and progression together at the LiveKit boundary."""
+"""在 LiveKit 流式边界联合验证发问截断、追问等待及工具推进。"""
 
 import asyncio
 
@@ -41,7 +41,7 @@ def test_first_spoken_question_stops_output_at_every_chunk_boundary(
             monkeypatch.setattr(Agent.default, "llm_node", source)
             chunks = [chunk async for chunk in agent.llm_node(None, [], None)]
             assert _text(chunks) == f"How did you verify it{punctuation}"
-            # The initial planned question has no answer yet; it is not a follow-up.
+            # 首题尚无候选人回答，不能误标记为追问。
             assert not state.followup_is_pending(context.userdata)
 
     asyncio.run(run())

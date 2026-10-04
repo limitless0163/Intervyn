@@ -1,1 +1,1 @@
-"""Provider adapters (LLM, search, embeddings) behind protocols with mocks."""
+"""基于协议的提供方适配器及离线模拟实现。"""

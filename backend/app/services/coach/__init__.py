@@ -1,15 +1,6 @@
-"""WP-4 Study Coach: scorecard -> study plan, and grounded tutoring chat.
+"""从评分卡生成学习计划，并结合可选知识检索回答学习问题；各调用独立限时降级。
 
-Sequential async (no LangGraph), mirrors ``post/``. ``run_coach_plan`` turns a
-``ScoreCard``'s ``weak_competencies`` into a ``StudyPlan`` (one module per weak
-competency, weakest-first); ``run_coach_chat`` answers a learner question
-grounded in ``deps.knowledge`` then synthesized by the LLM. Every LLM/retrieval
-call is guarded with a timeout + fallback so the Prep Coach UI always gets a
-valid response.
-
-``run_coach_plan`` takes the ``ScoreCard`` directly (the client already holds it
-from the report) rather than a ``session_id`` — the coach plan is a pure function
-of the scorecard, so it needs no repo/storage lookup.
+学习计划直接使用评分卡，无需读取仓库；每项弱能力对应一个学习模块。
 """
 
 from __future__ import annotations
@@ -36,7 +27,7 @@ _STAGE_TIMEOUT = 60.0
 
 
 class _ModuleDraft(BaseModel):
-    """LLM-authored fields for one study module; the rest is pinned deterministically."""
+    """模块标题、理由和时长由模型生成；能力标识与掌握状态由代码固定。"""
 
     model_config = ConfigDict(extra="forbid")
     title: str
@@ -45,7 +36,7 @@ class _ModuleDraft(BaseModel):
 
 
 class _ChatDraft(BaseModel):
-    """LLM-authored fields for a coach reply; citations come from retrieval."""
+    """模型生成回复正文及关联能力，引用由检索结果提供。"""
 
     model_config = ConfigDict(extra="forbid")
     answer: str
@@ -53,17 +44,17 @@ class _ChatDraft(BaseModel):
 
 
 def _status_for_level(level: str) -> MasteryState:
-    """Map a scoring band onto a study-module mastery state."""
+    """将评分等级映射为学习模块的掌握状态。"""
     return "learning" if level == "developing" else "shaky"
 
 
 def _clamp_min(value: int) -> int:
-    """Keep a module's estimated minutes in a sane 5-90 range."""
+    """将预计学习时长限制在 5 至 90 分钟。"""
     return max(5, min(90, int(value)))
 
 
 async def _guarded(coro, *, label: str, timeout: float = _STAGE_TIMEOUT):
-    """Await ``coro`` with a timeout; on ANY error return ``None`` (caller falls back)."""
+    """限时等待调用；异常时返回 None，由调用方提供降级结果。"""
     try:
         return await asyncio.wait_for(coro, timeout=timeout)
     except Exception:
@@ -76,13 +67,7 @@ def _empty_plan(summary: str) -> StudyPlan:
 
 
 async def run_coach_plan(scorecard: ScoreCard, deps: Deps) -> StudyPlan:
-    """Build a ``StudyPlan`` from a scorecard's weak competencies.
-
-    One module per ``weak_competencies`` entry, ordered weakest-first; the LLM
-    drafts the title/rationale/est_min while ``competency`` and ``status`` are
-    pinned deterministically so the plan maps cleanly back onto the loop's
-    shared competency space.
-    """
+    """按分数从低到高为弱能力生成模块；能力标识和掌握状态保持与评分卡一致。"""
     weak = list(scorecard.weak_competencies)
     if not weak:
         return _empty_plan(
@@ -90,7 +75,7 @@ async def run_coach_plan(scorecard: ScoreCard, deps: Deps) -> StudyPlan:
         )
 
     score_by_comp = {cs.competency: cs for cs in scorecard.competency_scores}
-    # Weakest (lowest score) first; competencies absent from the scores sort last.
+    # 弱项按低分优先排序，评分卡中找不到的能力排在最后。
     weak.sort(key=lambda c: score_by_comp[c].score if c in score_by_comp else 99.0)
 
     modules: list[StudyModule] = []
@@ -127,12 +112,7 @@ async def run_coach_plan(scorecard: ScoreCard, deps: Deps) -> StudyPlan:
 
 
 async def run_coach_chat(req: CoachChatRequest, deps: Deps) -> CoachReply:
-    """Answer a learner question; ground + cite ONLY when a real KB is configured.
-
-    Grounding (and therefore citations) is opt-in via ``LIGHTRAG_URL``. With no
-    real retrieval backend (the default), we answer with the LLM and return NO
-    citations rather than fabricating sources over an ungrounded answer.
-    """
+    """配置知识侧车时检索并引用资料；默认离线路径仅生成模型回答，不附模拟引用。"""
     if deps.settings.lightrag_url:
         grounded = await _guarded(
             deps.knowledge.search(req.session_id, req.query, req.lang),

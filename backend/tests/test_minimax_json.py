@@ -1,4 +1,4 @@
-"""MiniMax prep failures, reproduced without keys or network."""
+"""无密钥、无网络复现 MiniMax 准备阶段的结构化输出边界。"""
 
 import asyncio
 import json

@@ -1,9 +1,6 @@
-"""Spoken-language assessment for the WP-7 scoring pipeline.
+"""依据回答文本评估表达流畅度和清晰度等语言指标，并限制数值范围。
 
-Builds a single :class:`LanguageReport` from the candidate's answer transcripts:
-fluency, clarity, an approximate filler-word count, and code-switching /
-pronunciation notes. The numeric bounds (0-5 scores, non-negative count) are
-clamped here so the report is well-formed regardless of the provider.
+此阶段只读取转写文本，不直接分析原始音频。
 """
 
 from __future__ import annotations
@@ -19,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def _transcript(ctx: InterviewContext) -> str:
-    """Concatenate the candidate's answer transcripts into one block."""
+    """合并候选人的回答正文，供语言评估统一读取。"""
     parts = [a.transcript.strip() for a in ctx.answers if a.transcript and a.transcript.strip()]
     return "\n\n".join(parts)
 
@@ -29,13 +26,12 @@ def _clamp_score(value: float) -> float:
 
 
 async def coach(ctx: InterviewContext, deps: Deps) -> LanguageReport:
-    """Produce the spoken-language report for the interview."""
+    """生成语言报告；分数限制为 0 至 5，填充词数量不得为负。"""
     transcript = _transcript(ctx)
     primary = ctx.plan.language_mode.primary
     system, user = language_coach_prompts(transcript, primary)
     report = await deps.llm.complete_json(system=system, user=user, schema=LanguageReport)
 
-    # Normalize the numeric fields into their documented ranges.
     return report.model_copy(
         update={
             "fluency_score": _clamp_score(report.fluency_score),

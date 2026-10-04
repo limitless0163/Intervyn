@@ -1,8 +1,4 @@
-"""Offline tests for the WP-4 Study Coach (MockLLM / MockKnowledge).
-
-run_coach_plan is a pure function of a ScoreCard; run_coach_chat grounds via the
-default MockKnowledge client. No keys, no network.
-"""
+"""以模拟模型离线验证学习计划与教练问答；配置知识地址的场景使用检索替身。"""
 
 from __future__ import annotations
 
@@ -53,13 +49,12 @@ def test_coach_plan_covers_weak_competencies() -> None:
 
     plan = asyncio.run(run_coach_plan(sc, deps))
 
-    # One module per weak competency, mapping back onto the loop's competency space.
+    # 每个弱项对应一个模块，能力标识须回到评分卡的同一能力空间。
     assert {m.competency for m in plan.modules} == {"System Design", "Leadership"}
     assert plan.total_min == sum(m.est_min for m in plan.modules)
     for m in plan.modules:
         assert m.est_min >= 5
         assert m.status in {"unseen", "learning", "shaky", "mastered"}
-    # Round-trips through validation.
     assert StudyPlan.model_validate(plan.model_dump()) == plan
 
 
@@ -68,7 +63,7 @@ def test_coach_plan_empty_when_no_weak() -> None:
     plan = asyncio.run(run_coach_plan(_scorecard([]), deps))
     assert plan.modules == []
     assert plan.total_min == 0
-    assert plan.summary  # a non-empty, encouraging message
+    assert plan.summary
 
 
 def test_coach_chat_returns_grounded_reply() -> None:
@@ -80,13 +75,13 @@ def test_coach_chat_returns_grounded_reply() -> None:
     reply = asyncio.run(run_coach_chat(req, deps))
 
     assert isinstance(reply.answer, str) and reply.answer
-    # No real KB configured (default) -> ungrounded + honest: NO fabricated sources.
+    # 未配置真实知识检索时不应返回模拟引用。
     assert reply.citations == []
     assert len(reply.follow_ups) <= 3
 
 
 def test_coach_chat_grounds_when_backend_configured() -> None:
-    """With a real KB configured (LIGHTRAG_URL) the coach grounds + returns citations."""
+    """配置知识地址后，教练应使用检索结果并返回其引用。"""
     deps = build_deps()
     original = deps.settings.lightrag_url
 
@@ -102,8 +97,6 @@ def test_coach_chat_grounds_when_backend_configured() -> None:
         reply = asyncio.run(run_coach_chat(req, deps))
         assert len(reply.citations) >= 1
     finally:
-        # Restore BOTH mutated fields on the shared cached deps — leaving the
-        # _FakeKnowledge in place pollutes later tests (e.g. /api/kb/ingest now
-        # calls deps.knowledge.ingest, which this double doesn't implement).
+        # 恢复共享缓存依赖中的配置与客户端，避免缺少 ingest 的替身污染后续测试。
         deps.settings.lightrag_url = original
         deps.knowledge = original_knowledge

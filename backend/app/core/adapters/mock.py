@@ -1,16 +1,6 @@
-"""Deterministic, offline adapter implementations.
+"""不联网的确定性模拟适配器，可在没有密钥或提供方 SDK 时运行。
 
-These are the defaults. They never touch the network and never import a provider
-SDK, so the entire app imports and tests green with zero keys installed.
-
-The interesting piece is :func:`build_mock` / ``MockLLM.complete_json``: given any
-Pydantic model class it constructs a *minimal valid instance* by walking
-``model_fields`` and supplying a value for every required field only (fields with
-defaults are left to their default). For every required list it emits exactly one
-recursively-built element, which uniformly satisfies the "non-empty" intent for
-``QuestionPlan.questions``, ``PlannedQuestion.rubric``/``followups`` etc. The only
-runtime refinement in the shared models is ``LocalizedText`` needing an ``en`` key,
-which the dict branch supplies.
+结构化输出递归填充必填字段；列表至少包含一个元素，本地化字典提供 en 回退键。
 """
 
 from __future__ import annotations
@@ -28,9 +18,9 @@ _NoneType = type(None)
 
 
 def _unwrap_optional(annotation: Any) -> Any:
-    """If ``annotation`` is ``X | None`` return ``X``; otherwise return it as-is."""
+    """剥离两种 Optional 写法中的 None，保留实际值类型。"""
     origin = get_origin(annotation)
-    # ``X | None`` (PEP 604) yields ``types.UnionType``; ``Optional[X]`` yields ``Union``.
+    # 兼容 PEP 604 的 X | None 和 typing.Optional 的不同运行时表示。
     if origin is Union or origin is types.UnionType:
         non_null = [a for a in get_args(annotation) if a is not _NoneType]
         if len(non_null) == 1:
@@ -39,28 +29,24 @@ def _unwrap_optional(annotation: Any) -> Any:
 
 
 def _build_value(annotation: Any) -> Any:
-    """Build a minimal valid value for a (non-optional) type annotation."""
+    """按类型递归构造满足共享模型约束的最小模拟值。"""
     annotation = _unwrap_optional(annotation)
     origin = get_origin(annotation)
 
-    # Literal[...] / enum-like -> first member.
     if origin is Literal:
         return get_args(annotation)[0]
 
-    # Containers.
     if origin in (list, tuple, set, frozenset):
         args = get_args(annotation)
         elem = _build_value(args[0]) if args else "mock"
         return [elem]
     if origin is dict:
-        # The only dict field in the shared models is LocalizedText.
+        # 本地化字典必须包含 en 回退键。
         return {"en": "mock"}
 
-    # Nested Pydantic model -> recurse.
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
         return build_mock(annotation).model_dump()
 
-    # Scalars.
     if annotation is bool:
         return False
     if annotation is int:
@@ -72,17 +58,11 @@ def _build_value(annotation: Any) -> Any:
     if annotation is dict:
         return {"en": "mock"}
 
-    # Fallback for anything unexpected.
     return "mock"
 
 
 def build_mock(schema: type[BaseModel]) -> BaseModel:
-    """Construct a minimal *valid* instance of ``schema``.
-
-    Only required fields are populated; fields with defaults keep their default.
-    The ``difficulty`` field is pinned to ``3`` (a sensible mid value within the
-    documented 1-5 range, even though the model itself does not constrain it).
-    """
+    """仅填充必填字段，其余保留模型默认值；difficulty 固定为中间值 3。"""
     built: dict[str, Any] = {}
     for name, field in schema.model_fields.items():
         if not field.is_required():
@@ -95,7 +75,7 @@ def build_mock(schema: type[BaseModel]) -> BaseModel:
 
 
 class MockLLM:
-    """Deterministic LLM: canned text and schema-valid structured output."""
+    """生成固定文本和契约有效的结构化模拟结果。"""
 
     async def complete_text(self, *, system: str, user: str) -> str:
         return "This is a deterministic mock completion."
@@ -105,7 +85,7 @@ class MockLLM:
 
 
 class MockSearch:
-    """Deterministic search returning a fixed, query-derived result set."""
+    """根据查询生成稳定的模拟搜索结果。"""
 
     async def search(
         self, query: str, *, lang: str = "en", max_results: int = 6
@@ -122,7 +102,7 @@ class MockSearch:
 
 
 class MockEmbeddings:
-    """Deterministic embeddings: hashlib-derived fixed 8-dim vector per text."""
+    """根据文本哈希生成固定的八维向量，保证跨运行一致。"""
 
     DIM = 8
 

@@ -1,8 +1,4 @@
-"""Search adapter factory + real adapters (lazy-imported SDKs).
-
-``get_search(settings)`` returns :class:`MockSearch` unless a search provider is
-selected *and* its key is present; otherwise it logs and falls back to the mock.
-"""
+"""按配置选择搜索适配器；配置不足时使用离线模拟，SDK 延迟导入。"""
 
 from __future__ import annotations
 
@@ -19,7 +15,7 @@ log = get_logger(__name__)
 
 
 class TavilySearch:
-    """Tavily web search via ``tavily-python`` (lazy import)."""
+    """通过延迟导入的 tavily-python SDK 搜索网页。"""
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -27,7 +23,7 @@ class TavilySearch:
     def _client(self) -> Any:
         try:
             from tavily import TavilyClient
-        except ImportError as exc:  # pragma: no cover - depends on optional SDK
+        except ImportError as exc:  # pragma: no cover - 依赖可选 SDK
             raise RuntimeError(
                 "tavily-python is not installed; install the 'tavily' extra."
             ) from exc
@@ -57,7 +53,7 @@ class TavilySearch:
 
 
 def get_search(settings: Settings) -> SearchAdapter:
-    """Choose a search adapter from settings, falling back to the mock."""
+    """按提供方和密钥选择搜索适配器，配置不足时回退到模拟实现。"""
     provider = (settings.search_provider or "mock").lower()
     if provider == "mock":
         return MockSearch()

@@ -1,4 +1,4 @@
-"""Offline tests for the deterministic input-quality heuristics."""
+"""离线验证输入质量启发式及多语言容错。"""
 
 from __future__ import annotations
 
@@ -34,8 +34,7 @@ def test_assess_text_accepts_bare_cv_url() -> None:
 
 
 def test_assess_text_accepts_non_latin_scripts() -> None:
-    # Real CJK / Devanagari content must NOT be flagged as gibberish
-    # (golden rule #3: English-first, multilingual — zh/ja/hi are supported).
+    # 真实中文及天城文内容不能因拉丁单词规则被误判为乱码。
     japanese = (
         "当社はPythonでバックエンドエンジニアを募集しています。"
         "分散決済システムの設計と運用を担当していただきます。"
@@ -86,17 +85,15 @@ def test_assess_text_rejects_symbol_soup() -> None:
 
 
 def test_assess_text_rejects_no_vowel_tokens() -> None:
-    # Long enough, alpha-heavy, but no token contains a vowel -> keyboard mashing.
+    # 构造长度和字母占比足够但无元音的拉丁文本，验证随机输入启发式。
     ok, reason = assess_text("xkcd zxcv bcdf ghjk lmnp qrst vwxz", kind="cv", min_len=30)
     assert ok is False
     assert reason
 
 
 def test_assess_company_short_threshold() -> None:
-    # A real (short) company name passes the tiny company threshold.
     ok, _ = assess_text("IBM", kind="company", min_len=2)
     assert ok is True
-    # A single empty/garbage character fails.
     bad, reason = assess_text("$", kind="company", min_len=2)
     assert bad is False
     assert reason and "company" in reason
@@ -121,7 +118,7 @@ def test_validate_both_junk_rejects() -> None:
 
 
 def test_validate_one_junk_warns_only() -> None:
-    # CV is junk but JD is real -> not a rejection, just a warning.
+    # 仅简历无效时允许继续准备并返回警告。
     ok, warnings = validate_prep_inputs(
         _req("aaaaaaaaaaaaaaaaaaaa", _REAL_JD, "Acme"),
         cv_text="aaaaaaaaaaaaaaaaaaaa",

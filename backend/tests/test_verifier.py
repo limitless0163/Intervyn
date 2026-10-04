@@ -1,11 +1,6 @@
-"""Offline tests for the gated post/ adversarial score verifier (MockLLM).
+"""用显式新配置启用评分复核，避免修改共享缓存配置而污染其他测试。
 
-The verifier is OFF by default; these tests turn it ON via an explicit
-``Settings(enable_score_verifier=True)`` passed to ``build_deps`` -- deliberately
-NOT by mutating ``deps.settings``, because ``get_settings()`` is ``@lru_cache``'d
-and that singleton is shared with the other test modules. Seeding mirrors
-``test_score.py`` (append answers via load->append->save_context). No keys, no
-network.
+模拟模型及内存仓库保证不依赖密钥或网络。
 """
 
 from __future__ import annotations
@@ -62,7 +57,7 @@ def _seed_answers(session_id: str, deps, count: int = 3) -> InterviewContext:
 
 
 def _deps_with_verifier(enabled: bool):
-    """Fresh Deps with the verifier flag set explicitly (never touches the cache)."""
+    """创建显式开启复核的新依赖，不修改默认缓存。"""
     return build_deps(Settings(enable_score_verifier=enabled))
 
 
@@ -76,7 +71,7 @@ def _assert_scores_consistent(scores: list[CompetencyScore]) -> None:
     assert scores, "expected at least one competency score"
     for cs in scores:
         assert 0.0 <= cs.score <= 5.0, f"score {cs.score} out of 0..5"
-        # Level always agrees with the (possibly adjusted) numeric score.
+        # 等级必须与最终数值一致。
         assert cs.level == level_for_score(cs.score)
         assert cs.level in {"weak", "developing", "solid", "strong"}
 
@@ -88,7 +83,7 @@ def test_verify_scores_keeps_scores_in_range_and_levels_agree() -> None:
     base = asyncio.run(evaluate(ctx, deps))
     verified = asyncio.run(verify_scores(ctx, base, deps))
 
-    # Same competencies, same order; every score valid and band re-derived.
+    # 复核保留能力数量和顺序，并保证分数与等级一致。
     assert [cs.competency for cs in verified] == [cs.competency for cs in base]
     _assert_scores_consistent(verified)
 
@@ -113,7 +108,6 @@ def test_run_score_with_verifier_on_produces_valid_scorecard() -> None:
     assert isinstance(sc, ScoreCard)
     assert 0.0 <= sc.overall_score <= 5.0
     _assert_scores_consistent(sc.competency_scores)
-    # weak_competencies stay inside the scored competency space.
     scored = {cs.competency for cs in sc.competency_scores}
     assert set(sc.weak_competencies) <= scored
     assert ScoreCard.model_validate(sc.model_dump()) == sc
@@ -131,12 +125,11 @@ def test_run_score_with_verifier_on_is_stable_on_rerun() -> None:
 
 
 def test_verifier_off_is_a_noop() -> None:
-    """With the flag OFF, run_score equals a separate flag-off run (no verifier effect)."""
+    """关闭复核时结果须与直接能力评估一致。"""
     deps_off_a = _deps_with_verifier(False)
     session_a, _ = _prepare(deps_off_a)
     sc_off = asyncio.run(run_score(ScoreRequest(session_id=session_a), deps_off_a))
 
-    # Direct evaluate() (no verifier) and the flag-off run agree on the scores.
     ctx = asyncio.run(deps_off_a.repo.load_context(session_a))
     assert ctx is not None
     base = asyncio.run(evaluate(ctx, deps_off_a))

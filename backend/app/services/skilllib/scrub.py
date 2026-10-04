@@ -1,27 +1,19 @@
-"""PII scrubbing for skill bodies (WP-10 quality gate).
+"""技能正文的个人信息清理；草稿写入前和正式发布前都需执行。
 
-A skill is de-identified, generalized knowledge — it must never carry a real
-candidate's name, email, or phone number. :func:`scrub_pii` is the single choke
-point: the distiller runs it before writing a draft, and ``promote`` runs it
-again as a safety net before a draft enters the live library.
-
-The substitutions are deliberately conservative regexes plus exact replacement
-of any caller-provided names. ``[candidate]`` replaces a name, ``[email]`` /
-``[phone]`` replace contact details — so the surrounding prose stays readable.
+用姓名列表及保守正则替换姓名、邮箱和电话，不保证识别所有形式的个人信息。
 """
 
 from __future__ import annotations
 
 import re
 
-# user@host.tld — kept simple; matches the common shapes without over-reaching.
+# 邮箱规则只覆盖常见形式，避免过度匹配。
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
-# Phone numbers: optional +, then 7+ digits possibly separated by space/-/./()
-# Requires at least 7 digits total so it doesn't eat short numbers / years.
+# 电话允许常见分隔符，至少七位数字以免误删年份等短数字。
 _PHONE_RE = re.compile(
-    r"(?<![\w.])"  # not mid-word / not a decimal
-    r"\+?\d[\d\s().-]{5,}\d"  # leading digit, separators, trailing digit
+    r"(?<![\w.])"  # 避免在单词中间或小数内部起始匹配。
+    r"\+?\d[\d\s().-]{5,}\d"  # 首尾必须为数字，中间允许分隔符。
     r"(?![\w.])"
 )
 
@@ -31,6 +23,7 @@ def _digit_count(s: str) -> int:
 
 
 def _scrub_phones(text: str) -> str:
+    """只替换至少七位数字的电话形态匹配，保留误匹配的短数字。"""
     def _repl(m: re.Match[str]) -> str:
         return "[phone]" if _digit_count(m.group(0)) >= 7 else m.group(0)
 
@@ -38,16 +31,13 @@ def _scrub_phones(text: str) -> str:
 
 
 def scrub_pii(text: str, *, names: list[str]) -> str:
-    """Return ``text`` with candidate names, emails, and phone numbers removed.
+    """用 [candidate]、[email] 和 [phone] 替换已知姓名及匹配的联系方式。
 
-    ``names`` are replaced (case-insensitive, whole-word) with ``[candidate]``;
-    emails with ``[email]``; phone-shaped digit runs (>= 7 digits) with
-    ``[phone]``. Idempotent: re-running on already-scrubbed text is a no-op.
+    姓名按整词、忽略大小写匹配；电话至少含七位数字，重复清理不改变已替换内容。
     """
     out = text
 
-    # Replace provided names first (before regexes), longest first so a full name
-    # is caught before its parts and we don't leave a dangling first/last token.
+    # 姓名按长度降序优先替换，避免先替换短名字后残留姓氏或名字片段。
     for name in sorted({n.strip() for n in names if n and n.strip()}, key=len, reverse=True):
         pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
         out = pattern.sub("[candidate]", out)

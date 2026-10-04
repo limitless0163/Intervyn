@@ -1,15 +1,6 @@
-"""Pydantic models for the WP-10 self-evolving skill library.
+"""技能及待审草稿模型；YAML 元数据对应 SCHEMA.md，正文为 Markdown。
 
-A *skill* is a Markdown file with YAML frontmatter: the frontmatter is the
-machine-readable :class:`SkillFrontmatter` (the 9 fields in ``backend/skills/SCHEMA.md``)
-and the body is free-form Markdown (round structure, question bank, signals,
-pitfalls). A :class:`SkillDraft` is a proposed delta sitting in the review queue
-(``backend/skills/_review/``); it is never part of the live library until ``promote``
-writes it out.
-
-``last_verified`` is an ISO-8601 *date string* (e.g. ``"2026-06-08"``), NOT a
-``datetime.date`` — YAML parses an unquoted date into a ``date`` object, so the
-store coerces it back to a string before constructing the model.
+last_verified 使用 ISO 日期字符串；存储层将 YAML 自动解析的 date 转回字符串。
 """
 
 from __future__ import annotations
@@ -22,7 +13,7 @@ SkillStatus = Literal["draft", "review", "promoted", "deprecated"]
 
 
 class SkillFrontmatter(BaseModel):
-    """Machine-readable header of a skill file (mirrors ``backend/skills/SCHEMA.md``)."""
+    """对应技能文件 SCHEMA.md 的机器可读元数据。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -39,7 +30,7 @@ class SkillFrontmatter(BaseModel):
 
 
 class Skill(BaseModel):
-    """A full skill: structured frontmatter + free-form Markdown body."""
+    """包含结构化元数据及 Markdown 正文的完整技能。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -48,7 +39,7 @@ class Skill(BaseModel):
 
 
 class SkillDraft(BaseModel):
-    """A proposed skill delta distilled from one session (review-queue only)."""
+    """从单次会话提出的待审草稿，发布前不属于正式技能库。"""
 
     model_config = ConfigDict(extra="forbid")
 

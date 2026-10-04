@@ -1,4 +1,4 @@
-"""Assemble the API routes and their access policies."""
+"""集中注册路由及可选内部密钥校验。"""
 
 from fastapi import APIRouter, Depends
 
@@ -7,8 +7,7 @@ from .routes import coach, kb, prep, score, session, traces
 
 router = APIRouter()
 
-# Keep the internal-secret gate on write/compute routes. Session reads have a
-# capability guard of their own, and trace views remain read-only.
+# 准备、评分、教练和知识接口统一校验内部密钥；会话写入在路由内单独校验。
 guarded = [Depends(require_internal_secret)]
 router.include_router(prep.router, dependencies=guarded)
 router.include_router(score.router, dependencies=guarded)

@@ -33,7 +33,7 @@ _WRAP_UP_LINES: dict[str, str] = {
 
 
 def wrap_up_line(language: str | None) -> str:
-    """The closing line for ``language`` (English fallback)."""
+    """按语言选择收尾语，未覆盖的语言回退到英语。"""
     return _WRAP_UP_LINES.get((language or "en").lower(), _WRAP_UP_LINE)
 
 
@@ -70,13 +70,13 @@ class SessionGuard:
         self.tripped: bool = False
 
     def start(self) -> None:
-        """Launch the guard as a detached background task (idempotent)."""
+        """启动后台限制检查并记录起始时间，重复调用不重复启动。"""
         if self._task is None:
             self._started_at = self._time()
             self._task = asyncio.create_task(self._run())
 
     async def aclose(self) -> None:
-        """Stop the guard (idempotent)."""
+        """取消并等待限制检查任务结束，可重复调用。"""
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -84,7 +84,7 @@ class SessionGuard:
             self._task = None
 
     def _limit_reached(self, elapsed: float) -> str | None:
-        """Return a human reason if a ceiling is hit, else ``None``."""
+        """达到时长或转录轮数上限时返回原因，否则返回 None。"""
         if elapsed >= self._max_duration:
             return f"max duration {self._max_duration:.0f}s reached"
         turns = len(self._ud.transcript)
@@ -93,7 +93,7 @@ class SessionGuard:
         return None
 
     async def _wrap_up(self, reason: str) -> None:
-        """Say a closing line (best-effort) then shut the session down gracefully."""
+        """尽力中断新题、播完收尾语，再关闭会话以触发最终回写。"""
         log.warning("session_guard: %s for %s — wrapping up", reason, self._ud.session_id)
         self._ud.closing = True
         # 先中断已排队的新题，避免收尾语等待新题播完后留下未回答的问题。
@@ -137,7 +137,7 @@ class SessionGuard:
                     await self._wrap_up(reason)
                     return
                 await asyncio.sleep(self._interval)
-        except asyncio.CancelledError:  # pragma: no cover - cancellation path
+        except asyncio.CancelledError:  # pragma: no cover - 后台任务取消路径
             raise
         except Exception:
             log.exception("session_guard: watcher error (ignored)")

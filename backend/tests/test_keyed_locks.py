@@ -1,4 +1,4 @@
-"""Exercise lock lifetime, contention, cancellation, and independent keys."""
+"""验证按键锁的回收、竞争、取消及不同会话间的独立性。"""
 
 import asyncio
 import gc
@@ -41,7 +41,7 @@ def test_waiters_keep_one_lock_and_cancellation_does_not_block_others() -> None:
             with pytest.raises(asyncio.CancelledError):
                 await cancelled
             assert not completed
-            # Another session proceeds while this session remains locked.
+            # 一个会话持锁时，另一个会话仍须能继续。
             async with locks.get("other"):
                 assert not remaining.done()
 

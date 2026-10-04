@@ -1,17 +1,6 @@
-"""Post-interview distiller: PROPOSE a skill delta (never auto-merge).
+"""从会话上下文和评分卡生成去标识化技能草稿，仅写入 backend/skills/_review。
 
-After a scored interview, :func:`propose_skill` reads the persisted
-``InterviewContext`` (+ scorecard) and synthesizes a company × role × level
-playbook delta — round structure, a question bank built from the questions that
-were actually asked, the signals an interviewer should look for, and pitfalls /
-rubric calibration. It builds a :class:`SkillDraft` (``status='draft'``,
-``source_runs=1``, modest ``confidence``), SCRUBS PII from the body, and writes
-it to the review queue ``backend/skills/_review/<draft_id>.md``.
-
-It NEVER writes into the live library — that only happens via ``promote`` after
-a human/LLM review. The LLM is used for a short narrative summary via
-``deps.llm.complete_text``; everything structural is derived deterministically
-from the context so the draft is reproducible offline.
+题库来自计划中的全部问题，不据此判断题目是否实际问过；正式发布须另行审核。
 """
 
 from __future__ import annotations
@@ -34,9 +23,8 @@ _DEFAULT_CONFIDENCE = 0.3
 
 
 def _session_date(ctx: InterviewContext) -> str:
-    """Best ISO date for ``last_verified``: first answer's timestamp, else today."""
+    """使用首条回答的 ISO 日期；没有回答时使用当前 UTC 日期。"""
     if ctx.answers:
-        # started_at is an ISO-8601 string like "2026-06-08T09:00:00Z".
         return ctx.answers[0].started_at[:10]
     return datetime.now(UTC).date().isoformat()
 
@@ -46,10 +34,9 @@ def _question_text(q) -> str:
 
 
 def _build_body(ctx: InterviewContext, narrative: str) -> str:
-    """Assemble the Markdown body from the asked plan + scorecard.
+    """根据计划和评分卡组装技能正文；题库包含全部计划题目。
 
-    The provenance line folds in the candidate's name on purpose so the scrub
-    pass has real PII to remove (and to prove the gate works downstream).
+    来源说明含候选人姓名，调用方必须在落盘前执行 scrub_pii。
     """
     job = ctx.job
     plan = ctx.plan
@@ -57,17 +44,15 @@ def _build_body(ctx: InterviewContext, narrative: str) -> str:
 
     title = f"{job.company_name} — {job.title} ({job.seniority})"
 
-    # Round structure from the ordered sections actually planned.
     rounds = "\n".join(
         f"{i}. {section.title()}" for i, section in enumerate(plan.sections_order, start=1)
     ) or "1. (no sections recorded)"
 
-    # Question bank: the questions that were actually asked, in plan order.
+    # 题库保留计划顺序，包含未实际作答的计划题目。
     bank_lines = [f'- "{_question_text(q)}" ({q.section}, target: {q.target_competency})'
                   for q in plan.questions]
     question_bank = "\n".join(bank_lines) or "- (no questions recorded)"
 
-    # Signals + pitfalls + rubric calibration from the scorecard, if present.
     if sc is not None:
         signals = "\n".join(f"- {s}" for s in sc.strengths) or "- (none recorded)"
         pitfalls = "\n".join(f"- {w}" for w in sc.weaknesses) or "- (none recorded)"
@@ -105,11 +90,9 @@ async def propose_skill(
     skills_dir: str | Path | None = None,
     date: str | None = None,
 ) -> SkillDraft:
-    """Propose a skill delta for ``session_id`` into the review queue.
+    """读取会话、生成技能草稿并清除正文中的个人信息，只写待审目录。
 
-    Loads the session context from ``deps.repo``, synthesizes a playbook draft,
-    scrubs PII, writes it to ``backend/skills/_review/<draft_id>.md``, and returns the
-    draft. NEVER writes into the live library.
+    skills_dir 可指定技能库根目录，date 可覆盖验证日期；返回草稿但不自动发布。
     """
     ctx = await deps.repo.load_context(session_id)
     if ctx is None:
@@ -124,7 +107,7 @@ async def propose_skill(
     target_skill_id = slugify(company=company, role=role, level=level)
     last_verified = date or _session_date(ctx)
 
-    # Short narrative via the LLM; structural fields are derived deterministically.
+    # 模型只生成简短叙述，结构字段从会话确定性推导。
     system = (
         "You are an interview-prep analyst. In 2-3 sentences, summarize the "
         "reusable, DE-IDENTIFIED takeaways from this interview for future "
@@ -139,7 +122,7 @@ async def propose_skill(
     narrative = await deps.llm.complete_text(system=system, user=user)
 
     body = _build_body(ctx, narrative)
-    # SCRUB PII before the draft is ever written to disk.
+    # 正文落盘前清除已知姓名和联系方式。
     body = scrub_pii(body, names=[ctx.candidate.name])
 
     competency = sorted({q.target_competency for q in ctx.plan.questions if q.target_competency})
@@ -166,7 +149,7 @@ async def propose_skill(
         created_at=datetime.now(UTC).isoformat(),
     )
 
-    # Write ONLY into the review queue — never the live library.
+    # 仅写待审目录，正式库发布必须经过独立审核。
     review_dir.mkdir(parents=True, exist_ok=True)
     draft_path = review_dir / f"{draft_id}.md"
     _write_draft(draft, draft_path)
@@ -174,7 +157,7 @@ async def propose_skill(
 
 
 def _write_draft(draft: SkillDraft, path: Path) -> None:
-    """Serialize a draft as a frontmatter+body skill file in the review queue."""
+    """将草稿转为带 YAML 元数据的技能文本，写入指定待审文件。"""
     from .models import Skill
     from .store import serialize_skill
 

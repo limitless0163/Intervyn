@@ -1,1 +1,1 @@
-"""Session persistence: protocol + in-memory and Supabase repositories."""
+"""会话仓库协议及内存、Supabase 实现。"""

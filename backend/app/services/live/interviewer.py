@@ -1,22 +1,7 @@
-"""The base live interviewer :class:`Agent` and its turn-path tools.
+"""实时面试角色及本地状态工具，需安装 livekit 扩展，由工作进程按需导入。
 
-REQUIRES the optional ``livekit-agents`` extra (``uv sync --extra livekit``);
-imports ``livekit.agents`` at load time, so it is imported lazily by the worker
-and NOT by ``live/__init__.py`` (offline ``import ...live.state`` stays clean).
-
-Design rules (project golden rule #2: keep the live loop lean):
-- The prompt injects ONLY the compact candidate summary + the current question +
-  recent turns — never the whole CV / JD / company intel.
-- ``@function_tool`` methods mutate the local :class:`InterviewUserdata` ONLY.
-  No network / DB on the turn path; persistence + scoring happen on shutdown
-  (see ``worker.py``).
-- Handoffs return a fresh persona agent (``CodingRoundAgent`` / ``BehavioralAgent``)
-  to switch styles natively while keeping the same session userdata. Personas
-  subclass ``Interviewer`` (tools are per-agent in livekit-agents 1.x) and get
-  the running ``chat_ctx`` so the conversation history survives the handoff.
-- The flat ``ud.transcript`` log is fed by the worker's ``conversation_item_added``
-  listener (real STT/agent turns) — tools no longer write to it, so answers are
-  captured even when the model forgets to call ``save_answer``.
+提示词只包含摘要和当前题；转录由工作进程监听真实发言，持久化在后台检查点和关闭回调执行。
+角色交接继承工具并保留聊天历史。工具文档字符串同时作为模型可见的调用说明。
 """
 
 from __future__ import annotations
@@ -32,7 +17,7 @@ log = get_logger(__name__)
 
 
 def _localized(text: dict[str, str], primary: str) -> str:
-    """Resolve a ``LocalizedText`` to the primary language, falling back to en."""
+    """优先使用主语言，其次英语，最后回退到任意已有译文。"""
     return text.get(primary) or text.get("en") or next(iter(text.values()), "")
 
 
@@ -45,14 +30,14 @@ def _wrap_signal() -> str:
 
 
 def _wait_if_candidate_speaking(context: RunContext[InterviewUserdata]) -> None:
-    """A resumed answer must not race a pending save/advance/close tool call."""
+    """候选人恢复讲话时暂停保存、推进和关闭，避免未完成回答与工具调用竞争。"""
     if context.session.user_state == "speaking":
         log.info("interview: candidate resumed speaking; deferring progression")
         raise StopResponse()
 
 
 def _wait_if_followup_pending(context: RunContext[InterviewUserdata]) -> None:
-    """Do not treat the answer before a follow-up as its answer too."""
+    """追问尚无新回答时暂停工具调用，避免把原回答同时算作追问答案。"""
     if state.followup_is_pending(context.userdata):
         log.info(
             "interview: follow-up unanswered; deferring progression cursor=%d",
@@ -62,7 +47,7 @@ def _wait_if_followup_pending(context: RunContext[InterviewUserdata]) -> None:
 
 
 def build_instructions(ud: InterviewUserdata) -> str:
-    """Lean per-question system prompt: compact summary + current question."""
+    """构造每题的紧凑系统指令，只注入候选人摘要与当前问题。"""
     primary = ud.ctx.plan.language_mode.primary
     summary = state.compact_summary(ud)
     q = state.current_question(ud)
@@ -102,7 +87,7 @@ def build_instructions(ud: InterviewUserdata) -> str:
 
 
 class Interviewer(Agent):
-    """The primary interviewer persona; owns the shared interview tools."""
+    """基础面试角色，持有各环节共用的面试工具。"""
 
     def __init__(
         self,
@@ -117,20 +102,16 @@ class Interviewer(Agent):
             instructions = f"{instructions}\n\n{extra_instructions}"
         kwargs = {}
         if chat_ctx is not None:
-            # Only forward when given: Agent distinguishes NOT_GIVEN from None.
+            # 只在明确提供历史时传入，避免 None 与 SDK 的未提供哨兵产生不同含义。
             kwargs["chat_ctx"] = chat_ctx
         super().__init__(instructions=instructions, **kwargs)
 
     async def llm_node(self, chat_ctx, tools, model_settings):
-        # Filter before LiveKit fans text out to TTS, captions and chat history.
-        # Each generation (including after a tool call) gets isolated state. Stop
-        # spoken output at its first question so one generation cannot ask a
-        # follow-up and then continue into the next planned question.
+        # 在文本送往语音、字幕及历史前过滤推理；每次生成使用独立状态。
+        # 首个问号后停止正文，防止一次响应同时追问并提出下一题。
         reasoning = ReasoningFilter()
         question_finished = False
-        # Follow-up gating needs the session userdata; if it is unavailable
-        # (for example in unit tests that drive ``llm_node`` directly with a
-        # stubbed self), fall through to the plain question-truncation behavior.
+        # 没有会话状态时只截断问题，兼容直接调用流式节点的测试桩。
         ud = getattr(getattr(self, "session", None), "userdata", None)
         if ud is not None:
             active_question = state.current_question(ud)
@@ -153,8 +134,7 @@ class Interviewer(Agent):
                 and current is not None
                 and current.id == answered_followup_question_id
             ):
-                # The candidate has answered the follow-up, so the model must
-                # save and advance before saying anything about the next item.
+                # 追问已有回答时，必须先保存并推进才能发出下一题，避免游标与发问错位。
                 return ""
             boundary = next(
                 (index for index, char in enumerate(text) if char in {"?", "？"}),
@@ -163,9 +143,7 @@ class Interviewer(Agent):
             if boundary < 0:
                 return text
 
-            # If this question follows a candidate answer on the active planned
-            # question, it is a follow-up. Record the wait before tool calls from
-            # this same response can save or advance the interview.
+            # 原题已有候选人发言后的新问句视为追问，先设等待标记阻止同一响应内提前推进。
             if ud is not None and state.spoken_answer(ud) and state.mark_followup_pending(ud):
                 q = state.current_question(ud)
                 log.info(
@@ -186,23 +164,16 @@ class Interviewer(Agent):
                 delta = chunk.delta.model_copy(
                     update={"content": text or None}
                 )
-                # Preserve tool calls, usage and provider metadata even when
-                # this chunk's entire text was private reasoning.
+                # 正文即使被全部过滤，仍保留工具调用、用量及提供方元数据。
                 yield chunk.model_copy(update={"delta": delta})
             else:
                 yield chunk
         reasoning.finish()
 
     async def on_enter(self) -> None:
-        """Open the interview proactively: greet the candidate and ask Q1.
+        """主动问候并提出首题；中文使用预生成开场，其他语言禁用工具生成开场。
 
-        LiveKit calls this when the agent becomes the active speaker. Without it
-        the agent stays silent until the candidate speaks first (the avatar sits
-        on its idle loop). We drive the first turn with ``generate_reply``
-        (synchronous in livekit-agents 1.x — returns a SpeechHandle) using the
-        lean context already in the system prompt; subsequent turns flow through
-        the tools. Round personas override this opener with a round transition
-        (see ``handoffs.py``), so the greeting fires only for the base interviewer.
+        环节角色会覆盖此方法，只做环节过渡，不重复问候。
         """
         ud = self.session.userdata
         primary = ud.ctx.plan.language_mode.primary
@@ -213,8 +184,7 @@ class Interviewer(Agent):
         first_name = (ud.ctx.candidate.name or "there").split()[0]
         if q is None:
             return
-        # The opener is precomputed; do not make a speculative LLM request that
-        # can rewrite/cut Q1 or call progression tools before the first answer.
+        # 中文开场直接播报预生成文本，其他语言生成开场时禁用工具，避免首答前推进游标。
         if primary == "zh":
             greeting = (
                 f"{first_name}，你好！今天由我来进行{ud.ctx.job.company_name}的"
@@ -241,11 +211,10 @@ class Interviewer(Agent):
         started_at: str = "",
         ended_at: str = "",
     ) -> str:
-        """Record the candidate's answer to the current question.
+        """候选人完成当前题及追问后保存回答，必须先于 get_next_question 调用。
 
-        Call this once the candidate has finished answering the question and any
-        follow-up you asked, BEFORE get_next_question. ``answer`` is the
-        candidate's spoken answer text.
+        answer 保留为工具参数；实际保存按当前题采集的原始发言，避免模型改写回答。
+        started_at 和 ended_at 为可选时间戳，未提供时留空。
         """
         _wait_if_candidate_speaking(context)
         _wait_if_followup_pending(context)
@@ -261,12 +230,7 @@ class Interviewer(Agent):
         return f"Saved answer for question {record.question_id}."
 
     async def _refresh_instructions(self, ud: InterviewUserdata) -> None:
-        """Re-sync the system prompt with the advanced cursor (best-effort).
-
-        Without this the prompt keeps saying "Current question to ask: <Q1>" for
-        the whole interview, contradicting the tool-returned questions. Never
-        allowed to break a turn.
-        """
+        """游标推进后同步系统指令，避免旧题与工具返回的新题冲突；更新失败不打断轮次。"""
         try:
             instructions = build_instructions(ud)
             if self._extra_instructions:
@@ -277,7 +241,7 @@ class Interviewer(Agent):
 
     @function_tool
     async def get_next_question(self, context: RunContext[InterviewUserdata]) -> str:
-        """Advance after the answer and any follow-up reply, then return the next question."""
+        """当前题及追问已回答并保存后推进，返回下一题；无后续题或触限时返回收尾指令。"""
         _wait_if_candidate_speaking(context)
         _wait_if_followup_pending(context)
         ud = context.userdata
@@ -294,7 +258,7 @@ class Interviewer(Agent):
         if state.is_complete(ud):
             return _wrap_signal()
         q = state.current_question(ud)
-        assert q is not None  # not complete -> a current question exists
+        assert q is not None
         primary = ud.ctx.plan.language_mode.primary
         text = _localized(q.text, primary)
         await self._refresh_instructions(ud)
@@ -302,7 +266,7 @@ class Interviewer(Agent):
 
     @function_tool
     async def next_section(self, context: RunContext[InterviewUserdata]) -> str:
-        """Skip to the first question of the next section (or wrap if none)."""
+        """当前题完成并保存后跳过本环节余题，返回下一环节首题；无后续环节则收尾。"""
         _wait_if_candidate_speaking(context)
         _wait_if_followup_pending(context)
         ud = context.userdata
@@ -325,11 +289,9 @@ class Interviewer(Agent):
     async def get_difficulty_hint(
         self, context: RunContext[InterviewUserdata]
     ) -> str:
-        """Advisory hint on whether to go harder/easier, advance, or wrap.
+        """仅在需要节奏建议时读取本地难度提示，可建议加难、降难、推进或收尾。
 
-        OPTIONAL and non-binding: consult it only if you're unsure how to pace the
-        current section. It is computed locally from answers already given (no
-        network, no blocking) and never changes the question cursor.
+        此提示非强制，不联网、不修改游标，仅依据现有回答计算。
         """
         return state.difficulty_hint(context.userdata)
 
@@ -337,7 +299,7 @@ class Interviewer(Agent):
     async def request_clarification(
         self, context: RunContext[InterviewUserdata], reason: str = ""
     ) -> str:
-        """Note that the candidate needs the current question rephrased."""
+        """返回重述当前题的指令，保留问题原意；不修改游标或存储状态。"""
         ud = context.userdata
         q = state.current_question(ud)
         if q is None:
@@ -350,12 +312,9 @@ class Interviewer(Agent):
 
     @function_tool
     async def end_interview(self, context: RunContext[InterviewUserdata]) -> str:
-        """End the interview session AFTER saying goodbye.
+        """计划已结束、候选人和追问都已回答后，先道谢并告知报告即将生成，再调用此工具。
 
-        Call this once you have thanked the candidate and said the report is on
-        its way. It drains the current speech, then closes the session — which
-        triggers the worker's persist + score shutdown path. Without it a
-        finished interview idles until the hard duration guard trips.
+        等当前语音播完后关闭会话，触发工作进程的持久化及评分；不得提前结束未答题。
         """
         _wait_if_candidate_speaking(context)
         _wait_if_followup_pending(context)
@@ -364,13 +323,13 @@ class Interviewer(Agent):
         context.userdata.closing = True
         try:
             self.session.shutdown(drain=True)
-        except Exception:  # noqa: BLE001, S110 - closing must never raise into the turn
+        except Exception:  # noqa: BLE001, S110 - 关闭失败不能打断当前轮次
             pass
         return "Interview ended. Say nothing further."
 
     @function_tool
     async def start_coding_round(self, context: RunContext[InterviewUserdata]) -> Agent:
-        """Hand off to the coding-round persona (native LiveKit agent handoff)."""
+        """交接到编码面试角色，保留共享状态与聊天历史。"""
         from .handoffs import CodingRoundAgent
 
         return CodingRoundAgent(context.userdata, chat_ctx=self.chat_ctx)
@@ -379,7 +338,7 @@ class Interviewer(Agent):
     async def start_behavioral_round(
         self, context: RunContext[InterviewUserdata]
     ) -> Agent:
-        """Hand off to the behavioral-round persona (native LiveKit agent handoff)."""
+        """交接到行为面试角色，保留共享状态与聊天历史。"""
         from .handoffs import BehavioralAgent
 
         return BehavioralAgent(context.userdata, chat_ctx=self.chat_ctx)

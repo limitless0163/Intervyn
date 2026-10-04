@@ -1,10 +1,4 @@
-"""Tests for local-first tracing (WP-12): spans, LLM wrapper, pipeline hooks.
-
-Tracing is OFF by default in this suite (``tests/conftest.py`` sets
-``TRACE_ENABLED=0``). Each test opts back in with
-``tracing.init_tracing(enabled=True, trace_dir=tmp_path)`` and resets
-afterwards, so no test writes into the repo checkout.
-"""
+"""验证本地追踪、模型包装及流程埋点；每项测试在临时目录显式开启并重置配置。"""
 
 from __future__ import annotations
 
@@ -61,19 +55,12 @@ def test_start_trace_and_nested_spans(tracedir) -> None:
     assert events[-1]["status"] == "ok"
     span_starts = [e for e in events if e["type"] == "span_start"]
     assert [s["name"] for s in span_starts] == ["outer", "inner"]
-    # Nesting: inner's parent is outer.
     assert span_starts[1]["parent_id"] == span_starts[0]["span_id"]
     assert any(e["type"] == "event" and e["name"] == "note" for e in events)
 
 
 def test_trace_can_close_from_a_different_context(tracedir) -> None:
-    """LiveKit opens a live trace in entrypoint and closes it in shutdown.
-
-    Those callbacks run in different asyncio Contexts, where resetting the
-    entrypoint's ContextVar token raises ValueError unless tracing treats the
-    close as detached. The trace must still end cleanly because persistence and
-    scoring run immediately afterwards in the same shutdown callback.
-    """
+    """LiveKit 入口与关闭回调可能使用不同异步上下文，跨上下文关闭不能阻断回写和评分。"""
     trace = tracing.start_trace("live", session_id="sess_cross_context")
     tid = trace.__enter__()
 
@@ -105,7 +92,7 @@ def test_traced_decorator_names_span(tracedir) -> None:
 
     assert asyncio.run(work()) == "done"
     files = list(tracedir.glob("tr_*.jsonl"))
-    assert len(files) == 1  # auto-trace: decorator outside a trace still records
+    assert len(files) == 1  # 没有显式追踪时，装饰器也须自动创建追踪。
     events = [json.loads(line) for line in files[0].read_text().splitlines()]
     assert events[0]["type"] == "trace_start"
     assert events[0]["name"] == "auto"
@@ -125,7 +112,7 @@ def test_traced_llm_records_calls(tracedir) -> None:
     assert calls[0]["method"] == "complete_text"
     assert calls[1]["schema"] == "JobSpec"
     assert all(c["ok"] for c in calls)
-    # No prompt text by default (lengths only).
+    # 默认只记录长度，不能保存提示词正文。
     assert "prompt_preview" not in calls[0]
 
 
@@ -173,7 +160,6 @@ def test_score_run_emits_trace(tracedir) -> None:
     settings = Settings(llm_provider="mock", search_provider="mock")
     deps = build_deps(settings)
     session_id = asyncio.run(run_prep(_request(), deps))
-    # Give the interview an answer so scoring has something to score.
     ctx = asyncio.run(deps.repo.load_context(session_id))
     assert ctx is not None
     from app.schemas.shared_models import AnswerRecord

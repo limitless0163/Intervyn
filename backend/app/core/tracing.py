@@ -24,7 +24,7 @@ from .logging import get_logger
 
 log = get_logger(__name__)
 
-# --- configuration (overrides win over env, env wins over defaults) ----------
+# 显式配置覆盖环境变量，环境变量覆盖默认值。
 
 _overrides: dict[str, Any] = {}
 _langfuse_client: Any | None = None
@@ -48,13 +48,9 @@ def init_tracing(
     langfuse_secret_key: str | None = None,
     langfuse_host: str | None = None,
 ) -> None:
-    """Configure tracing (idempotent, never raises).
+    """更新追踪配置并尝试初始化 Langfuse；传入 None 时保留原覆盖值。
 
-    Called once at process start from ``observability.init_observability``
-    with Settings values; tests call it directly with a ``tmp_path`` dir.
-    ``None`` means "leave the current value" (env still applies underneath).
-    Also attempts the Langfuse client construction so its OTel exporter
-    captures the spans emitted alongside the JSONL events.
+    初始化失败不影响启动，显式配置优先于环境变量。
     """
     try:
         if enabled is not None:
@@ -68,12 +64,12 @@ def init_tracing(
             secret_key=langfuse_secret_key or os.environ.get("LANGFUSE_SECRET_KEY"),
             host=langfuse_host or os.environ.get("LANGFUSE_HOST"),
         )
-    except Exception as exc:  # noqa: BLE001 - tracing config must never break boot
+    except Exception as exc:  # noqa: BLE001 - 追踪配置失败不能影响启动
         log.warning("tracing init failed (%s); continuing without tracing", exc)
 
 
 def reset_tracing() -> None:
-    """Clear programmatic overrides (tests) and drop the Langfuse client."""
+    """清除显式配置和 Langfuse 客户端，供测试隔离追踪状态。"""
     global _langfuse_client, _otel_tracer
     _overrides.clear()
     _langfuse_client = None
@@ -100,12 +96,12 @@ def _include_prompts() -> bool:
 
 
 def _init_langfuse(*, public_key: str | None, secret_key: str | None, host: str | None) -> None:
-    """Best-effort Langfuse client construction (enables OTel forwarding)."""
+    """尽力初始化可选 Langfuse 客户端，使 OTel 转发可用。"""
     global _langfuse_client
     if not (public_key and secret_key):
         return
     try:
-        from langfuse import Langfuse  # lazy: optional `observability` extra
+        from langfuse import Langfuse  # 延迟加载 observability 可选扩展。
     except ImportError:
         log.debug("langfuse not installed; local JSONL tracing only")
         return
@@ -115,38 +111,38 @@ def _init_langfuse(*, public_key: str | None, secret_key: str | None, host: str 
             kwargs["host"] = host
         _langfuse_client = Langfuse(**kwargs)
         log.info("Langfuse tracing enabled (local JSONL + hosted traces)")
-    except Exception as exc:  # noqa: BLE001 - hosted tracing is strictly optional
+    except Exception as exc:  # noqa: BLE001 - 远程追踪失败不影响业务
         log.warning("Langfuse init failed (%s); local JSONL tracing only", exc)
         _langfuse_client = None
 
 
 def _otel() -> Any | None:
-    """Lazily resolve the OTel tracer (None when SDK/Langfuse absent)."""
+    """延迟获取 OTel 追踪器；缺少 SDK 或 Langfuse 时返回 None。"""
     global _otel_tracer
     if _otel_tracer is not None:
         return _otel_tracer
     if _langfuse_client is None:
         return None
     try:
-        from opentelemetry import trace as otel_trace  # part of langfuse's deps
+        from opentelemetry import trace as otel_trace  # OTel 随 Langfuse 可选依赖提供。
 
         _otel_tracer = otel_trace.get_tracer("intervyn")
         return _otel_tracer
-    except Exception:  # noqa: BLE001 - OTel is optional
+    except Exception:  # noqa: BLE001 - OTel 为可选集成
         return None
 
 
 def langfuse_trace_url(trace_id: str) -> str | None:
-    """Hosted URL for a trace, or None when Langfuse is not configured."""
+    """生成远程追踪链接；未配置 Langfuse 时返回 None。"""
     if _langfuse_client is None:
         return None
     try:
         return _langfuse_client.get_trace_url(trace_id)
-    except Exception:  # noqa: BLE001 - informational only
+    except Exception:  # noqa: BLE001 - 仅用于展示追踪链接
         return None
 
 
-# --- trace / span context -----------------------------------------------------
+# 异步任务通过 ContextVar 隔离追踪和 span 上下文。
 
 _BORING_ATTRS = {"session_id"}
 
@@ -202,19 +198,19 @@ def _trace_path(trace_id: str, *, directory: Path | None = None) -> Path:
 
 
 def _append_event(event: dict[str, Any], *, directory: Path | None = None) -> None:
-    """Append one event line; creates the dir on first write. Never raises."""
+    """按需创建目录并追加一条 JSONL 事件，写入失败不影响业务。"""
     try:
         d = directory or trace_dir()
         d.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, default=str)
         with _write_lock, open(d / f"{event['trace_id']}.jsonl", "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
-    except Exception as exc:  # noqa: BLE001 - tracing must never break a run
+    except Exception as exc:  # noqa: BLE001 - 追踪失败不能中断业务
         log.debug("tracing write failed (%s)", exc)
 
 
 def _otel_start(name: str, attrs: dict[str, Any]) -> tuple[Any | None, Any | None]:
-    """Enter an OTel span alongside the JSONL one (None when unavailable)."""
+    """同步启动 OTel span；未启用或集成失败时返回 None。"""
     tracer = _otel()
     if tracer is None:
         return None, None
@@ -224,10 +220,10 @@ def _otel_start(name: str, attrs: dict[str, Any]) -> tuple[Any | None, Any | Non
         try:
             for k, v in attrs.items():
                 span.set_attribute(k, str(v)[:500])
-        except Exception:  # noqa: BLE001, S110 - attributes are advisory
+        except Exception:  # noqa: BLE001, S110 - 附加属性写入失败可忽略
             pass
         return cm, span
-    except Exception:  # noqa: BLE001 - OTel is optional
+    except Exception:  # noqa: BLE001 - OTel 为可选集成
         return None, None
 
 
@@ -238,10 +234,10 @@ def _otel_end(cm: Any | None, span: Any | None, *, status: str, error: str | Non
         if span is not None and error:
             try:
                 span.set_attribute("error", error[:500])
-            except Exception:  # noqa: BLE001, S110 - advisory
+            except Exception:  # noqa: BLE001, S110 - 附加信息写入失败可忽略
                 pass
         cm.__exit__(None, None, None)
-    except Exception as exc:  # noqa: BLE001 - OTel is optional
+    except Exception as exc:  # noqa: BLE001 - OTel 为可选集成
         log.debug("otel span close failed (%s)", exc)
 
 
@@ -255,7 +251,7 @@ def start_trace(
         return
     outer = _current_trace.get()
     if outer is not None:
-        # Nested: attribute work to the outer trace instead of fragmenting.
+        # 嵌套调用复用外层追踪，避免把一次流程拆成多个独立追踪。
         yield outer.trace_id
         return
     trace_id = _new_trace_id()
@@ -308,8 +304,7 @@ def start_trace(
 
 @contextlib.contextmanager
 def start_span(name: str, **attrs: Any) -> Iterator[str]:
-    """Open a span in the current trace (auto-starts an ``auto`` trace when
-    none is active). Yields the span id; writes nothing when disabled."""
+    """在当前追踪内创建 span 并产出其 ID；无追踪时自动创建，禁用时不写事件。"""
     if not is_enabled():
         yield "sp_disabled"
         return
@@ -369,7 +364,7 @@ def start_span(name: str, **attrs: Any) -> Iterator[str]:
 
 
 def add_event(name: str, attrs: dict[str, Any] | None = None) -> None:
-    """Record a point-in-time event on the current span/trace (no-op offline)."""
+    """向当前追踪或 span 添加即时事件；追踪禁用或无活动上下文时跳过。"""
     if not is_enabled():
         return
     trace = _current_trace.get()
@@ -387,7 +382,7 @@ def add_event(name: str, attrs: dict[str, Any] | None = None) -> None:
                 "attrs": attrs or {},
             }
         )
-    except Exception:  # noqa: BLE001, S110 - tracing never raises
+    except Exception:  # noqa: BLE001, S110 - 追踪失败不能中断业务
         pass
 
 
@@ -403,7 +398,7 @@ def record_llm_call(
     error: str | None = None,
     prompt_preview: str = "",
 ) -> None:
-    """Record one LLM completion (lengths always; prompt text only when opted in)."""
+    """记录模型调用长度；仅显式开启时保存截断的提示词预览。"""
     if not is_enabled():
         return
     trace = _current_trace.get()
@@ -429,12 +424,12 @@ def record_llm_call(
         if prompt_preview and _include_prompts():
             event["prompt_preview"] = prompt_preview[:500]
         _append_event(event)
-    except Exception:  # noqa: BLE001, S110 - tracing never raises
+    except Exception:  # noqa: BLE001, S110 - 追踪失败不能中断业务
         pass
 
 
 def traced(name: str | None = None):
-    """Decorator for async pipeline functions: run inside a named span."""
+    """将异步流程函数包裹在指定名称的 span 内。"""
 
     def deco(fn):
         span_name = name or f"{fn.__module__}.{fn.__qualname__}"
@@ -449,7 +444,7 @@ def traced(name: str | None = None):
     return deco
 
 
-# --- LLM wrapper --------------------------------------------------------------
+# 模型适配器包装。
 
 
 class TracedLLM:
@@ -531,7 +526,7 @@ class TracedLLM:
             return result
 
 
-# --- reading traces back (CLI + API share these) ------------------------------
+# CLI 与 API 共用追踪读取逻辑。
 
 
 @dataclass
@@ -563,7 +558,7 @@ def _iter_events(trace_id: str, *, directory: Path | None = None) -> Iterator[di
 
 
 def read_trace(trace_id: str, *, directory: Path | None = None) -> dict[str, Any] | None:
-    """Full event log for one trace (spans nested for display), or None."""
+    """读取事件并组装嵌套 span；标识无效、文件缺失或无可解析事件时返回 None。"""
     if not trace_id or "/" in trace_id or trace_id.startswith("."):
         return None
     events = list(_iter_events(trace_id, directory=directory))
@@ -597,7 +592,6 @@ def read_trace(trace_id: str, *, directory: Path | None = None) -> dict[str, Any
             if sid in spans:
                 key = "llm_calls" if ev["type"] == "llm_call" else "events"
                 spans[sid][key].append(ev)
-    # Nest into a tree for the viewer.
     children: dict[str | None, list[dict[str, Any]]] = {}
     for sid in order:
         children.setdefault(spans[sid]["parent_id"], []).append(spans[sid])
@@ -609,7 +603,7 @@ def read_trace(trace_id: str, *, directory: Path | None = None) -> dict[str, Any
 
 
 def summarize_events(trace_id: str, events: list[dict[str, Any]]) -> dict[str, Any]:
-    """Aggregate one event list into a header dict (shared by list + detail)."""
+    """从事件聚合追踪摘要，供列表和详情共用。"""
     name, session_id, started_at = trace_id, None, ""
     duration_ms: float | None = None
     status = "running"
@@ -649,7 +643,7 @@ def summarize_events(trace_id: str, events: list[dict[str, Any]]) -> dict[str, A
 def list_traces(
     *, directory: Path | None = None, session_id: str | None = None, limit: int = 20
 ) -> list[dict[str, Any]]:
-    """Newest-first trace headers (bounded scan; skips malformed files)."""
+    """限量读取并按文件修改时间倒序列出摘要，跳过无效文件。"""
     d = directory or trace_dir()
     if not d.exists():
         return []
@@ -667,7 +661,7 @@ def list_traces(
         header = summarize_events(path.stem, events)
         if session_id and header["session_id"] != session_id:
             continue
-        header["langfuse_url"] = None  # list stays offline-cheap; detail resolves it
+        header["langfuse_url"] = None  # 列表只聚合本地摘要，远程链接在详情读取时再生成。
         out.append(header)
         if len(out) >= max(1, limit):
             break

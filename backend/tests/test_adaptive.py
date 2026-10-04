@@ -1,23 +1,4 @@
-"""Offline tests for the pure adaptive-difficulty logic in ``live.state``.
-
-These import ONLY ``app.services.live.state`` (never ``livekit``), so they
-pass with the optional ``livekit-agents`` extra absent. The decision logic is a
-pure function of the plan questions + cursor + answer log, so we drive it with
-lightweight ``SimpleNamespace`` fakes instead of building a full
-``InterviewContext`` (which would require many nested required models). The logic
-is deterministic — no clock, no randomness — so every assertion is reproducible.
-
-The shape the pure functions read is intentionally minimal:
-
-    ud.ctx.cursor                      -> int
-    ud.ctx.plan.questions[i].id        -> str
-    ud.ctx.plan.questions[i].section   -> str
-    ud.ctx.plan.questions[i].difficulty-> int
-    ud.ctx.answers[j].question_id      -> str
-    ud.ctx.answers[j].transcript       -> str
-
-so a ``SimpleNamespace`` graph that exposes exactly those is a faithful stand-in.
-"""
+"""通过最小状态替身验证难度启发式，不依赖 LiveKit、时钟或随机值。"""
 
 from __future__ import annotations
 
@@ -35,7 +16,7 @@ def _a(question_id: str, transcript: str) -> SimpleNamespace:
 
 
 def _ud(questions, answers, cursor) -> SimpleNamespace:
-    """A livekit-free InterviewUserdata stand-in exposing the read shape."""
+    """提供难度函数实际读取的状态字段，不依赖 LiveKit。"""
     plan = SimpleNamespace(questions=list(questions))
     ctx = SimpleNamespace(plan=plan, answers=list(answers), cursor=cursor)
     return SimpleNamespace(ctx=ctx, session_id="s_test", transcript=[])
@@ -46,7 +27,6 @@ def _words(n: int) -> str:
 
 
 def test_thin_answers_recommend_easier() -> None:
-    # One technical question answered with a very short (thin) answer -> easier.
     questions = [_q("q1", "technical", difficulty=3)]
     answers = [_a("q1", _words(3))]
     sig = state.evaluate_difficulty(_ud(questions, answers, cursor=0))
@@ -56,7 +36,6 @@ def test_thin_answers_recommend_easier() -> None:
 
 
 def test_rich_answers_recommend_harder() -> None:
-    # A long, substantive answer on a non-maxed-difficulty question -> harder.
     questions = [_q("q1", "technical", difficulty=2)]
     answers = [_a("q1", _words(120))]
     sig = state.evaluate_difficulty(_ud(questions, answers, cursor=0))
@@ -64,8 +43,7 @@ def test_rich_answers_recommend_harder() -> None:
 
 
 def test_rich_answers_at_max_difficulty_advance_not_harder() -> None:
-    # Strong answer but the question is already at the top of the 1-5 band:
-    # there's no harder rung in this section, so advance instead of harder.
+    # 题目已在最高难度时，应建议推进而非继续加难。
     questions = [_q("q1", "technical", difficulty=5)]
     answers = [_a("q1", _words(120))]
     sig = state.evaluate_difficulty(_ud(questions, answers, cursor=0))
@@ -73,23 +51,19 @@ def test_rich_answers_at_max_difficulty_advance_not_harder() -> None:
 
 
 def test_section_fully_answered_recommends_advance() -> None:
-    # Both questions in the section answered solidly (mid-length) -> advance.
     questions = [
         _q("q1", "technical", difficulty=3),
         _q("q2", "technical", difficulty=3),
         _q("q3", "coding", difficulty=3),
     ]
     answers = [_a("q1", _words(40)), _a("q2", _words(40))]
-    # Cursor sits on q2 (last unanswered-or-current of the technical section);
-    # the whole section is answered, so move on.
     sig = state.evaluate_difficulty(_ud(questions, answers, cursor=1))
     assert sig.recommendation == "advance"
     assert sig.section == "technical"
 
 
 def test_no_answers_yet_is_neutral_advance() -> None:
-    # Nothing answered in the current section yet -> no signal to go harder or
-    # easier; the default keeps the interview moving on plan (advance).
+    # 尚无回答时缺少调整依据，应保持计划。
     questions = [_q("q1", "technical", difficulty=3)]
     sig = state.evaluate_difficulty(_ud(questions, [], cursor=0))
     assert sig.recommendation == "advance"
@@ -118,7 +92,7 @@ def test_is_deterministic_across_repeated_calls() -> None:
     first = state.evaluate_difficulty(ud)
     second = state.evaluate_difficulty(ud)
     assert first == second
-    # Pure: the cursor must be untouched by the decision logic.
+    # 建议函数不得修改游标。
     assert ud.ctx.cursor == 0
 
 

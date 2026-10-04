@@ -1,1 +1,1 @@
-"""Shared stateless application utilities."""
+"""共享的无状态应用工具。"""

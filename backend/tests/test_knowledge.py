@@ -1,8 +1,4 @@
-"""Offline tests for the knowledge adapter (WP-8 agent client).
-
-These import ONLY ``core.adapters.knowledge`` — never ``live.kb_tool`` (which needs
-the livekit extra) — so the suite stays green with livekit absent.
-"""
+"""离线验证知识客户端及工厂选择；不导入 LiveKit 或连接侧车。"""
 
 from __future__ import annotations
 
@@ -22,8 +18,7 @@ from app.schemas.shared_models import Citation
 
 @pytest.fixture(autouse=True)
 def _no_local_dotenv(monkeypatch, tmp_path):
-    """Settings() reads ``.env`` cwd-relative — a dev machine's LIGHTRAG_URL
-    must not leak into the get_knowledge() default-selection tests."""
+    """隔离工作目录和环境中的侧车地址，避免默认工厂测试选中 HTTP 客户端。"""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("LIGHTRAG_URL", raising=False)
 
@@ -56,7 +51,6 @@ def test_get_knowledge_returns_mock_without_lightrag_url(monkeypatch) -> None:
     monkeypatch.delenv("LIGHTRAG_URL", raising=False)
     client = get_knowledge(Settings())
     assert isinstance(client, MockKnowledge)
-    # And it yields a (answer, citations) tuple of shared Citation instances.
     answer, citations = _run(client.search("u1", "behavioral", "en"))
     assert isinstance(answer, str)
     assert all(isinstance(c, Citation) for c in citations)
@@ -71,5 +65,5 @@ def test_get_knowledge_returns_http_with_lightrag_url(monkeypatch) -> None:
 def test_mock_knowledge_ingest_returns_deterministic_stub() -> None:
     track = _run(MockKnowledge().ingest("sess_abc", ["doc one", "doc two"]))
     assert track == "trk-sess_abc-2"
-    # Stable across calls (no uuid4/hash) so callers/tests can assert on it.
+    # 固定输入应返回稳定标识，不使用随机 UUID 或进程相关哈希。
     assert track == _run(MockKnowledge().ingest("sess_abc", ["doc one", "doc two"]))

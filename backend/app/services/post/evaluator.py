@@ -1,18 +1,6 @@
-"""Competency evaluation for the WP-7 scoring pipeline.
+"""仅评估有正文的回答；能力标识由问题固定，等级由数值推导。
 
-For every planned question we score the candidate's matching answer against the
-question's rubric, producing one :class:`CompetencyScore`. Two things are pinned
-deterministically rather than trusted to the model, because they carry the
-loop contract:
-
-* ``competency`` is forced to the question's ``target_competency`` (so the
-  scorecard's competencies map back onto the plan and, downstream, onto the
-  Prep Coach's shared entity space).
-* ``level`` is derived from the numeric ``score`` via :func:`level_for_score`,
-  so the band always agrees with the number.
-
-When several questions share one ``target_competency`` their scores are merged
-by averaging, and the merged band is re-derived from the averaged score.
+同一能力的多题分数取平均；未答题不作为零分，单题失败不丢弃其他评分。
 """
 
 from __future__ import annotations
@@ -30,18 +18,17 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-# Bound concurrent per-question LLM calls: parallel enough to fit the stage
-# timeout on long interviews, small enough to stay under provider rate limits.
+# 限制并发量，以兼顾长面试的阶段时限和提供方请求额度。
 _MAX_CONCURRENT_SCORING = 4
 
 
 def _clamp_score(value: float) -> float:
-    """Clamp a raw score into the documented 0-5 range."""
+    """将模型分数限制在 0 至 5 的约定范围。"""
     return max(0.0, min(5.0, float(value)))
 
 
 def level_for_score(score: float) -> MasteryLevel:
-    """Map a 0-5 score onto a mastery band (>=4 strong, >=3 solid, >=2 developing)."""
+    """按分数推导等级：4 起为 strong，3 起为 solid，2 起为 developing，其余为 weak。"""
     if score >= 4.0:
         return "strong"
     if score >= 3.0:
@@ -52,7 +39,7 @@ def level_for_score(score: float) -> MasteryLevel:
 
 
 def _answers_by_question(ctx: InterviewContext) -> dict[str, AnswerRecord]:
-    """Index answers by ``question_id`` (last answer wins on duplicates)."""
+    """按问题 ID 索引回答；重复 ID 使用最后一条记录。"""
     return {a.question_id: a for a in ctx.answers}
 
 
@@ -61,11 +48,7 @@ async def _score_question(
     answer: AnswerRecord,
     deps: Deps,
 ) -> CompetencyScore:
-    """Score a single answered question, forcing competency + deriving level.
-
-    Unanswered questions never reach here — ``evaluate`` skips them (a
-    competency we never probed must not read as weak; see its docstring).
-    """
+    """依据评分标准评估已作答问题，强制使用计划中的能力标识并按数值推导等级。"""
     system, user = evaluate_answer_prompts(question, answer.transcript)
     raw = await deps.llm.complete_json(system=system, user=user, schema=CompetencyScore)
 
@@ -81,7 +64,7 @@ async def _score_question(
 
 
 def _merge_by_competency(scores: list[CompetencyScore]) -> list[CompetencyScore]:
-    """De-dup competencies by averaging their scores; preserve first-seen order."""
+    """按能力合并平均分并重新推导等级，保留能力首次出现的顺序。"""
     order: list[str] = []
     buckets: dict[str, list[CompetencyScore]] = {}
     for cs in scores:
@@ -110,20 +93,9 @@ def _merge_by_competency(scores: list[CompetencyScore]) -> list[CompetencyScore]
 
 
 async def evaluate(ctx: InterviewContext, deps: Deps) -> list[CompetencyScore]:
-    """Score every planned question and return de-duplicated competency scores.
+    """有界并发评估已回答的问题，再按能力合并分数。
 
-    Each ``CompetencyScore.competency`` equals the corresponding question's
-    ``target_competency`` — the mapping the report and the Prep Coach loop rely
-    on. Questions that were never answered (no record, or an empty transcript)
-    are SKIPPED rather than scored ``0.0``: a competency we never probed must
-    not read as a weak one (that would poison ``overall_score`` and tell the
-    Prep Coach to teach something the interview simply didn't reach). The
-    fraction actually covered is reported separately as ``ScoreCard.coverage_pct``.
-
-    Per-question failures are ISOLATED: one failed/malformed LLM call drops that
-    question's score (logged) instead of wiping the whole stage — a transient
-    provider error on question 7 must not discard questions 1-6. Calls run
-    concurrently (bounded) so long interviews fit inside the stage timeout.
+    未答题跳过，覆盖率单独报告；单题失败只丢弃该题，全部调用失败则抛出阶段异常。
     """
     by_question = _answers_by_question(ctx)
     answered = [
@@ -146,8 +118,6 @@ async def evaluate(ctx: InterviewContext, deps: Deps) -> list[CompetencyScore]:
     results = await asyncio.gather(*(_score_one(q, a) for q, a in answered))
     raw_scores = [r for r in results if r is not None]
     if answered and not raw_scores:
-        # Every per-question call failed — that is a stage failure, not a
-        # legitimately empty result; raise so run_score's guard degrades instead
-        # of persisting a zero-score "complete" card for an answered interview.
+        # 所有题目调用失败属于阶段失败，不能保存成已完成的零分报告。
         raise RuntimeError("evaluator: all per-question scoring calls failed")
     return _merge_by_competency(raw_scores)

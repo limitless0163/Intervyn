@@ -1,10 +1,10 @@
-"""Prompt builders for the WP-4 Study Coach (kept separate from logic, like post/)."""
+"""学习计划、文字辅导及语音教练的提示词构造器。"""
 
 from __future__ import annotations
 
 
 def study_module_prompts(competency: str, evidence: str, level: str) -> tuple[str, str]:
-    """Prompt to design ONE study module that closes a weak-competency gap."""
+    """为单项弱能力构造学习模块提示词。"""
     system = (
         "You are an expert interview-prep coach. Given a competency the candidate "
         "was weak on and the evidence from their interview, design ONE focused, "
@@ -21,7 +21,7 @@ def study_module_prompts(competency: str, evidence: str, level: str) -> tuple[st
 
 
 def coach_chat_prompts(query: str, grounded_context: str, lang: str) -> tuple[str, str]:
-    """Prompt to TEACH an answer to a learner question, grounded where possible."""
+    """为学习问题构造教学提示词，并加入可用的检索依据。"""
     system = (
         "You are a supportive, precise interview-prep coach. Answer the candidate's "
         "question by TEACHING: give a clear, structured explanation with one concrete "
@@ -38,12 +38,9 @@ def coach_chat_prompts(query: str, grounded_context: str, lang: str) -> tuple[st
 
 
 def coach_agent_instructions(weak_areas_summary: str, lang: str) -> str:
-    """Lean system prompt for the SPOKEN Study Coach persona (live voice loop).
+    """构造紧凑的语音教练指令，仅注入弱项摘要而非整份评分卡。
 
-    Kept livekit-free here (like the other prompt builders) so the persona text
-    is unit-testable without the ``livekit`` extra; ``live/coach_agent.py`` wraps
-    it into a :class:`~livekit.agents.Agent`. The compact ``weak_areas_summary``
-    is injected verbatim so the live prompt stays lean (no full scorecard).
+    此模块不依赖 LiveKit，便于独立验证提示词。
     """
     return (
         "You are a warm, supportive interview-prep coach running a real-time "

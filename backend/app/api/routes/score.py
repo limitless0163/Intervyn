@@ -15,6 +15,7 @@ _scheduled_scores: set[str] = set()
 
 
 async def _score_in_background(req: ScoreRequest, deps) -> None:
+    """执行后台评分并始终清除进程内排队标记，使失败任务可再次提交。"""
     try:
         await run_score(req, deps)
     except Exception:

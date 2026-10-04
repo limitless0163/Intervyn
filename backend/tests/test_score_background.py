@@ -1,4 +1,4 @@
-"""Scoring is accepted before slow report work, with partial results retained."""
+"""验证评分请求先被接受，慢报告后台执行且已有分数保留。"""
 
 import asyncio
 from dataclasses import replace
@@ -36,7 +36,7 @@ def test_background_dispatch_returns_before_scoring_and_deduplicates(monkeypatch
         assert not repeated.tasks
         await tasks()
         assert calls == [sid]
-        # A stale stored status with no running task must allow a retry.
+        # 持久化 scoring 状态可能陈旧，无进程内任务时须允许重试。
         retry = BackgroundTasks()
         await score_api.start_score(ScoreRequest(session_id=sid), retry)
         assert retry.tasks

@@ -1,4 +1,4 @@
-"""Validate live-result identity before touching any stored interview data."""
+"""验证结果回写先核对会话身份，拒绝请求不得修改已有记录。"""
 
 import asyncio
 from types import SimpleNamespace
@@ -39,7 +39,6 @@ def test_live_result_rejects_mismatched_context_without_writing(monkeypatch) -> 
         assert repo._rows[sid].transcript == transcript
         assert repo.get_status(sid) == "prep"
 
-        # The worker's valid payload remains accepted.
         response = client.post(f"/api/session/{sid}/live-result", json={
             "context": original.model_dump(), "transcript": transcript,
         })

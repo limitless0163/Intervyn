@@ -32,12 +32,12 @@ class Director:
         self.rationale: str = ""
 
     def start(self) -> None:
-        """Launch the watcher as a detached background task."""
+        """启动后台观测任务，重复调用不重复启动。"""
         if self._task is None:
             self._task = asyncio.create_task(self._run())
 
     async def aclose(self) -> None:
-        """Stop the watcher (idempotent)."""
+        """取消并等待后台任务结束，可重复调用。"""
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -73,7 +73,7 @@ class Director:
                 await asyncio.sleep(self._interval)
             self.coverage = 1.0
             log.info("director: interview plan fully covered")
-        except asyncio.CancelledError:  # pragma: no cover - cancellation path
+        except asyncio.CancelledError:  # pragma: no cover - 后台任务取消路径
             raise
         except Exception:
             log.exception("director: coverage watcher error (ignored)")

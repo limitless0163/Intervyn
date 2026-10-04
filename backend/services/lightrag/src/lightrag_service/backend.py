@@ -13,11 +13,9 @@ from typing import Protocol, runtime_checkable
 
 from .models import Citation
 
-# Chunk size for the naive splitter (characters). ~500 chars ≈ a short paragraph.
+# 默认按约 500 字符切块。
 CHUNK_CHARS = 500
-# How many chunks to surface per query.
 TOP_K = 3
-# Length of the snippet excerpt returned in each citation.
 SNIPPET_CHARS = 240
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -29,10 +27,7 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _chunk_text(text: str, *, size: int = CHUNK_CHARS) -> list[str]:
-    """Split ``text`` into ~``size``-char chunks on whitespace boundaries.
-
-    Deterministic: no randomness, stable order. Empty/blank input yields no chunks.
-    """
+    """按空白优先分块，必要时硬切；结果顺序固定，空白输入不产生块。"""
     text = text.strip()
     if not text:
         return []
@@ -42,8 +37,7 @@ def _chunk_text(text: str, *, size: int = CHUNK_CHARS) -> list[str]:
     while start < n:
         end = min(start + size, n)
         if end < n:
-            # Prefer breaking on the last whitespace within the window so we don't
-            # cut words; fall back to a hard cut if there's no whitespace.
+            # 尽量在窗口内最后一个空白处切分，避免截断单词；无空白时硬切。
             window = text[start:end]
             ws = window.rfind(" ")
             if ws > size // 2:
@@ -56,7 +50,7 @@ def _chunk_text(text: str, *, size: int = CHUNK_CHARS) -> list[str]:
 
 
 class _Chunk:
-    """A stored chunk: its text plus the source it came from and a stable index."""
+    """存储文本块及其来源、稳定序号与词频。"""
 
     __slots__ = ("_tokens", "index", "source_id", "text")
 
@@ -67,10 +61,7 @@ class _Chunk:
         self._tokens = Counter(_tokenize(text))
 
     def score(self, query_tokens: list[str]) -> float:
-        """Deterministic TF relevance: sum of query-token frequencies in the chunk.
-
-        Normalised by chunk length so longer chunks don't dominate purely by size.
-        """
+        """以查询词在块中的词频之和评分，并按块的词数归一化，避免长块天然占优。"""
         if not self._tokens:
             return 0.0
         total = sum(self._tokens.values())
@@ -80,16 +71,16 @@ class _Chunk:
 
 @runtime_checkable
 class RagBackend(Protocol):
-    """Per-user retrieval backend."""
+    """按用户隔离的知识入库与检索接口。"""
 
     async def ingest(self, user_id: str, docs: list[tuple[str, str]]) -> str:
-        """Ingest ``docs`` (``(source_id, text)``) for ``user_id``; return a track_id."""
+        """将 (source_id, text) 文档列表存入指定用户分区，返回任务标识。"""
         ...
 
     async def query(
         self, user_id: str, query: str, lang: str
     ) -> tuple[str, list[Citation]]:
-        """Return ``(answer, citations)`` for ``query`` over ``user_id``'s store."""
+        """检索指定分区并返回 (answer, citations)。"""
         ...
 
 
@@ -97,7 +88,6 @@ class NaiveRAG:
     """按用户在内存中分块存储，以词频重合排序；不持久化，也不生成或翻译回答。"""
 
     def __init__(self) -> None:
-        # user_id -> list[_Chunk]
         self._stores: dict[str, list[_Chunk]] = {}
 
     async def ingest(self, user_id: str, docs: list[tuple[str, str]]) -> str:
@@ -124,7 +114,7 @@ class NaiveRAG:
         scored.sort(key=lambda pair: (-pair[0], pair[1].index))
         top = [chunk for _, chunk in scored[:TOP_K]]
 
-        # Extractive answer: lead with the best chunk, append the rest for context.
+        # 直接拼接最相关文本块作为回答，不调用生成模型。
         answer = top[0].text
         if len(top) > 1:
             answer = " ".join(chunk.text for chunk in top)
@@ -147,46 +137,44 @@ class LightRAGBackend:
         self._working_dir = working_dir or os.environ.get(
             "LIGHTRAG_WORKING_DIR", "./rag_storage"
         )
-        # user_id -> LightRAG instance (one graph per user).
+        # 预留各用户独立知识图谱实例。
         self._instances: dict[str, object] = {}
-        # Fail fast and clearly if the extra isn't installed.
+        # 选用真实后端但未安装扩展时立即报错。
         try:
             import lightrag  # noqa: F401
             import raganything  # noqa: F401
-        except ImportError as exc:  # pragma: no cover - depends on optional extra
+        except ImportError as exc:  # pragma: no cover - 依赖可选扩展
             raise RuntimeError(
                 "RAG_BACKEND=lightrag requires the 'rag' extra "
                 "(lightrag-hku, raganything, sentence-transformers). "
                 "Install it with: uv sync --extra rag"
             ) from exc
 
-    def _instance(self, user_id: str) -> object:  # pragma: no cover - needs extra
+    def _instance(self, user_id: str) -> object:  # pragma: no cover - 需要可选扩展
         """预留按用户构建独立知识图谱的入口，当前调用会抛出 NotImplementedError。"""
         raise NotImplementedError(
             "LightRAGBackend is a skeleton; wire LightRAG(working_dir=.../{user_id}) "
             "with bge-m3 embeddings here."
         )
 
-    async def ingest(  # pragma: no cover - needs extra
+    async def ingest(  # pragma: no cover - 需要可选扩展
         self, user_id: str, docs: list[tuple[str, str]]
     ) -> str:
         raise NotImplementedError(
             "LightRAGBackend.ingest: call await instance.ainsert(text) per doc."
         )
 
-    async def query(  # pragma: no cover - needs extra
+    async def query(  # pragma: no cover - 需要可选扩展
         self, user_id: str, query: str, lang: str
     ) -> tuple[str, list[Citation]]:
-        # Real impl: await instance.aquery(query, param=QueryParam(mode="hybrid")) for
-        # the answer, and instance.aquery_data(...) / the `/query/data` shape for the
-        # retrieved chunks/sources -> Citation list.
+        # 未来实现可通过 aquery 获取回答，再从 aquery_data 获取来源并构造引用。
         raise NotImplementedError(
             "LightRAGBackend.query: use aquery for the answer and query/data for citations."
         )
 
 
 def get_backend() -> RagBackend:
-    """Select the backend from ``RAG_BACKEND`` (default ``naive``)."""
+    """按 RAG_BACKEND 选择后端，默认使用内存 naive 实现。"""
     choice = os.environ.get("RAG_BACKEND", "naive").strip().lower()
     if choice in ("", "naive"):
         return NaiveRAG()

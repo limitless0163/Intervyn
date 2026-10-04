@@ -12,7 +12,7 @@ import yaml
 
 from .models import Skill, SkillFrontmatter
 
-# skilllib/ -> services/ -> app/ -> backend/
+# 根据模块位置定位 backend 根目录，避免依赖工作目录。
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SKILLS_DIR = _BACKEND_ROOT / "skills"
 
@@ -20,14 +20,14 @@ _FENCE = "---"
 
 
 def default_skills_dir() -> Path:
-    """Return the repo-root ``backend/skills/`` directory (the live library)."""
+    """返回仓库中的 backend/skills 正式技能目录。"""
     return DEFAULT_SKILLS_DIR
 
 
 def slugify(*, company: str, role: str, level: str) -> str:
-    """Canonical ``{company}-{role}-{level}`` slug used for id + filename + merge.
+    """统一公司、岗位和级别的标识，用于技能 ID、文件名及合并键。
 
-    Lowercased; runs of non-alphanumeric chars collapse to a single hyphen.
+    转为小写，连续非字母数字字符折叠为一个连字符。
     """
     raw = f"{company}-{role}-{level}".lower()
     cleaned: list[str] = []
@@ -43,7 +43,7 @@ def slugify(*, company: str, role: str, level: str) -> str:
 
 
 def _coerce_scalars(data: dict) -> dict:
-    """Coerce YAML date/datetime values to ISO strings (frontmatter is all str-safe)."""
+    """将 YAML 自动解析的日期或时间转换为 ISO 字符串。"""
     out: dict = {}
     for key, value in data.items():
         if isinstance(value, (_dt.date, _dt.datetime)):
@@ -54,10 +54,10 @@ def _coerce_scalars(data: dict) -> dict:
 
 
 def parse_skill(text: str) -> Skill:
-    """Parse a ``---\\nfrontmatter\\n---\\nbody`` string into a :class:`Skill`."""
+    """解析 YAML 元数据分隔块及 Markdown 正文，无效格式抛出 ValueError。"""
     if not text.lstrip().startswith(_FENCE):
         raise ValueError("skill file must start with a '---' frontmatter fence")
-    # Split into ['', frontmatter, body] on the first two fences.
+    # 只按前两个元数据分隔符切分，后续正文中的分隔符保留。
     stripped = text.lstrip("\n")
     parts = stripped.split(_FENCE, 2)
     if len(parts) < 3:
@@ -65,13 +65,13 @@ def parse_skill(text: str) -> Skill:
     _, raw_front, body = parts
     data = yaml.safe_load(raw_front) or {}
     if not isinstance(data, dict):
-        raise ValueError("skill frontmatter must be a YAML mapping")  # noqa: TRY004 - caller catches ValueError for skill-file errors
+        raise ValueError("skill frontmatter must be a YAML mapping")  # noqa: TRY004 - 调用方统一捕获技能文件的 ValueError
     frontmatter = SkillFrontmatter.model_validate(_coerce_scalars(data))
     return Skill(frontmatter=frontmatter, body_md=body.lstrip("\n"))
 
 
 def serialize_skill(skill: Skill) -> str:
-    """Serialize a :class:`Skill` back to the ``---\\n...\\n---\\nbody`` format."""
+    """将技能序列化为 YAML 元数据分隔块及 Markdown 正文。"""
     front = yaml.safe_dump(
         skill.frontmatter.model_dump(),
         sort_keys=False,
@@ -83,12 +83,12 @@ def serialize_skill(skill: Skill) -> str:
 
 
 def load_skill(path: str | Path) -> Skill:
-    """Load and parse a single skill file."""
+    """读取并解析单个技能文件。"""
     return parse_skill(Path(path).read_text(encoding="utf-8"))
 
 
 def save_skill(skill: Skill, path: str | Path) -> Path:
-    """Serialize and write a skill to ``path`` (creating parent dirs)."""
+    """序列化技能并写入指定路径，按需创建父目录。"""
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(serialize_skill(skill), encoding="utf-8")
@@ -96,7 +96,7 @@ def save_skill(skill: Skill, path: str | Path) -> Path:
 
 
 def _is_skill_file(path: Path) -> bool:
-    """A skill file is a ``*.md`` whose content opens with a frontmatter fence."""
+    """仅识别以 YAML 元数据分隔符开头的 Markdown 文件。"""
     if path.suffix != ".md":
         return False
     try:
@@ -108,11 +108,7 @@ def _is_skill_file(path: Path) -> bool:
 
 
 def list_skills(skills_dir: str | Path | None = None) -> list[Skill]:
-    """Load every *live* skill in ``skills_dir`` (top level only).
-
-    Skips ``README.md`` / ``SCHEMA.md`` (no frontmatter) and the ``_review/``
-    queue subdirectory. Files that fail to parse are skipped, not raised.
-    """
+    """只扫描正式库顶层，跳过说明文件和待审子目录；解析失败的技能不返回。"""
     root = Path(skills_dir) if skills_dir is not None else DEFAULT_SKILLS_DIR
     if not root.exists():
         return []
@@ -127,13 +123,13 @@ def list_skills(skills_dir: str | Path | None = None) -> list[Skill]:
     return skills
 
 
-#: Company value that marks a pack as a fallback for ANY company (issue #38).
+#: generic 技能作为任意公司的回退参考。
 GENERIC_COMPANY = "generic"
 
-#: promoted packs outrank in-review ones, which outrank drafts.
+#: 排名依次优先 promoted、in-review、draft。
 _STATUS_RANK = {"promoted": 0, "review": 1, "draft": 2}
 
-#: ``confidence`` halves every N days after ``last_verified`` (SCHEMA.md).
+#: 置信度按距 last_verified 的天数衰减，单位为半衰期天数。
 _CONFIDENCE_HALF_LIFE_DAYS = 180.0
 
 
@@ -150,16 +146,14 @@ _COMPOUND_FORMS: dict[str, tuple[str, ...]] = {
     "tpm": ("technical", "program", "manager"),
 }
 
-# Interchangeable words for the same role. "Backend Developer" and "Software
-# Engineering Intern" are ordinary JD titles that a strict token match misses
-# against `backend-engineer` / `software-engineer`.
+# 扩展岗位同义词，避免 Developer、Engineering 等常见名称错过 Engineer 技能。
 _SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"engineer", "engineering", "developer", "dev"}),
 )
 
 
 def _expand_role_tokens(tokens: set[str]) -> set[str]:
-    """Add equivalent spellings so title and slug meet in the middle."""
+    """扩展角色词的等价写法，使职位名称与技能标识可比较。"""
     expanded = set(tokens)
     for joined, parts in _COMPOUND_FORMS.items():
         if joined in tokens:
@@ -173,13 +167,7 @@ def _expand_role_tokens(tokens: set[str]) -> set[str]:
 
 
 def _role_tokens(text: str) -> set[str]:
-    """Lowercased alphanumeric tokens of a role string or slug, plus variants.
-
-    ``"Senior Backend Engineer"`` and ``"backend-engineer"`` both tokenize into
-    comparable sets, so pack slugs can match live JD titles. Real titles also
-    spell the same role differently — "Front End", "ML", "Developer" — so the
-    raw tokens are expanded with the equivalent forms above before comparison.
-    """
+    """提取小写字母数字角色词，并扩展 Front End、ML、Developer 等等价写法。"""
     tokens: set[str] = set()
     current: list[str] = []
     for ch in text.lower():

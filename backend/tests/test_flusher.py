@@ -1,10 +1,4 @@
-"""Unit tests for the off-path transcript checkpointer (durability).
-
-The flusher only touches ``userdata.transcript`` / ``userdata.ctx`` and an
-injected async ``flush``, so it is driven here with a SimpleNamespace userdata
-and a recording flush — no livekit, no network, no real sleep (``_checkpoint``
-is exercised directly).
-"""
+"""以注入的保存函数直接验证检查点增长检测和失败重试，不联网或真实等待。"""
 
 from __future__ import annotations
 
@@ -28,20 +22,16 @@ def test_checkpoint_flushes_only_when_transcript_grows() -> None:
     ud = _userdata(transcript)
     flusher = TranscriptFlusher(ud, flush, interval_sec=5.0)
 
-    # Empty transcript -> no flush.
     asyncio.run(flusher._checkpoint())
     assert calls == []
 
-    # Grows -> flush.
     transcript.append({"role": "user", "text": "hi"})
     asyncio.run(flusher._checkpoint())
     assert calls == [1]
 
-    # No growth -> no additional flush.
     asyncio.run(flusher._checkpoint())
     assert calls == [1]
 
-    # Grows again -> flush with the new length.
     transcript.append({"role": "agent", "text": "welcome"})
     asyncio.run(flusher._checkpoint())
     assert calls == [1, 2]
@@ -58,8 +48,7 @@ def test_checkpoint_swallows_flush_errors_and_retries_next_tick(caplog) -> None:
     ud = _userdata(transcript)
     flusher = TranscriptFlusher(ud, flaky, interval_sec=5.0)
 
-    # First checkpoint raises inside flush but is swallowed; because the flush
-    # failed, _last_len is NOT advanced, so the next tick retries.
+    # 保存失败不能推进水位，下次相同快照必须继续重试。
     asyncio.run(flusher._checkpoint())
     asyncio.run(flusher._checkpoint())
     assert attempts == [1, 1]
@@ -74,8 +63,8 @@ def test_start_is_noop_when_interval_non_positive() -> None:
 
     async def run() -> None:
         flusher.start()
-        assert flusher._task is None  # disabled
-        await flusher.aclose()  # idempotent no-op
+        assert flusher._task is None
+        await flusher.aclose()
 
     asyncio.run(run())
 

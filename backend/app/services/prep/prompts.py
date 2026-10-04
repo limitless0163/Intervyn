@@ -1,13 +1,6 @@
-"""Prompt builders for the prep graph nodes.
+"""构造准备图各节点的英文系统提示词及用户载荷，返回 (system, user)。
 
-English-first: every system prompt is in English, but where a node produces
-``LocalizedText`` (the question planner) it instructs the model to fill BOTH the
-``en`` entry and the candidate's primary language. The mock LLM ignores prompt
-content entirely, so these strings only matter once a real provider is wired.
-
-Each builder returns a ``(system, user)`` tuple. ``user`` payloads are compact,
-model-readable summaries of upstream state so the live agent prompt downstream
-stays small (per the project's prep/live/post split).
+问题计划要求本地化文本同时包含 en 和候选人的主语言，供后续语音流程使用。
 """
 
 from __future__ import annotations
@@ -21,8 +14,7 @@ from ...schemas.shared_models import (
     PrepRequest,
 )
 
-# Human-readable language names for the small set we support, so prompts can say
-# "also write Vietnamese" rather than leaking the raw code to the model.
+# 使用语言名称提示模型，避免仅传入难以理解的语言代码。
 _LANGUAGE_NAMES: dict[str, str] = {
     "en": "English",
     "vi": "Vietnamese",
@@ -38,15 +30,12 @@ _LANGUAGE_NAMES: dict[str, str] = {
 
 
 def language_name(code: str) -> str:
-    """Return a human-readable language name for ``code`` (defaults to the code)."""
+    """将语言代码转换为显示名称；未配置映射时保留代码。"""
     return _LANGUAGE_NAMES.get(code, code)
 
 
-# --- cv analysis -------------------------------------------------------------
-
-
 def cv_analysis_prompts(cv_text: str) -> tuple[str, str]:
-    """System/user prompts to extract a ``CandidateProfile`` from raw CV text."""
+    """构造从简历正文提取候选人资料的提示词。"""
     system = (
         "You are a meticulous technical recruiter. Read the candidate's CV/resume "
         "text and extract a structured profile. Infer seniority from years of "
@@ -58,11 +47,8 @@ def cv_analysis_prompts(cv_text: str) -> tuple[str, str]:
     return system, user
 
 
-# --- jd analysis -------------------------------------------------------------
-
-
 def jd_analysis_prompts(jd_text: str, company: str) -> tuple[str, str]:
-    """System/user prompts to extract a ``JobSpec`` from the job description."""
+    """构造从职位正文提取岗位要求的提示词。"""
     system = (
         "You are a hiring manager. Parse the job description into a structured job "
         "spec: title, seniority, must-have vs nice-to-have requirements, core "
@@ -74,11 +60,8 @@ def jd_analysis_prompts(jd_text: str, company: str) -> tuple[str, str]:
     return system, user
 
 
-# --- company research --------------------------------------------------------
-
-
 def company_research_prompts(company: str, snippets: str) -> tuple[str, str]:
-    """System/user prompts to synthesize ``CompanyIntel`` from search snippets."""
+    """构造依据搜索片段整理公司资料的提示词。"""
     system = (
         "You are an interview-prep researcher. Using ONLY the provided web search "
         "snippets, summarize what a candidate should know before interviewing: a "
@@ -92,13 +75,10 @@ def company_research_prompts(company: str, snippets: str) -> tuple[str, str]:
     return system, user
 
 
-# --- gap matching ------------------------------------------------------------
-
-
 def gap_narrative_prompts(
     candidate: CandidateProfile, job: JobSpec, gap: GapAnalysis,
 ) -> tuple[str, str]:
-    """Request prose insights only; code already owns every structured field."""
+    """只请求差距文字说明，所有结构化字段已由代码确定。"""
     system = (
         "You are an interview strategist. Compare the candidate against the job "
         "requirements and explain the most useful interview considerations in "
@@ -131,9 +111,6 @@ def gap_narrative_prompts(
     return system, user
 
 
-# --- question planner --------------------------------------------------------
-
-
 def question_planner_prompts(
     candidate: CandidateProfile,
     job: JobSpec,
@@ -141,7 +118,7 @@ def question_planner_prompts(
     gap: GapAnalysis,
     language_mode: LanguageMode,
 ) -> tuple[str, str]:
-    """System/user prompts for the keystone interview-plan generation node."""
+    """构造汇合候选人、岗位、公司及差距信息的问题规划提示词。"""
     primary = language_mode.primary
     primary_name = language_name(primary)
     also_localize = (
@@ -203,5 +180,5 @@ def question_planner_prompts(
 
 
 def _job_user_payload(req: PrepRequest) -> str:
-    """Compact JD payload used by the jd_analysis node (company + raw text)."""
+    """将公司名和职位正文组装成紧凑的模型输入。"""
     return f"TARGET COMPANY: {req.company}\n\nJOB DESCRIPTION:\n{req.jd_text}"

@@ -1,9 +1,6 @@
-"""Pydantic v2 mirror of frontend/packages/shared (the Zod source of truth).
+"""镜像 frontend/packages/shared/src 的 Zod 契约，字段及注册表必须保持一致。
 
-Every wire field is snake_case and must stay field-identical with the TypeScript
-contracts in frontend/packages/shared/src. Datetimes are plain ISO-8601 UTC strings
-(e.g. "2026-06-08T09:00:00Z"), NOT datetime objects. The MODELS registry at the
-bottom mirrors the SCHEMAS registry in frontend/packages/shared/src/registry.ts.
+时间使用 ISO-8601 UTC 字符串；共享字段采用 snake_case，不直接使用 datetime 对象。
 """
 
 from __future__ import annotations
@@ -21,7 +18,7 @@ MasteryLevel = Literal["weak", "developing", "solid", "strong"]
 
 def _validate_localized_text(v: dict[str, str]) -> dict[str, str]:
     if not isinstance(v, dict):
-        raise ValueError("LocalizedText must be an object")  # noqa: TRY004 - pydantic validators must raise ValueError
+        raise ValueError("LocalizedText must be an object")  # noqa: TRY004 - Pydantic 校验器要求抛出 ValueError
     if not v.get("en"):
         raise ValueError("LocalizedText must include a non-empty 'en' entry")
     for k in v:
@@ -33,7 +30,7 @@ def _validate_localized_text(v: dict[str, str]) -> dict[str, str]:
 LocalizedText = Annotated[dict[str, str], AfterValidator(_validate_localized_text)]
 
 
-# --- candidate ---------------------------------------------------------------
+# 候选人。
 
 
 class Project(BaseModel):
@@ -66,7 +63,7 @@ class CandidateProfile(BaseModel):
     links: list[str] = Field(default_factory=list)
 
 
-# --- job ---------------------------------------------------------------------
+# 岗位。
 
 
 class JobSpec(BaseModel):
@@ -82,7 +79,7 @@ class JobSpec(BaseModel):
     raw_text: str
 
 
-# --- company -----------------------------------------------------------------
+# 公司。
 
 
 class Citation(BaseModel):
@@ -104,7 +101,7 @@ class CompanyIntel(BaseModel):
     citations: list[Citation]
 
 
-# --- gap ---------------------------------------------------------------------
+# 能力差距。
 
 
 class GapAnalysis(BaseModel):
@@ -117,7 +114,7 @@ class GapAnalysis(BaseModel):
     summary: str
 
 
-# --- question ----------------------------------------------------------------
+# 问题计划。
 
 
 class RubricItem(BaseModel):
@@ -152,7 +149,7 @@ class QuestionPlan(BaseModel):
     language_mode: LanguageMode
 
 
-# --- answer ------------------------------------------------------------------
+# 面试回答。
 
 
 class AnswerRecord(BaseModel):
@@ -165,7 +162,7 @@ class AnswerRecord(BaseModel):
     followups_asked: list[str] = Field(default_factory=list)
 
 
-# --- score -------------------------------------------------------------------
+# 评分报告。
 
 
 class CompetencyScore(BaseModel):
@@ -203,15 +200,12 @@ class ScoreCard(BaseModel):
     next_steps: list[str]
     language_report: LanguageReport
     summary: str
-    # Fraction of planned questions actually answered (0.0-1.0). Lets consumers
-    # distinguish a low score caused by a short/aborted interview from genuinely
-    # weak answers; unanswered questions are excluded from overall_score and
-    # weak_competencies. Defaults to 1.0 for backward compatibility with
-    # scorecards persisted before this field existed.
+    # 已回答题目占计划题目的比例，用于区分面试未完成与回答能力不足。
+    # 未答题不计入总分和弱项；默认 1.0 兼容尚无此字段的历史报告。
     coverage_pct: float = 1.0
 
 
-# --- coach (WP-4 study coach) ------------------------------------------------
+# 学习教练。
 
 
 MasteryState = Literal["unseen", "learning", "shaky", "mastered"]
@@ -248,7 +242,7 @@ class CoachReply(BaseModel):
     follow_ups: list[str]
 
 
-# --- interview context -------------------------------------------------------
+# 面试上下文。
 
 
 class InterviewContext(BaseModel):
@@ -264,7 +258,7 @@ class InterviewContext(BaseModel):
     scorecard: ScoreCard | None = None
 
 
-# --- room --------------------------------------------------------------------
+# 语音房间。
 
 
 class TokenRequest(BaseModel):
@@ -286,7 +280,7 @@ class RoomMetadata(BaseModel):
     session_id: str
 
 
-# --- api ---------------------------------------------------------------------
+# API 请求与响应。
 
 
 class PrepRequest(BaseModel):
@@ -295,9 +289,7 @@ class PrepRequest(BaseModel):
     jd_text: str
     company: str
     language_mode: LanguageMode
-    # Owning user (Supabase auth uid). Optional so the offline/dev path (no auth)
-    # still validates; when present it is stamped on the `sessions` row so the
-    # report's RLS read (auth.uid() = user_id) can see the row. Mirrors api.ts.
+    # 可选 Supabase 用户 ID；持久化后用于报告页 RLS，离线路径可为空。
     user_id: str | None = None
 
 
@@ -319,8 +311,7 @@ class ScoreResponse(BaseModel):
 
 class KbIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    # Knowledge-store PARTITION key (the session_id in the OSS auth-free flow),
-    # NOT a user id. Mirrors api.ts.
+    # 知识分区键；开源免登录流程使用 session_id，并非用户身份凭据。
     store_key: str
     files: list[str]
 
@@ -332,7 +323,7 @@ class KbIngestResponse(BaseModel):
 
 class KbQueryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    # Knowledge-store partition key (the session_id in the OSS flow). Mirrors api.ts.
+    # 知识分区键；开源流程使用 session_id。
     store_key: str
     query: str
     lang: Language
@@ -344,7 +335,7 @@ class KbQueryResponse(BaseModel):
     citations: list[Citation]
 
 
-# --- registry (mirrors frontend/packages/shared/src/registry.ts SCHEMAS) --------------
+# 与 frontend/packages/shared/src/registry.ts 中的 SCHEMAS 同步。
 
 MODELS: dict[str, type[BaseModel]] = {
     "Project": Project,

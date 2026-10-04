@@ -16,6 +16,7 @@ from ..repositories.repository import SessionRepository, get_repository
 
 @dataclass
 class Deps:
+    """供业务流程注入的配置、适配器与仓库集合，便于测试替换。"""
     settings: Settings
     llm: LLMAdapter
     search: SearchAdapter

@@ -1,18 +1,6 @@
-"""Intervyn knowledge sidecar (WP-8).
+"""独立知识侧车，按 user_id 隔离资料，默认 NaiveRAG 是无模型依赖的内存检索。
 
-A standalone FastAPI service (Docker, :9621) that powers the Prep Coach. It keeps
-one RAG store per ``user_id`` and exposes ``POST /kb/ingest`` and ``POST /kb/query``.
-
-Two backends:
-
-* ``NaiveRAG`` (default) — dependency-light, in-memory, deterministic; runs and
-  tests fully offline with ZERO ML deps.
-* ``LightRAGBackend`` (``RAG_BACKEND=lightrag``) — the real LightRAG + RAG-Anything
-  + bge-m3 stack, lazily imported and gated behind the optional ``rag`` extra.
-
-This package is intentionally standalone: it does NOT import ``@intervyn/shared``
-or the agent's ``shared_models`` — the wire models are mirrored locally in
-:mod:`lightrag_service.models` (snake_case identical to the shared contracts).
+请求与响应契约在本包镜像；可选 LightRAGBackend 目前仅为集成骨架。
 """
 
 from __future__ import annotations

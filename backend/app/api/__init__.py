@@ -1,1 +1,1 @@
-"""HTTP API routers for the prep and scoring pipelines."""
+"""面试准备、评分及会话相关的 HTTP 接口。"""

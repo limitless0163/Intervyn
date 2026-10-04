@@ -1,16 +1,6 @@
-"""Adversarial score verification for the WP-7 scoring pipeline (gated, off by default).
+"""可选复核 weak/developing 分数；默认关闭，失败时保留原评分。
 
-After the evaluator produces per-competency scores, this optional second pass
-re-examines the *low/borderline* ones (weak/developing bands) with a sceptical
-reviewer prompt, catching the cases the first pass over- or under-scored. It is a
-pure refinement: the competency list stays one-to-one and order-preserving, every
-returned score is clamped to 0-5, and ``level`` is re-derived from the (possibly
-adjusted) number via :func:`level_for_score` so the band always agrees.
-
-Safety first: each LLM call is wrapped in :func:`_guarded` (copied from the coach),
-so ANY failure — timeout, malformed output, provider error — leaves that score
-*unchanged*. Enabled via ``Settings.enable_score_verifier``; deterministic offline
-with ``MockLLM`` (every mock verdict is identical), and a no-op when off.
+输出保留能力数量和顺序，修正分数限制在 0 至 5，并据此重新推导等级。
 """
 
 from __future__ import annotations
@@ -33,13 +23,12 @@ log = get_logger(__name__)
 
 __all__ = ["verify_scores"]
 
-# Only scores in these bands are worth a second, adversarial look; strong/solid
-# scores are left untouched.
+# 仅复核 weak/developing 等级，高分保持不变。
 _VERIFY_LEVELS = frozenset({"weak", "developing"})
 
 
 class _Verdict(BaseModel):
-    """LLM verdict for one adversarial score check; the rest is pinned deterministically."""
+    """模型给出单项复核结论；能力标识与等级仍由代码约束。"""
 
     model_config = ConfigDict(extra="forbid")
     justified: bool
@@ -48,12 +37,12 @@ class _Verdict(BaseModel):
 
 
 def _clamp_score(value: float) -> float:
-    """Clamp a raw score into the documented 0-5 range."""
+    """将修正分数限制在 0 至 5 的约定范围。"""
     return max(0.0, min(5.0, float(value)))
 
 
 async def _guarded(coro, *, label: str, timeout: float):
-    """Await ``coro`` with a timeout; on ANY error return ``None`` (caller falls back)."""
+    """限时等待复核；异常时返回 None，供调用方保留原分数。"""
     try:
         return await asyncio.wait_for(coro, timeout=timeout)
     except Exception:
@@ -66,20 +55,13 @@ async def verify_scores(
     comp_scores: list[CompetencyScore],
     deps: Deps,
 ) -> list[CompetencyScore]:
-    """Adversarially re-check low/borderline scores; return a refined, same-shape list.
+    """逐项复核低分，保持能力数量和顺序；高分、认可原分数或复核失败时保留原对象。
 
-    The output is one-to-one and order-preserving with ``comp_scores``. Strong and
-    solid scores pass through unchanged; for weak/developing ones the LLM is asked
-    whether the score is justified, and if not its clamped ``adjusted_score`` is
-    used. Every returned ``level`` is re-derived from the final score. Any guarded
-    failure keeps the original score object.
+    需要修正时限制新分数范围并重新推导等级。
     """
     timeout = deps.settings.score_verifier_timeout_sec
 
-    # Ground each check in what the candidate ACTUALLY said: map competency ->
-    # the transcripts of the answers to questions targeting it (capped so the
-    # excerpt stays prompt-sized). Auditing only the first pass's own evidence
-    # summary would be circular.
+    # 按目标能力收集实际回答并截断，避免仅审核首轮模型自己生成的证据。
     answers_by_qid = {a.question_id: a for a in ctx.answers}
     transcript_by_competency: dict[str, str] = {}
     for q in ctx.plan.questions:
@@ -108,7 +90,6 @@ async def verify_scores(
             timeout=timeout,
         )
         if verdict is None or verdict.justified:
-            # Failure or "score stands": keep the original untouched.
             verified.append(cs)
             continue
 

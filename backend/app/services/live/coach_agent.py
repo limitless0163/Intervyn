@@ -1,20 +1,6 @@
-"""Spoken Study Coach persona for the live voice stack (voice sub-phase of WP-4).
+"""语音学习教练角色，需安装 livekit 扩展，由 worker_coach 延迟导入。
 
-REQUIRES the optional ``livekit-agents`` extra (``uv sync --extra livekit``);
-this module imports ``livekit.agents`` at load time and must NOT be imported by
-``live/__init__.py`` (keep the offline ``import ...live.state`` path clean). It is
-imported lazily by ``worker_coach.py``.
-
-The :class:`CoachAgent` is a lean :class:`~livekit.agents.Agent` that runs a
-Socratic, spoken coaching session. The heavy planning (scorecard -> StudyPlan,
-grounded chat synthesis) stays in the OFFLINE ``coach/`` module; this persona only
-carries the live turn loop. It deliberately wires NO retrieval tool onto the turn
-path — grounded coaching is the latency-tolerant offline ``/api/coach/chat`` route's
-job, not the live loop's.
-
-The instructions string is built by the livekit-free
-:func:`app.services.coach.prompts.coach_agent_instructions`, so the persona
-text is unit-testable without the livekit extra.
+实时轮次只使用紧凑弱项摘要；知识检索及学习计划生成位于独立教练服务。
 """
 
 from __future__ import annotations
@@ -25,14 +11,9 @@ from ..coach.prompts import coach_agent_instructions
 
 
 class CoachAgent(Agent):
-    """A spoken, Socratic interview-prep coach persona.
+    """以苏格拉底式对话辅导候选人。
 
-    Args:
-        weak_areas_summary: A short, already-built summary of the candidate's
-            weak competencies / scorecard context (see
-            :func:`app.services.live.state.weak_areas_summary`). Injected
-            verbatim into the instructions so the live prompt stays lean.
-        lang: Primary language to coach in.
+    weak_areas_summary 为预先生成的弱项摘要，lang 指定辅导主语言。
     """
 
     def __init__(self, *, weak_areas_summary: str, lang: str = "en") -> None:

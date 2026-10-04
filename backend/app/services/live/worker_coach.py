@@ -1,31 +1,7 @@
-"""LiveKit Agents worker entrypoint for the spoken Study Coach (voice sub-phase).
+"""语音学习教练工作进程，需安装 livekit 扩展并配置 LiveKit 及语音提供方。
 
-REQUIRES the optional ``livekit`` extra and live keys to RUN:
-
-    uv sync --extra livekit
-    # plus LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET and an STT/TTS/LLM
-    # provider + key (Deepgram / Cartesia / OpenAI / Gemini); falls back to the
-    # most basic available component when a provider/key is missing.
-
-    python -m app.services.live.worker_coach dev   # or: start / connect
-
-This is the SPOKEN counterpart to ``worker.py``: instead of running the
-interview, it runs a post-interview coaching conversation. It imports
-``livekit.agents`` at load time, so it is NEVER imported by the offline test
-path. It REUSES ``worker.py``'s component factories and context-loading helpers
-verbatim (no duplicated provider wiring), loads the precomputed
-``InterviewContext`` (which carries the ``ScoreCard`` once scoring has run), and
-starts a lean :class:`~app.services.live.coach_agent.CoachAgent` session.
-
-The heavy planning (``run_coach_plan`` / ``run_coach_chat``) stays OFFLINE in the
-``coach/`` module and over the ``/api/coach`` routes; this worker only carries the
-spoken turn loop and wires no retrieval tool onto it — grounded coaching lives in
-the latency-tolerant ``/api/coach/chat`` route, not the live loop.
-
-This module is integration-tested MANUALLY (it needs the livekit extra + live
-keys); there is no offline unit test for the worker itself. The livekit-free
-logic it relies on (instructions + weak-areas summary) IS unit-tested in
-``tests/test_voice_coach.py``.
+运行：python -m app.services.live.worker_coach dev（生产模式为 start）。
+复用面试工作进程的组件工厂，读取既有评分卡；教练转录单独保存，实时路径不接入检索。
 """
 
 from __future__ import annotations
@@ -46,8 +22,7 @@ from .coach_agent import CoachAgent
 from .guard import SessionGuard
 from .state import InterviewUserdata, weak_areas_summary
 
-# Reuse the interview worker's provider factories + context loaders verbatim so
-# the coach worker and interview worker stay in lockstep (single source of truth).
+# 复用面试工作进程的组件与上下文加载逻辑，避免两条语音路径配置漂移。
 from .worker import (
     _load_context_via_api,
     _session_id_from_room,
@@ -65,6 +40,7 @@ log = get_logger(__name__)
 
 
 async def entrypoint(ctx: JobContext) -> None:
+    """复用会话的评分摘要启动语音教练，关闭时只写独立教练转录。"""
     settings = get_settings()
     init_observability(settings)
     deps = build_deps(settings)
@@ -80,19 +56,15 @@ async def entrypoint(ctx: JobContext) -> None:
     primary = interview_ctx.plan.language_mode.primary
     summary = weak_areas_summary(interview_ctx.scorecard)
 
-    # Carry the same per-session userdata shape as the interview worker. The
-    # coach reuses the INTERVIEW's session row, so its conversation is persisted
-    # under the separate coach_transcript column — writing to save_transcript
-    # here would overwrite the interview record with the coach chat (or, before
-    # turns were captured at all, with an empty list).
+    # 复用面试会话行，但教练发言写入独立的 coach_transcript，避免覆盖面试记录。
     userdata = InterviewUserdata(ctx=interview_ctx, session_id=session_id)
 
-    # Trace the coach session (turn events land here). Closed in shutdown.
+    # 记录教练会话追踪，关闭时结束。
     _coach_trace = start_trace("coach", session_id=session_id, metadata={"language": primary})
     _coach_trace.__enter__()
     add_event("coach.start", {})
 
-    # Shared with build_stt: the local Whisper path segments the mic with it.
+    # 本地 Whisper 转写与会话共用 VAD。
     vad = build_vad()
     conn_options = build_conn_options(settings)
     session: AgentSession[InterviewUserdata] = AgentSession(
@@ -101,20 +73,15 @@ async def entrypoint(ctx: JobContext) -> None:
         llm=build_llm(settings),
         tts=build_tts(settings, primary),
         vad=vad,
-        # Leave room for thinking pauses, as in the interview worker.
         turn_handling=build_turn_handling(primary, settings=settings),
-        # Local providers need a longer per-request ceiling; None = SDK default.
+        # 本地提供方使用更长调用时限，None 表示保留 SDK 默认值。
         **({"conn_options": conn_options} if conn_options else {}),
     )
 
-    # Capture the real coach conversation (CoachAgent has no tools, so nothing
-    # else ever fills the transcript log). tag_questions=False: the coach chat
-    # is not answering the interview plan, so turns must not carry its
-    # (possibly mid-plan) question ids.
+    # 监听真实教练发言；不标注面试题号，因为教练对话不属于面试答题。
     wire_transcript_capture(session, userdata, tag_questions=False)
 
-    # Same hard cost/duration backstop as the interview (Golden Rule #5): a
-    # coaching chat is also a metered voice session and must never run unbounded.
+    # 教练对话也使用时长及轮数限制，避免计费语音会话无限运行。
     guard = SessionGuard(
         session,
         userdata,
@@ -152,8 +119,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 def main() -> None:
-    # livekit-agents reads LIVEKIT_URL/API_KEY/API_SECRET from os.environ; we keep
-    # them in Settings (.env), so pass them through explicitly to WorkerOptions.
+    # SDK 从环境读取凭据，此处显式传入 Settings 值，使 .env 配置也能生效。
     settings = get_settings()
     init_observability(settings)
     cli.run_app(

@@ -1,14 +1,6 @@
-"""Offline tests for the session repositories.
+"""直接验证内存仓库，并用 PostgREST 风格的记录客户端离线验证 Supabase 仓库。
 
-``MemoryRepository`` is exercised directly. ``SupabaseRepository`` — the
-PRODUCTION persistence of the live-result write-back, scorecard save, status
-transitions, and the session-view read — is exercised through an injected fake
-recording client: ``_table()`` only imports the optional ``supabase`` SDK when
-``self._client is None``, so setting ``repo._client`` to a postgrest-shaped
-fake runs every real repository method offline (conftest blanks the creds, so
-nothing else in the suite ever constructs this class). The fake JSON-encodes
-every write payload exactly where the real SDK would, pinning that python-mode
-``model_dump()`` payloads stay JSON-safe on the hosted path too.
+替身在写入边界执行 JSON 编码，提前暴露不可序列化字段；不加载真实 SDK 或连接数据库。
 """
 
 from __future__ import annotations
@@ -31,7 +23,7 @@ from app.schemas.shared_models import (
     ScoreCard,
 )
 
-# backend/tests/ -> repo root -> the migrations that define public.sessions.
+# 从测试文件位置定位仓库迁移目录，不依赖运行工作目录。
 _MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "infra" / "supabase" / "migrations"
 
 
@@ -64,25 +56,20 @@ def test_create_save_load_round_trip() -> None:
 
 
 def test_create_session_stamps_user_id() -> None:
-    """Regression (report RLS bug, PR #5): the owning user must land on the row.
-
-    Dropping the ``user_id=req.user_id`` stamp would silently pass the rest of
-    the suite while breaking the hosted layer's RLS ownership read
-    (``auth.uid() = user_id`` in infra/supabase/migrations/0001_init.sql).
-    """
+    """所属用户必须写入会话行，否则报告页的用户所有权 RLS 无法读取该会话。"""
     repo = MemoryRepository()
     owner = "11111111-2222-3333-4444-555555555555"
     req = _prep_request().model_copy(update={"user_id": owner})
     session_id = _run(repo.create_session(req))
     assert repo._rows[session_id].user_id == owner
 
-    # The offline/no-auth path stays ownerless (None), never an empty string.
+    # 免登录会话的所属用户为空值，不能以空字符串替代。
     anon_id = _run(repo.create_session(_prep_request()))
     assert repo._rows[anon_id].user_id is None
 
 
 def test_save_coach_transcript_does_not_touch_interview_transcript() -> None:
-    """The spoken coach's log persists separately from the interview record."""
+    """教练转录与面试转录必须分别保存。"""
     repo = MemoryRepository()
     session_id = _run(repo.create_session(_prep_request()))
     interview = [{"role": "user", "text": "my interview answer"}]
@@ -99,7 +86,6 @@ def test_update_status_and_missing_load() -> None:
     session_id = _run(repo.create_session(_prep_request()))
     _run(repo.update_status(session_id, "ready"))
     assert repo.get_status(session_id) == "ready"
-    # A session with no saved context returns None.
     assert _run(repo.load_context("sess_does_not_exist")) is None
 
 
@@ -122,7 +108,7 @@ def test_append_answer_and_save_scorecard() -> None:
     _run(repo.save_transcript(session_id, [{"role": "agent", "text": "hi"}]))
 
 
-# --- SupabaseRepository via an injected fake recording client -----------------
+# 通过记录客户端离线验证 Supabase 仓库。
 
 
 class _FakeSupabaseResponse:
@@ -131,13 +117,9 @@ class _FakeSupabaseResponse:
 
 
 class _FakeSessionsTable:
-    """One postgrest-style chained call (insert/update/select … execute).
+    """在共享内存行上模拟 PostgREST 链式调用并记录操作。
 
-    Executes against a shared in-memory row store and appends
-    ``(op, payload_or_columns, session_id)`` to the shared log. Every WRITE
-    payload is ``json.dumps``-encoded first — the boundary where the real SDK
-    serializes — so a non-JSON type (datetime/enum) added to a model breaks
-    these tests instead of only the hosted deployment.
+    写入时先执行 JSON 编码，复现 SDK 的序列化边界。
     """
 
     def __init__(self, store: dict[str, dict], log: list[tuple]) -> None:
@@ -170,7 +152,7 @@ class _FakeSessionsTable:
 
     def execute(self) -> _FakeSupabaseResponse:
         if self._op == "insert":
-            json.dumps(self._payload)  # the SDK JSON-encodes; non-JSON fails HERE
+            json.dumps(self._payload)  # 在 SDK 序列化边界暴露不可编码载荷。
             self._log.append(("insert", self._payload, self._payload["id"]))
             self._store[self._payload["id"]] = dict(self._payload)
             return _FakeSupabaseResponse([self._payload])
@@ -203,14 +185,12 @@ class _FakeSupabaseClient:
 def _supabase_repo() -> tuple[SupabaseRepository, _FakeSupabaseClient]:
     repo = SupabaseRepository("https://example.supabase.co", "service-role-key")
     fake = _FakeSupabaseClient()
-    repo._client = fake  # _table() only imports the SDK when _client is None
+    repo._client = fake  # 注入客户端后不触发 _table 内的可选 SDK 导入。
     return repo, fake
 
 
 def test_supabase_create_and_context_round_trip_payloads_are_json_safe() -> None:
-    """create_session/save_context write python-mode ``model_dump()`` payloads:
-    they must stay JSON-encodable AND round-trip through ``load_context`` —
-    the exact read the scoring pipeline performs on the hosted path."""
+    """写入上下文须可 JSON 编码，并能通过后续读取恢复相同模型。"""
     repo, fake = _supabase_repo()
     session_id = _run(repo.create_session(_prep_request()))
     assert session_id.startswith("sess_")
@@ -219,18 +199,17 @@ def test_supabase_create_and_context_round_trip_payloads_are_json_safe() -> None
 
     ctx = build_mock(InterviewContext)
     assert isinstance(ctx, InterviewContext)
-    _run(repo.save_context(session_id, ctx))  # raises in execute() if non-JSON
+    _run(repo.save_context(session_id, ctx))
 
     loaded = _run(repo.load_context(session_id))
     assert loaded is not None
     assert loaded.model_dump() == ctx.model_dump()
-    # Unknown ids read as None, never raise (the worker treats this as "not ready").
+    # 未知会话读取返回 None，供工作进程判断上下文尚不可用。
     assert _run(repo.load_context("sess_missing")) is None
 
 
 def test_supabase_create_session_stamps_user_id_column() -> None:
-    """The RLS ownership column (report bug, PR #5) must land on the INSERT
-    payload on the Supabase path too — auth.uid() = user_id reads depend on it."""
+    """Supabase 插入载荷也须写入所属用户，供报告页 RLS 校验。"""
     repo, fake = _supabase_repo()
     owner = "11111111-2222-3333-4444-555555555555"
     sid = _run(repo.create_session(_prep_request().model_copy(update={"user_id": owner})))
@@ -240,8 +219,7 @@ def test_supabase_create_session_stamps_user_id_column() -> None:
 
 
 def test_supabase_update_status_writes_each_live_terminal_status() -> None:
-    """The live path's status transitions (no_answers / error / complete) must
-    each become a ``{"status": ...}`` update against the row."""
+    """实时流程的各终态都须按原值写入状态列。"""
     repo, fake = _supabase_repo()
     sid = _run(repo.create_session(_prep_request()))
     for status in ("no_answers", "error", "complete"):
@@ -251,21 +229,17 @@ def test_supabase_update_status_writes_each_live_terminal_status() -> None:
 
 
 def test_supabase_save_scorecard_payload_is_json_encodable() -> None:
-    """save_scorecard ships ``sc.model_dump()`` (python mode) to the SDK: it
-    must JSON-encode and land in the ``scorecard`` column unchanged."""
+    """评分卡载荷必须可 JSON 编码并原样存入 scorecard 列。"""
     repo, fake = _supabase_repo()
     sid = _run(repo.create_session(_prep_request()))
     sc = build_mock(ScoreCard)
     assert isinstance(sc, ScoreCard)
-    _run(repo.save_scorecard(sid, sc))  # raises in execute() if non-JSON
+    _run(repo.save_scorecard(sid, sc))
     assert fake.rows[sid]["scorecard"] == sc.model_dump()
 
 
 def test_supabase_append_answer_read_modify_writes_the_context_blob() -> None:
-    """Supabase ``append_answer`` mutates the canonical context blob (the
-    Memory/Supabase asymmetry test_score.py's docstring warns about): the
-    appended answer must be visible to a later ``load_context``. With no
-    context saved yet it is a silent no-op (no update issued)."""
+    """追加答案须同步权威上下文，供后续评分读取；尚无上下文时不写入。"""
     repo, fake = _supabase_repo()
     sid = _run(repo.create_session(_prep_request()))
     ctx = build_mock(InterviewContext)
@@ -286,7 +260,7 @@ def test_supabase_append_answer_read_modify_writes_the_context_blob() -> None:
     assert len(loaded.answers) == base_answers + 1
     assert loaded.answers[-1].model_dump() == answer.model_dump()
 
-    # No context yet -> append must not write anything.
+    # 无上下文时追加答案不能发出更新。
     sid2 = _run(repo.create_session(_prep_request()))
     updates_before = len([op for op, *_ in fake.log if op == "update"])
     _run(repo.append_answer(sid2, answer))
@@ -294,10 +268,7 @@ def test_supabase_append_answer_read_modify_writes_the_context_blob() -> None:
 
 
 def test_supabase_get_session_view_selects_migration_columns_and_maps_row() -> None:
-    """``get_session_view`` must select exactly the columns the migrations
-    create and map them onto SessionView (status/progress/prep_warnings/
-    context/scorecard) — a renamed or dropped column fails here, not only in
-    the hosted deployment."""
+    """会话读取列须与迁移一致，并映射到状态、进度、警告、上下文及评分卡。"""
     repo, fake = _supabase_repo()
     sid = _run(repo.create_session(_prep_request()))
     ctx = build_mock(InterviewContext)
@@ -305,7 +276,7 @@ def test_supabase_get_session_view_selects_migration_columns_and_maps_row() -> N
     _run(repo.save_context(sid, ctx))
     _run(repo.save_scorecard(sid, sc))
     _run(repo.mark_progress(sid, "cv_analysis"))
-    _run(repo.mark_progress(sid, "cv_analysis"))  # idempotent: no duplicate
+    _run(repo.mark_progress(sid, "cv_analysis"))
     _run(repo.add_warnings(sid, ["JD text is very short."]))
     _run(repo.update_status(sid, "complete"))
 
@@ -319,7 +290,7 @@ def test_supabase_get_session_view_selects_migration_columns_and_maps_row() -> N
     assert view.scorecard is not None
     assert view.scorecard.model_dump() == sc.model_dump()
 
-    # Pin the select column list against what the migrations actually create.
+    # 用实际迁移定义约束读取列名，避免部署后才发现缺列。
     select_cols = [cols for op, cols, row_id in fake.log if op == "select" and row_id == sid][-1]
     assert select_cols == "id,status,progress,prep_warnings,context,scorecard"
     migration_files = sorted(_MIGRATIONS_DIR.glob("*.sql"))
@@ -328,7 +299,7 @@ def test_supabase_get_session_view_selects_migration_columns_and_maps_row() -> N
     for col in select_cols.split(","):
         assert col in migrations_sql, f"selected column {col!r} not defined by any migration"
 
-    # Unknown ids map to None (the API turns this into a 404, not a 500).
+    # 未知会话由 API 转为 404，不能导致模型校验错误。
     assert _run(repo.get_session_view("sess_missing")) is None
 
 
@@ -337,7 +308,7 @@ def test_supabase_concurrent_mutations_preserve_all_updates(monkeypatch) -> None
 
     async def yielding_exec(build):
         response = build()
-        # Freeze the read snapshot, then force an interleaving before its write.
+        # 固定读取快照并强制交错写入，验证并行读改写不会丢失更新。
         response.data = json.loads(json.dumps(response.data))
         await asyncio.sleep(0)
         return response

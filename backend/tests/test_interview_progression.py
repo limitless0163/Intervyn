@@ -1,4 +1,4 @@
-"""Live tool regressions: a question needs a real answer before advancing."""
+"""验证实时工具只在实际回答已保存后推进问题。"""
 
 import asyncio
 from types import SimpleNamespace

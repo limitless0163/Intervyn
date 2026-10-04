@@ -1,4 +1,4 @@
-"""Gap failures must leave grounded probes and a visible, useful warning."""
+"""验证模型说明失败时仍保留可追问的确定性差距及用户警告。"""
 
 import asyncio
 
@@ -91,7 +91,7 @@ def test_model_prose_never_controls_gap_fields(monkeypatch):
     candidate, job = sources()
     deps = build_deps()
     calls = []
-    # Even text that looks like malformed structured output is only a string.
+    # 即使正文类似无效结构化输出，也只能作为字符串追加。
     narrative = '{"missing_skills": [[[["invented"]]]], "summary": '
 
     class ProseLLM:
