@@ -18,9 +18,9 @@ from app.schemas.shared_models import (
     ScoreCard,
     ScoreRequest,
 )
-from app.services.post import run_score, verify_scores
 from app.services.post.evaluator import evaluate, level_for_score
-from app.services.prep import run_prep
+from app.services.post.pipeline import run_score, verify_scores
+from app.services.prep.pipeline import run_prep
 
 
 def _request() -> PrepRequest:

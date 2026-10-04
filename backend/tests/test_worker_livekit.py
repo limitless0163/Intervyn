@@ -27,7 +27,7 @@ from app.schemas.shared_models import (
 )
 from app.services.live import state, worker
 from app.services.live.state import InterviewUserdata
-from app.services.prep import run_prep
+from app.services.prep.pipeline import run_prep
 
 
 def _build_context() -> InterviewContext:
@@ -494,6 +494,25 @@ def test_shutdown_falls_back_to_repo_when_api_post_fails(
     assert drive.http.urls()[-1].endswith("/api/score/start")
 
 
+def test_shutdown_conflict_does_not_bypass_api_guard_with_repository_fallback(monkeypatch):
+    drive = _drive_entrypoint(monkeypatch)
+    state.add_turn(drive.userdata, "user", _SPOKEN)
+    client_type = drive.http.client_cls()
+    original_post = client_type.post
+
+    async def post(self, url, **kwargs):
+        response = await original_post(self, url, **kwargs)
+        if url.endswith("/live-result"):
+            response.status_code = 409
+        return response
+
+    monkeypatch.setattr(client_type, "post", post)
+    monkeypatch.setattr(httpx, "AsyncClient", client_type)
+    asyncio.run(drive.shutdown())
+    assert drive.repo.calls == []
+    assert not any(url.endswith("/api/score/start") for url in drive.http.urls())
+
+
 def test_shutdown_repo_save_context_failure_marks_error_and_skips_scoring(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -506,6 +525,81 @@ def test_shutdown_repo_save_context_failure_marks_error_and_skips_scoring(
     assert ("update_status:error", drive.session_id) in drive.repo.calls
     assert build_deps().repo.get_status(drive.session_id) == "error"
     assert not any(u.endswith("/api/score/start") for u in drive.http.urls())
+
+
+def test_worker_load_includes_scorecard_from_session_view(monkeypatch):
+    from app.core.adapters.mock import build_mock
+    from app.schemas.shared_models import ScoreCard
+
+    context = _build_context()
+    card = build_mock(ScoreCard)
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url):
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "context": context.model_dump(), "scorecard": card.model_dump(),
+            })
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    loaded = asyncio.run(worker._load_context_via_api(context.session_id, build_deps().settings))
+    assert loaded.scorecard == card
+
+
+def test_coach_shutdown_persists_via_api_even_if_trace_close_fails(monkeypatch):
+    from app.services.live import worker_coach
+
+    context = _build_context()
+    deps = build_deps()
+    sessions = []
+    recorder = _RecordingHttpx()
+
+    async def load(sid, settings):
+        return context
+
+    class Session(FakeAgentSession):
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.userdata = kwargs["userdata"]
+            sessions.append(self)
+
+        async def start(self, **kwargs):
+            pass
+
+    class Trace:
+        def __enter__(self):
+            pass
+
+        def __exit__(self, *args):
+            raise ValueError("different context")
+
+    monkeypatch.setattr(worker_coach, "_load_context_via_api", load)
+    monkeypatch.setattr(worker_coach, "_require_live_providers", lambda settings: None)
+    monkeypatch.setattr(worker_coach, "build_deps", lambda settings: deps)
+    monkeypatch.setattr(worker_coach, "AgentSession", Session)
+    monkeypatch.setattr(worker_coach, "CoachAgent", lambda **kwargs: None)
+    monkeypatch.setattr(worker_coach, "SessionGuard", _FakeLifecycle)
+    monkeypatch.setattr(worker_coach, "start_trace", lambda *args, **kwargs: Trace())
+    for factory in ("build_stt", "build_llm", "build_tts", "build_vad", "build_room_options"):
+        monkeypatch.setattr(worker_coach, factory, lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker_coach, "build_turn_handling", lambda *args, **kwargs: {})
+    monkeypatch.setattr(httpx, "AsyncClient", recorder.client_cls())
+    job = _FakeJobContext(_FakeRoom(context.session_id))
+    asyncio.run(worker_coach.entrypoint(job))
+    sessions[0].userdata.transcript.append({"role": "user", "text": "coach turn"})
+    asyncio.run(job.shutdown_callbacks[0]())
+    assert recorder.posts == [(
+        f"{worker._api_base(deps.settings)}/api/session/{context.session_id}/coach-transcript",
+        {"transcript": [{"role": "user", "text": "coach turn"}]},
+    )]
 
 
 # 仅构造本地组件，不连接服务；验证音频分支、语言参数及本地配置优先级。
@@ -726,8 +820,32 @@ def test_worker_agent_name_default_matches_web_token() -> None:
     assert Settings().livekit_agent_name == "intervyn-interviewer"
 
 
+@pytest.fixture
+def retry_clock(monkeypatch):
+    """仅推进该测试事件循环的时钟，保留真正的协程调度。"""
+    elapsed = 0.0
+    delays = []
+    real_sleep = asyncio.sleep
+
+    async def sleep(delay):
+        nonlocal elapsed
+        delays.append(delay)
+        elapsed += delay
+        await real_sleep(0)
+
+    async def run(coro):
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        monkeypatch.setattr(loop, "time", lambda: start + elapsed)
+        monkeypatch.setattr(asyncio, "sleep", sleep)
+        return await coro
+
+    return run, delays
+
+
 def test_load_context_with_retry_waits_for_prep(
     monkeypatch: pytest.MonkeyPatch,
+    retry_clock,
 ) -> None:
     """准备期间加入房间时须持续等待上下文，不因首次未就绪就退出。"""
     ctx = _build_context()
@@ -738,19 +856,28 @@ def test_load_context_with_retry_waits_for_prep(
         return None if calls["n"] < 3 else ctx
 
     monkeypatch.setattr(worker, "_load_context_via_api", _flaky)
-    got = asyncio.run(
+    run, delays = retry_clock
+    got = asyncio.run(run(
         worker._load_context_with_retry("sess_x", SimpleNamespace(), timeout_sec=30.0)
-    )
+    ))
     assert got is ctx
     assert calls["n"] == 3
+    assert delays == [2.0, 2.0]
 
 
-def test_load_context_with_retry_gives_up(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_context_with_retry_gives_up(monkeypatch: pytest.MonkeyPatch, retry_clock) -> None:
+    calls = 0
+
     async def _never(sid: str, settings: Any) -> Any:
+        nonlocal calls
+        calls += 1
         return None
 
     monkeypatch.setattr(worker, "_load_context_via_api", _never)
-    got = asyncio.run(
-        worker._load_context_with_retry("sess_x", SimpleNamespace(), timeout_sec=0.1)
-    )
+    run, delays = retry_clock
+    got = asyncio.run(run(
+        worker._load_context_with_retry("sess_x", SimpleNamespace(), timeout_sec=4.0)
+    ))
     assert got is None
+    assert calls == 3
+    assert delays == [2.0, 2.0]

@@ -56,6 +56,19 @@ def test_checkpoint_swallows_flush_errors_and_retries_next_tick(caplog) -> None:
     assert "api down" in caplog.text
 
 
+def test_checkpoint_isolated_from_turn_mutations_during_network_wait():
+    turns = [{"role": "user", "text": "snapshot"}]
+    captured = []
+
+    async def flush(ctx, transcript):
+        turns[0]["text"] = "changed while saving"
+        captured.extend(transcript)
+
+    flusher = TranscriptFlusher(_userdata(turns), flush)
+    asyncio.run(flusher._checkpoint())
+    assert captured[0]["text"] == "snapshot"
+
+
 def test_start_is_noop_when_interval_non_positive() -> None:
     async def flush(ctx, transcript: list[dict]) -> None: ...
 

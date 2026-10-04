@@ -6,7 +6,7 @@ import asyncio
 
 from app.dependencies.container import build_deps
 from app.schemas.shared_models import InterviewContext, LanguageMode, PrepRequest
-from app.services.prep import run_prep
+from app.services.prep.pipeline import run_prep
 
 
 def _request(primary: str = "en", mixed: bool = False) -> PrepRequest:

@@ -72,7 +72,7 @@ def test_slow_model_answer_does_not_discard_narrative_or_other_answers():
         deps, llm=SimpleNamespace(complete_text=text, complete_json=json_reply),
         settings=deps.settings.model_copy(update={"score_stage_timeout_sec": 0.05}),
     )
-    from app.services.post import coach
+    from app.services.post.language_coach import coach
 
     language_report = asyncio.run(coach(ctx, deps))
     card = asyncio.run(generate_report(ctx, [], language_report, fast_deps))

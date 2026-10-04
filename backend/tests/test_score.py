@@ -16,8 +16,8 @@ from app.schemas.shared_models import (
     ScoreCard,
     ScoreRequest,
 )
-from app.services.post import run_score
-from app.services.prep import run_prep
+from app.services.post.pipeline import run_score
+from app.services.prep.pipeline import run_prep
 
 
 def _request(primary: str = "en", mixed: bool = False) -> PrepRequest:
@@ -102,7 +102,7 @@ def test_run_score_produces_valid_scorecard() -> None:
 
 
 def test_concurrent_scoring_evaluates_once_and_reuses_saved_card(monkeypatch) -> None:
-    from app.services import post
+    from app.services.post import pipeline as post
 
     deps = build_deps()
     sid, _ = _prepare_session(deps)
@@ -241,7 +241,7 @@ def test_run_score_errors_when_evaluate_stage_fails(monkeypatch) -> None:
     deps = build_deps()
     session_id, _ctx = _prepare_session(deps)
 
-    from app.services import post
+    from app.services.post import pipeline as post
 
     async def _boom(*args, **kwargs):
         raise RuntimeError("provider exploded")
@@ -262,7 +262,7 @@ def test_run_score_degrades_when_a_late_stage_fails(monkeypatch) -> None:
     deps = build_deps()
     session_id, _ctx = _prepare_session(deps)
 
-    from app.services import post
+    from app.services.post import pipeline as post
 
     async def _boom(*args, **kwargs):
         raise RuntimeError("provider exploded")

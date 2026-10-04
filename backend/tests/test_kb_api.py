@@ -1,5 +1,7 @@
 """未配置侧车时离线验证入库任务标识及模拟知识回答。"""
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -51,3 +53,15 @@ def test_kb_query_returns_grounded_answer() -> None:
     assert body["answer"]
     # 此知识 API 默认返回模拟引用，区别于教练聊天的无检索引用策略。
     assert len(body["citations"]) >= 1
+
+
+def test_failed_ingestion_does_not_return_a_fake_success_track_id(monkeypatch):
+    from app.api.routes import kb
+
+    async def ingest(*args):
+        raise RuntimeError("sidecar offline")
+
+    monkeypatch.setattr(kb, "build_deps", lambda: SimpleNamespace(knowledge=SimpleNamespace(ingest=ingest)))
+    response = _client().post("/api/kb/ingest", json={"store_key": "u", "files": ["notes"]})
+    assert response.status_code == 503
+    assert "track_id" not in response.json()

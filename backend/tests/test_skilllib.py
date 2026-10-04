@@ -13,20 +13,19 @@ import pytest
 
 from app.dependencies.container import build_deps
 from app.schemas.shared_models import AnswerRecord, LanguageMode, PrepRequest
-from app.services.prep import run_prep
-from app.services.skilllib import (
+from app.services.prep.pipeline import run_prep
+from app.services.skilllib.distiller import REVIEW_SUBDIR, propose_skill
+from app.services.skilllib.models import Skill, SkillFrontmatter
+from app.services.skilllib.promote import promote
+from app.services.skilllib.scrub import scrub_pii
+from app.services.skilllib.store import (
+    DEFAULT_SKILLS_DIR,
     effective_confidence,
     find_relevant,
     load_skill,
-    promote,
-    propose_skill,
     save_skill,
-    scrub_pii,
     slugify,
 )
-from app.services.skilllib.distiller import REVIEW_SUBDIR
-from app.services.skilllib.models import Skill, SkillFrontmatter
-from app.services.skilllib.store import DEFAULT_SKILLS_DIR
 
 _CANDIDATE_NAME = "Jane Q. Doe"
 _CANDIDATE_EMAIL = "jane.doe@personalmail.example"
@@ -336,6 +335,18 @@ def test_promote_creates_new_skill_with_promoted_status(tmp_path: Path) -> None:
     )
     # 正式发布前再次清理正文个人信息。
     assert "Jane" not in promoted.body_md
+
+
+def test_distillation_reads_scorecard_saved_separately_from_context(tmp_path):
+    from app.core.adapters.mock import build_mock
+    from app.schemas.shared_models import ScoreCard
+
+    deps = build_deps()
+    sid = _prepared_session_with_pii(deps)
+    card = build_mock(ScoreCard).model_copy(update={"strengths": ["Preserved evaluated strength"]})
+    asyncio.run(deps.repo.save_scorecard(sid, card))
+    draft = asyncio.run(propose_skill(sid, deps, skills_dir=tmp_path))
+    assert "Preserved evaluated strength" in draft.body_md
 
 
 def test_promote_merges_and_bumps_version_when_skill_exists(tmp_path: Path) -> None:

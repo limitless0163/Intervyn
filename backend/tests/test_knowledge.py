@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import pytest
+from pydantic import ValidationError
 
 from app.core.adapters.knowledge import (
     HttpKnowledge,
@@ -67,3 +69,11 @@ def test_mock_knowledge_ingest_returns_deterministic_stub() -> None:
     assert track == "trk-sess_abc-2"
     # 固定输入应返回稳定标识，不使用随机 UUID 或进程相关哈希。
     assert track == _run(MockKnowledge().ingest("sess_abc", ["doc one", "doc two"]))
+
+
+def test_http_ingest_validates_upstream_contract_instead_of_inventing_ack(monkeypatch):
+    client_type = httpx.AsyncClient
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"unexpected": "value"}))
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client_type(transport=transport, **kwargs))
+    with pytest.raises(ValidationError):
+        _run(HttpKnowledge("http://sidecar").ingest("u", ["notes"]))

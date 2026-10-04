@@ -66,6 +66,7 @@ build-backend = "hatchling.build"
 packages = ["app"]
 
 [tool.pytest.ini_options]
+addopts = "--import-mode=importlib --ignore=tests/lightrag"
 testpaths = ["tests"]
 pythonpath = [".", "services/lightrag/src"]
 

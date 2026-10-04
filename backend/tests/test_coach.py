@@ -13,7 +13,7 @@ from app.schemas.shared_models import (
     ScoreCard,
     StudyPlan,
 )
-from app.services.coach import run_coach_chat, run_coach_plan
+from app.services.coach.pipeline import run_coach_chat, run_coach_plan
 
 
 def _scorecard(weak: list[str]) -> ScoreCard:

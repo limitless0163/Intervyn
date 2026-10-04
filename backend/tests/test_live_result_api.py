@@ -43,3 +43,25 @@ def test_live_result_rejects_mismatched_context_without_writing(monkeypatch) -> 
             "context": original.model_dump(), "transcript": transcript,
         })
         assert response.status_code == 200
+
+
+def test_coach_transcript_api_writes_only_coach_history(monkeypatch):
+    repo = MemoryRepository()
+    sid = asyncio.run(repo.create_session(PrepRequest(
+        cv_url="Candidate", jd_text="Backend engineer", company="Acme",
+        language_mode=LanguageMode(primary="en", mixed=False),
+    )))
+    interview = [{"role": "user", "text": "interview"}]
+    asyncio.run(repo.save_transcript(sid, interview))
+    asyncio.run(repo.update_status(sid, "complete"))
+    monkeypatch.setattr(session_api, "build_deps", lambda: SimpleNamespace(repo=repo))
+    app = create_app()
+    app.dependency_overrides[require_internal_secret] = lambda: None
+    with TestClient(app) as client:
+        coaching = [{"role": "user", "text": "coach question"}]
+        response = client.post(f"/api/session/{sid}/coach-transcript", json={"transcript": coaching})
+        assert response.status_code == 200
+        assert repo._rows[sid].transcript == interview
+        assert repo._rows[sid].coach_transcript == coaching
+        assert repo.get_status(sid) == "complete"
+        assert client.post("/api/session/missing/coach-transcript", json={"transcript": []}).status_code == 404

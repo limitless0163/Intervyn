@@ -81,6 +81,19 @@ def test_save_coach_transcript_does_not_touch_interview_transcript() -> None:
     assert row.coach_transcript == coach
 
 
+def test_transcript_persistence_takes_independent_snapshots():
+    repo = MemoryRepository()
+    sid = _run(repo.create_session(_prep_request()))
+    turns = [{"role": "user", "text": "saved", "metadata": {"tags": ["initial"]}}]
+    _run(repo.save_transcript(sid, turns))
+    _run(repo.save_coach_transcript(sid, turns))
+    turns[0]["text"] = "mutated"
+    turns[0]["metadata"]["tags"].append("new")
+    row = repo._rows[sid]
+    assert row.transcript[0]["text"] == row.coach_transcript[0]["text"] == "saved"
+    assert row.transcript[0]["metadata"]["tags"] == ["initial"]
+
+
 def test_update_status_and_missing_load() -> None:
     repo = MemoryRepository()
     session_id = _run(repo.create_session(_prep_request()))
@@ -236,6 +249,24 @@ def test_supabase_save_scorecard_payload_is_json_encodable() -> None:
     assert isinstance(sc, ScoreCard)
     _run(repo.save_scorecard(sid, sc))
     assert fake.rows[sid]["scorecard"] == sc.model_dump()
+
+
+def test_completed_card_and_status_are_persisted_together():
+    repo, fake = _supabase_repo()
+    sid = _run(repo.create_session(_prep_request()))
+    card = build_mock(ScoreCard)
+    _run(repo.complete_session(sid, card))
+    view = _run(repo.get_session_view(sid))
+    assert view.status == "complete"
+    assert view.scorecard == card
+    assert ("update", {"scorecard": card.model_dump(), "status": "complete"}, sid) in fake.log
+
+    memory = MemoryRepository()
+    sid = _run(memory.create_session(_prep_request()))
+    _run(memory.complete_session(sid, card))
+    view = _run(memory.get_session_view(sid))
+    assert view.status == "complete"
+    assert view.scorecard == card
 
 
 def test_supabase_append_answer_read_modify_writes_the_context_blob() -> None:

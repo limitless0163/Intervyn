@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 import base64
 
+import httpx
+import pytest
+
 from app.core.config import Settings
 from app.dependencies.container import build_deps
 from app.schemas.shared_models import LanguageMode, PrepRequest
@@ -137,3 +140,50 @@ def test_fetch_cv_node_is_idempotent_even_when_text_empty(monkeypatch) -> None:
 
     assert result == {}
     assert called["extract"] == 0
+
+
+@pytest.mark.parametrize("url", ["http://localhost./cv", "http://a.localhost./cv", "https://user:pass@example.com/cv"])
+def test_unsafe_document_urls_are_rejected(url):
+    assert not cv_extract._is_fetchable_url(url)
+
+
+def test_malformed_data_url_never_reaches_candidate_analysis():
+    text, warnings = asyncio.run(extract_cv_text("data:application/pdf;base64,%%%", build_deps()))
+    assert text == ""
+    assert warnings
+
+
+@pytest.mark.parametrize("declared_size", [True, False])
+def test_remote_cv_size_limit_handles_headers_and_streams(monkeypatch, declared_size):
+    monkeypatch.setattr(cv_extract, "_MAX_DOCUMENT_BYTES", 10)
+    client_type = httpx.AsyncClient
+    headers = {"content-length": "1000"} if declared_size else {}
+
+    class Stream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"a" * 20
+
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, headers=headers, stream=Stream()))
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client_type(transport=transport, **kwargs))
+    assert asyncio.run(cv_extract._fetch_url_bytes("https://example.com/cv")) is None
+
+
+def test_cv_redirect_to_private_host_is_not_followed(monkeypatch):
+    seen = []
+    client_type = httpx.AsyncClient
+
+    def respond(req):
+        seen.append(str(req.url))
+        return httpx.Response(302, headers={"location": "http://127.0.0.1/cv"})
+
+    transport = httpx.MockTransport(respond)
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client_type(transport=transport, **kwargs))
+    assert asyncio.run(cv_extract._fetch_url_bytes("https://example.com/cv")) is None
+    assert seen == ["https://example.com/cv"]
+
+
+def test_extracted_text_budget_adds_a_warning(monkeypatch):
+    monkeypatch.setattr(cv_extract, "_MAX_EXTRACTED_CHARS", 30)
+    text, warnings = asyncio.run(extract_cv_text(_data_url(_REAL_CV), build_deps()))
+    assert len(text) == 30
+    assert "truncated" in warnings[0]

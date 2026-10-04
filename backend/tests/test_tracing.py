@@ -138,7 +138,7 @@ def test_prep_run_emits_trace(tracedir) -> None:
         trace_dir=str(tracedir),
     )
     deps = build_deps(settings)
-    from app.services.prep import run_prep
+    from app.services.prep.pipeline import run_prep
 
     session_id = asyncio.run(run_prep(_request(), deps))
     files = list(tracedir.glob("tr_*.jsonl"))
@@ -154,8 +154,8 @@ def test_prep_run_emits_trace(tracedir) -> None:
 def test_score_run_emits_trace(tracedir) -> None:
     from app.core.config import Settings
     from app.schemas.shared_models import ScoreRequest
-    from app.services.post import run_score
-    from app.services.prep import run_prep
+    from app.services.post.pipeline import run_score
+    from app.services.prep.pipeline import run_prep
 
     settings = Settings(llm_provider="mock", search_provider="mock")
     deps = build_deps(settings)
@@ -222,3 +222,55 @@ def test_list_traces_filters_by_session(tracedir) -> None:
     assert len(all_traces) == 2
     only_one = tracing.list_traces(directory=tracedir, session_id="sess_1")
     assert [t["session_id"] for t in only_one] == ["sess_1"]
+
+
+def test_provider_errors_do_not_leak_candidate_text_into_default_traces(tracedir):
+    private_text = "candidate-private@example.com"
+
+    class BadLLM:
+        async def complete_text(self, **kwargs):
+            raise ValueError(private_text)
+
+    llm = tracing.TracedLLM(BadLLM(), provider="test")
+    with tracing.start_trace("failed-request") as tid, pytest.raises(ValueError):
+        asyncio.run(llm.complete_text(system="sys", user=private_text))
+    events = _events(tracedir, tid)
+    assert private_text not in json.dumps(events)
+    assert any(event.get("error") == "ValueError" for event in events)
+
+
+def test_cancelled_provider_call_is_recorded(tracedir):
+    class CancelledLLM:
+        async def complete_text(self, **kwargs):
+            raise asyncio.CancelledError()
+
+    with tracing.start_trace("cancelled") as tid, pytest.raises(asyncio.CancelledError):
+        asyncio.run(tracing.TracedLLM(CancelledLLM(), provider="test").complete_text(system="", user=""))
+    events = _events(tracedir, tid)
+    assert any(event["type"] == "llm_call" and not event["ok"] for event in events)
+    assert any(event["type"] == "span_end" and event["status"] == "cancelled" for event in events)
+
+
+def test_trace_api_requires_configured_internal_secret(tracedir, monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("INTERNAL_API_SECRET", "trace-key")
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            assert client.get("/api/traces").status_code == 401
+            assert client.get("/api/traces", headers={"X-Internal-Secret": "trace-key"}).status_code == 200
+    finally:
+        get_settings.cache_clear()
+
+
+def test_trace_readers_ignore_partial_and_malformed_records(tracedir):
+    with tracing.start_trace("valid-run") as tid:
+        pass
+    with (tracedir / f"{tid}.jsonl").open("a") as file:
+        file.write('42\n[]\n{"type":"span_start"}\n')
+        file.write('{"type":"event","span_id":[]}\n{"partial":')
+    detail = tracing.read_trace(tid, directory=tracedir)
+    assert detail["name"] == "valid-run"
+    assert detail["status"] == "ok"
+    assert tracing.list_traces(directory=tracedir)[0]["trace_id"] == tid

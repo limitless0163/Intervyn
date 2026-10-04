@@ -7,7 +7,7 @@ import asyncio
 from app.dependencies.container import build_deps
 from app.schemas.shared_models import LanguageMode, PrepRequest
 from app.schemas.views import PROGRESS_STEPS, SessionView
-from app.services.prep import run_prep
+from app.services.prep.pipeline import run_prep
 
 _ALL_STEPS = set(PROGRESS_STEPS)
 

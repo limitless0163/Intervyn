@@ -16,7 +16,7 @@ from app.schemas.shared_models import (
 )
 from app.services.live import state
 from app.services.live.state import InterviewUserdata
-from app.services.prep import run_prep
+from app.services.prep.pipeline import run_prep
 
 
 def _build_context() -> InterviewContext:

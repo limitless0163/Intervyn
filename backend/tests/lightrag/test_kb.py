@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
+import pytest
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+
+from lightrag_service import app as app_module
 from lightrag_service.app import create_app
 from lightrag_service.backend import NaiveRAG, get_backend
 from lightrag_service.models import Citation
@@ -96,3 +102,108 @@ def test_app_exposes_kb_routes() -> None:
     assert "/health" in paths
     assert "/kb/ingest" in paths
     assert "/kb/query" in paths
+
+
+@pytest.mark.parametrize("text,query,lang", [
+    ("候选人负责支付平台的幂等设计和故障恢复", "支付平台", "zh"),
+    ("候補者は分散システムの運用を担当しました", "分散システム", "ja"),
+    ("Équipe spécialisée en résilience distribuée", "résilience", "fr"),
+])
+def test_unicode_materials_are_retrievable(text, query, lang):
+    backend = NaiveRAG()
+    _run(backend.ingest("owner", [("notes", text)]))
+    answer, citations = _run(backend.query("owner", query, lang))
+    assert answer == text
+    assert citations[0].title == "notes"
+
+
+@pytest.mark.parametrize("url", ["http://localhost./notes", "http://a.localhost./notes", "https://user:pass@example.com/notes"])
+def test_unsafe_source_urls_are_rejected(url):
+    assert not app_module._is_public_http_url(url)
+
+
+def test_unicode_sidecar_secret_mismatch_returns_401(monkeypatch):
+    monkeypatch.setenv("LIGHTRAG_API_SECRET", "key")
+    with pytest.raises(HTTPException) as error:
+        _run(app_module.require_secret("错误"))
+    assert error.value.status_code == 401
+
+
+@pytest.mark.parametrize("declared_size", [True, False])
+def test_remote_source_size_limit_handles_headers_and_streams(monkeypatch, declared_size):
+    monkeypatch.setattr(app_module, "_MAX_DOCUMENT_BYTES", 10)
+    headers = {"content-length": "1000"} if declared_size else {}
+
+    class Stream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"x" * 20
+
+    async def exercise():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda req: httpx.Response(200, headers=headers, stream=Stream())
+        )) as client:
+            return await app_module._resolve_file("https://example.com/notes", client)
+
+    assert _run(exercise()) == ("https://example.com/notes", "")
+
+
+def test_sidecar_never_follows_redirects():
+    seen = []
+
+    def respond(req):
+        seen.append(str(req.url))
+        return httpx.Response(302, headers={"location": "http://127.0.0.1/internal"})
+
+    async def exercise():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            return await app_module._resolve_file("https://example.com/notes", client)
+
+    assert _run(exercise()) == ("https://example.com/notes", "")
+    assert seen == ["https://example.com/notes"]
+
+
+def test_direct_sidecar_api_enforces_payload_limits_before_ingestion(monkeypatch):
+    monkeypatch.delenv("LIGHTRAG_API_SECRET", raising=False)
+    monkeypatch.setattr(app_module, "_MAX_INGEST_FILES", 1)
+    monkeypatch.setattr(app_module, "_MAX_QUERY_LEN", 5)
+    backend = NaiveRAG()
+    with TestClient(create_app(backend)) as client:
+        response = client.post("/kb/ingest", json={"user_id": "u", "files": ["one", "two"]})
+        assert response.status_code == 413
+        assert backend._stores == {}
+        assert client.post("/kb/query", json={"user_id": "u", "query": "long query", "lang": "en"}).status_code == 413
+
+
+def test_ingest_has_bounded_concurrency_and_preserves_source_order(monkeypatch):
+    monkeypatch.delenv("LIGHTRAG_API_SECRET", raising=False)
+    active = peak = 0
+
+    async def resolve(ref, client):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0)
+        active -= 1
+        return ref, "payments " + ref
+
+    monkeypatch.setattr(app_module, "_resolve_file", resolve)
+    backend = NaiveRAG()
+    with TestClient(create_app(backend)) as client:
+        response = client.post("/kb/ingest", json={"user_id": "u", "files": [str(i) for i in range(10)]})
+        assert response.status_code == 200
+    assert peak == 4
+    assert [chunk.source_id for chunk in backend._stores["u"]] == [str(i) for i in range(10)]
+
+
+def test_resolved_payload_overflow_does_not_partially_ingest(monkeypatch):
+    monkeypatch.delenv("LIGHTRAG_API_SECRET", raising=False)
+    monkeypatch.setattr(app_module, "_MAX_INGEST_TOTAL_LEN", 5)
+
+    async def resolve(ref, client):
+        return ref, "abcdef"
+
+    monkeypatch.setattr(app_module, "_resolve_file", resolve)
+    backend = NaiveRAG()
+    with TestClient(create_app(backend)) as client:
+        assert client.post("/kb/ingest", json={"user_id": "u", "files": ["a"]}).status_code == 413
+    assert backend._stores == {}
