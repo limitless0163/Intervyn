@@ -27,7 +27,7 @@ class TraceListResponse(BaseModel):
 
 
 @router.get("/api/traces", response_model=TraceListResponse)
-async def get_traces(
+def get_traces(
     session_id: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> TraceListResponse:
@@ -38,7 +38,7 @@ async def get_traces(
 
 
 @router.get("/api/traces/{trace_id}")
-async def get_trace(trace_id: str) -> dict:
+def get_trace(trace_id: str) -> dict:
     detail = read_trace(trace_id, directory=Path(get_settings().trace_dir))
     if detail is None:
         raise HTTPException(status_code=404, detail="Unknown trace_id")

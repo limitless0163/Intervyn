@@ -114,6 +114,41 @@ def test_run_score_produces_valid_scorecard() -> None:
     assert ScoreCard.model_validate(sc.model_dump()) == sc
 
 
+def test_concurrent_scoring_evaluates_once_and_reuses_saved_card(monkeypatch) -> None:
+    from app.services import post
+
+    deps = build_deps()
+    sid, _ = _prepare_session(deps)
+    evaluate = post.evaluate
+    calls = 0
+
+    async def run():
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def paused_evaluate(ctx, deps):
+            nonlocal calls
+            calls += 1
+            entered.set()
+            await release.wait()
+            return await evaluate(ctx, deps)
+
+        monkeypatch.setattr(post, "evaluate", paused_evaluate)
+        req = ScoreRequest(session_id=sid)
+        first = asyncio.create_task(run_score(req, deps))
+        await entered.wait()
+        others = [asyncio.create_task(run_score(req, deps)) for _ in range(7)]
+        await asyncio.sleep(0)
+        assert calls == 1
+        release.set()
+        cards = await asyncio.gather(first, *others)
+        assert all(card == cards[0] for card in cards)
+        assert calls == 1
+        assert deps.repo.get_status(sid) == "complete"
+
+    asyncio.run(run())
+
+
 def test_run_score_competencies_map_to_plan() -> None:
     deps = build_deps()
     session_id, ctx = _prepare_session(deps)

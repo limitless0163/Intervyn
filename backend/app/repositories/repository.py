@@ -1,12 +1,4 @@
-"""Session persistence.
-
-The :class:`SessionRepository` protocol is the storage contract used by the prep
-and post pipelines. :class:`MemoryRepository` is the default (a process-wide
-singleton so a session written during ``POST /api/prep`` is visible to later
-reads in the same process). :class:`SupabaseRepository` persists to the
-``public.sessions`` table (see ``infra/supabase/migrations/0001_init.sql``) and
-lazy-imports the ``supabase`` SDK.
-"""
+"""统一会话存储接口；默认内存单例仅在当前进程内共享，Supabase 用于持久化。"""
 
 from __future__ import annotations
 
@@ -17,6 +9,7 @@ from uuid import uuid4
 from ..core.logging import get_logger
 from ..schemas.shared_models import AnswerRecord, InterviewContext, PrepRequest, ScoreCard
 from ..schemas.views import SessionView
+from ..utils.locks import KeyedLocks
 
 if TYPE_CHECKING:
     from ..core.config import Settings
@@ -69,8 +62,7 @@ class _SessionRow:
     context: dict[str, Any] | None = None
     scorecard: dict[str, Any] | None = None
     transcript: list[dict] | None = None
-    # Spoken study-coach conversation — SEPARATE from the interview transcript
-    # so a post-interview coach session can never overwrite the interview record.
+    # 教练对话单独保存，避免覆盖面试原始记录。
     coach_transcript: list[dict] | None = None
     answers: list[dict] = field(default_factory=list)
     progress: list[str] = field(default_factory=list)
@@ -78,7 +70,7 @@ class _SessionRow:
 
 
 class MemoryRepository:
-    """In-memory repository. Status is tracked per row for test inspection."""
+    """进程内会话存储；重启后丢失，也不与独立语音工作进程共享。"""
 
     def __init__(self) -> None:
         self._rows: dict[str, _SessionRow] = {}
@@ -112,8 +104,7 @@ class MemoryRepository:
     async def append_answer(self, session_id: str, a: AnswerRecord) -> None:
         row = self._require(session_id)
         row.answers.append(a.model_dump())
-        # Persist into the canonical context too, so load_context() sees the
-        # appended answer (mirrors SupabaseRepository).
+        # 同步权威上下文，使后续评分读取到新增回答。
         if row.context is not None:
             ctx = InterviewContext.model_validate(row.context)
             ctx.answers.append(a)
@@ -171,12 +162,18 @@ class MemoryRepository:
 
 
 class SupabaseRepository:
-    """Persist sessions to Supabase ``public.sessions`` (lazy ``supabase`` SDK)."""
+    """Persist sessions to Supabase ``public.sessions`` (lazy ``supabase`` SDK).
+
+    Read/modify/write operations are serialized per session within this instance.
+    Multiple processes still require database-level coordination.
+    """
 
     def __init__(self, url: str, service_role_key: str) -> None:
         self._url = url
         self._key = service_role_key
         self._client: Any | None = None
+        # 准备图并行分支会同时修改进度/警告；串行化本实例的读改写，防止丢失更新。
+        self._mutation_locks = KeyedLocks()
 
     def _table(self) -> Any:
         if self._client is None:
@@ -190,6 +187,7 @@ class SupabaseRepository:
         return self._client.table("sessions")
 
     async def _exec(self, build: Any) -> Any:
+        """在线程中执行同步 SDK 调用，避免阻塞 API 的异步事件循环。"""
         import asyncio
 
         return await asyncio.to_thread(build)
@@ -213,7 +211,8 @@ class SupabaseRepository:
         return session_id
 
     async def save_context(self, session_id: str, ctx: InterviewContext) -> None:
-        await self._update(session_id, {"context": ctx.model_dump()})
+        async with self._mutation_locks.get(session_id):
+            await self._update(session_id, {"context": ctx.model_dump()})
 
     async def load_context(self, session_id: str) -> InterviewContext | None:
         def _build() -> Any:
@@ -232,13 +231,14 @@ class SupabaseRepository:
         def _build() -> Any:
             return self._table().select("context").eq("id", session_id).limit(1).execute()
 
-        resp = await self._exec(_build)
-        rows = getattr(resp, "data", None) or []
-        if not rows or not rows[0].get("context"):
-            return
-        ctx = InterviewContext.model_validate(rows[0]["context"])
-        ctx.answers.append(a)
-        await self._update(session_id, {"context": ctx.model_dump()})
+        async with self._mutation_locks.get(session_id):
+            resp = await self._exec(_build)
+            rows = getattr(resp, "data", None) or []
+            if not rows or not rows[0].get("context"):
+                return
+            ctx = InterviewContext.model_validate(rows[0]["context"])
+            ctx.answers.append(a)
+            await self._update(session_id, {"context": ctx.model_dump()})
 
     async def save_scorecard(self, session_id: str, sc: ScoreCard) -> None:
         await self._update(session_id, {"scorecard": sc.model_dump()})
@@ -247,35 +247,39 @@ class SupabaseRepository:
         await self._update(session_id, {"transcript": list(turns)})
 
     async def save_coach_transcript(self, session_id: str, turns: list[dict]) -> None:
-        # Requires the coach_transcript column (migration 0004); callers treat
-        # this as best-effort, so a missing column logs rather than crashes.
+        # 依赖迁移 0004；缺列错误交由调用方处理，本方法不吞掉异常。
         await self._update(session_id, {"coach_transcript": list(turns)})
 
     async def mark_progress(self, session_id: str, step: str) -> None:
         def _build() -> Any:
             return self._table().select("progress").eq("id", session_id).limit(1).execute()
 
-        resp = await self._exec(_build)
-        rows = getattr(resp, "data", None) or []
-        progress = list(rows[0].get("progress") or []) if rows else []
-        if step not in progress:
-            progress.append(step)
-            await self._update(session_id, {"progress": progress})
+        async with self._mutation_locks.get(session_id):
+            resp = await self._exec(_build)
+            rows = getattr(resp, "data", None) or []
+            progress = list(rows[0].get("progress") or []) if rows else []
+            if step not in progress:
+                progress.append(step)
+                await self._update(session_id, {"progress": progress})
 
     async def add_warnings(self, session_id: str, warnings: list[str]) -> None:
+        if not warnings:
+            return
+
         def _build() -> Any:
             return self._table().select("prep_warnings").eq("id", session_id).limit(1).execute()
 
-        resp = await self._exec(_build)
-        rows = getattr(resp, "data", None) or []
-        existing = list(rows[0].get("prep_warnings") or []) if rows else []
-        changed = False
-        for w in warnings:
-            if w not in existing:
-                existing.append(w)
-                changed = True
-        if changed:
-            await self._update(session_id, {"prep_warnings": existing})
+        async with self._mutation_locks.get(session_id):
+            resp = await self._exec(_build)
+            rows = getattr(resp, "data", None) or []
+            existing = list(rows[0].get("prep_warnings") or []) if rows else []
+            changed = False
+            for w in warnings:
+                if w not in existing:
+                    existing.append(w)
+                    changed = True
+            if changed:
+                await self._update(session_id, {"prep_warnings": existing})
 
     async def get_session_view(self, session_id: str) -> SessionView | None:
         def _build() -> Any:
@@ -309,7 +313,7 @@ class SupabaseRepository:
         await self._exec(lambda: self._table().update(values).eq("id", session_id).execute())
 
 
-# Module-wide singleton so MemoryRepository state survives across build_deps() calls.
+# 依赖组装可重复执行，但内存会话必须在同一进程内复用。
 _MEMORY_REPO = MemoryRepository()
 
 

@@ -1,18 +1,4 @@
-"""Periodic transcript checkpoint for the live interview (durability).
-
-All persistence normally happens in the worker's shutdown callback. If the job
-process dies hard (OOM / SIGKILL / container eviction) that callback never runs
-and the whole interview is lost. :class:`TranscriptFlusher` mitigates this: it
-runs OFF the turn-critical path as a detached asyncio task (like
-:class:`~app.services.live.guard.SessionGuard`) and, every ``interval``
-seconds, if the transcript has GROWN since the last checkpoint, calls an injected
-async ``flush`` to persist the current context + transcript. A crash then loses
-at most one interval of conversation instead of everything.
-
-It is duck-typed for testability: ``flush`` is any ``async (context, transcript)``
-callable and ``time_fn`` is injectable, so tests drive it with a fake recorder
-and a fake clock — no livekit, no network.
-"""
+"""在实时对话路径外定期保存转录，减少进程异常退出时未保存的内容。"""
 
 from __future__ import annotations
 
@@ -34,7 +20,7 @@ FlushFn = Callable[["InterviewContext", list[dict]], Awaitable[None]]
 
 
 class TranscriptFlusher:
-    """Checkpoint the growing transcript at an interval; never blocks a turn."""
+    """仅在转录增长后保存上下文快照；失败会重试，但不保证固定时间内持久化。"""
 
     def __init__(
         self,
@@ -50,10 +36,7 @@ class TranscriptFlusher:
         self._last_len = 0
 
     def start(self) -> None:
-        """Launch the flusher as a detached background task (idempotent).
-
-        A non-positive interval disables it (start() becomes a no-op).
-        """
+        """启动后台检查点任务；重复调用不重复启动，非正间隔禁用检查点。"""
         if self._interval <= 0:
             return
         if self._task is None:
@@ -72,12 +55,13 @@ class TranscriptFlusher:
         transcript = list(self._ud.transcript)
         if len(transcript) <= self._last_len:
             return
-        with contextlib.suppress(Exception):
-            # A network await yields to tool execution. Persist a matching,
-            # immutable context snapshot rather than a cursor that can advance
-            # while this checkpoint is being sent.
+        try:
+            # 网络等待期间游标可能前进，先复制上下文以保持它与转录快照一致。
             await self._flush(copy.deepcopy(self._ud.ctx), transcript)
+            # 仅在保存成功后推进水位，使失败的快照仍可在下一轮重试。
             self._last_len = len(transcript)
+        except Exception:
+            log.exception("transcript_flusher: checkpoint failed; will retry")
 
     async def _run(self) -> None:
         try:

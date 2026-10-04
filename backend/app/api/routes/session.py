@@ -1,15 +1,6 @@
-"""Session routes: the session view + the worker's live-result write-back.
+"""会话读取与语音工作进程的结果回写入口。
 
-``GET /api/session/{id}`` returns a :class:`SessionView` (status, completed prep
-steps, input-quality warnings, and the :class:`InterviewContext` once ready).
-Unknown ids → 404.
-
-``POST /api/session/{id}/live-result`` is the INTERNAL write path the voice
-worker uses at shutdown. The worker runs in a separate process, so with no
-Supabase configured its own in-memory repo is invisible to the API — answers
-would be lost and never scored. Writing through this endpoint lands the result
-in the store the API actually reads. (Like every route, it is session-id
-capability-guarded: ids are unguessable uuid4.)
+工作进程必须通过 API 回写，才能在默认内存存储模式下写入 API 所属的仓库。
 """
 
 from __future__ import annotations
@@ -26,23 +17,18 @@ router = APIRouter()
 
 
 class LiveResultRequest(BaseModel):
-    """Worker→API write-back: the post-interview context + verbatim transcript.
-
-    API-internal (both ends are Python), so it lives here — NOT in
-    ``shared_models`` — keeping the TS↔Pydantic parity registry untouched.
-    """
+    """内部 Python 回写载荷，不纳入 TypeScript 与 Pydantic 的共享契约注册表。"""
 
     model_config = ConfigDict(extra="forbid")
     context: InterviewContext
     transcript: list[dict] = Field(default_factory=list)
-    # Optional terminal hint ("no_answers" when the interview captured nothing).
+    # 仅接受白名单终态，避免工作进程任意改写评分状态。
     status: str | None = None
 
 
 _ALLOWED_LIVE_STATUSES = {"no_answers", "error"}
 
-# Once a session reaches one of these it is done; a late/replayed live-result
-# write must not be able to overwrite a scored interview's history.
+# 终态之后拒绝迟到的检查点或重放写入，避免覆盖已完成的面试记录。
 _TERMINAL_STATUSES = {"complete", "no_answers", "error", "rejected"}
 
 
@@ -63,9 +49,8 @@ async def post_live_result(session_id: str, req: LiveResultRequest) -> dict:
     view = await deps.repo.get_session_view(session_id)
     if view is None:
         raise HTTPException(status_code=404, detail="Unknown session_id")
-    # Refuse to rewrite a session that has already reached a terminal state:
-    # the transcript/answers are final once scored, and a replayed or forged
-    # write must not be able to mutate them.
+    if req.context.session_id != session_id:
+        raise HTTPException(status_code=422, detail="Context session_id must match the URL")
     if view.status in _TERMINAL_STATUSES:
         raise HTTPException(
             status_code=409, detail=f"Session already {view.status}"

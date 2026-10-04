@@ -330,3 +330,45 @@ def test_supabase_get_session_view_selects_migration_columns_and_maps_row() -> N
 
     # Unknown ids map to None (the API turns this into a 404, not a 500).
     assert _run(repo.get_session_view("sess_missing")) is None
+
+
+def test_supabase_concurrent_mutations_preserve_all_updates(monkeypatch) -> None:
+    repo, fake = _supabase_repo()
+
+    async def yielding_exec(build):
+        response = build()
+        # Freeze the read snapshot, then force an interleaving before its write.
+        response.data = json.loads(json.dumps(response.data))
+        await asyncio.sleep(0)
+        return response
+
+    monkeypatch.setattr(repo, "_exec", yielding_exec)
+
+    async def run():
+        sid = await repo.create_session(_prep_request())
+        ctx = build_mock(InterviewContext).model_copy(update={"session_id": sid, "answers": []})
+        await repo.save_context(sid, ctx)
+        answers = [
+            AnswerRecord(
+                question_id=f"q{i}", transcript=f"Answer {i}",
+                started_at="2026-10-04T09:00:00Z", ended_at="2026-10-04T09:01:00Z",
+            )
+            for i in range(12)
+        ]
+        await asyncio.gather(
+            *(repo.mark_progress(sid, f"step{i}") for i in range(12)),
+            *(repo.mark_progress(sid, f"step{i}") for i in range(12)),
+            *(repo.add_warnings(sid, [f"warning{i}", "shared"]) for i in range(12)),
+            *(repo.append_answer(sid, answer) for answer in answers),
+        )
+        assert set(fake.rows[sid]["progress"]) == {f"step{i}" for i in range(12)}
+        assert len(fake.rows[sid]["progress"]) == 12
+        assert set(fake.rows[sid]["prep_warnings"]) == {
+            "shared", *(f"warning{i}" for i in range(12)),
+        }
+        assert len(fake.rows[sid]["prep_warnings"]) == 13
+        loaded = await repo.load_context(sid)
+        assert loaded is not None
+        assert loaded.answers == answers
+
+    asyncio.run(run())

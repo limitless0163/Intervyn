@@ -1,24 +1,4 @@
-"""WP-7 post / scoring pipeline.
-
-Turns a completed interview (a persisted ``InterviewContext`` with answers) into
-a ``ScoreCard`` and persists it. The post phase is latency-tolerant, so this is a
-plain sequential pipeline (no LangGraph): evaluate competencies → assess spoken
-language → assemble the report.
-
-Public entry point — the stable contract the API layer and tests depend on::
-
-    async def run_score(req: ScoreRequest, deps: Deps) -> ScoreCard
-
-``run_score`` loads the context, scores it, persists the scorecard, marks the
-session ``complete``, and returns the card. If the context is missing it returns
-a well-formed *error* ``ScoreCard`` (without persisting and without raising) so
-the API can always respond with a valid body and an errored session keeps its
-status.
-
-The loop contract: each ``CompetencyScore.competency`` equals some planned
-question's ``target_competency``, and ``weak_competencies`` (the weak/developing
-subset) is what the Prep Coach consumes to choose what to teach next.
-"""
+"""依次评估能力、分析语言并生成报告；各阶段独立降级，避免丢失已完成的评分。"""
 
 from __future__ import annotations
 
@@ -28,6 +8,7 @@ from typing import TYPE_CHECKING
 from ...core.logging import get_logger
 from ...core.tracing import add_event, start_span, start_trace
 from ...schemas.shared_models import LanguageReport, ScoreCard
+from ...utils.locks import KeyedLocks
 from .evaluator import evaluate
 from .language_coach import coach
 from .report import (
@@ -71,13 +52,7 @@ def _missing_context_scorecard(session_id: str) -> ScoreCard:
 
 
 def _no_answers_scorecard(session_id: str) -> ScoreCard:
-    """A valid, empty scorecard for a session that has a context but NO answers.
-
-    Returned (not persisted) so a direct ``/api/score`` caller always gets a
-    well-formed body. The session is flagged ``no_answers`` instead of
-    ``complete`` so the report can show an honest empty state rather than a
-    misleading all-zeros card.
-    """
+    """仅返回空结果，不保存成绩单；会话标记 no_answers，避免将未作答误报为零分。"""
     return ScoreCard(
         overall_score=0.0,
         competency_scores=[],
@@ -119,13 +94,7 @@ def _degraded_scorecard(
     comp_scores: list[CompetencyScore],
     lang_report: LanguageReport,
 ) -> ScoreCard:
-    """A valid ScoreCard assembled WITHOUT the LLM narrative.
-
-    Used when report generation (the narrative + model-answer LLM calls) fails
-    but competency scoring and/or the language report succeeded. Preserves the
-    numbers already computed so a transient model error never discards a
-    completed interview's work.
-    """
+    """报告生成失败时保留已算出的分数和覆盖率，返回部分成绩单。"""
     return ScoreCard(
         overall_score=_overall_score(comp_scores),
         competency_scores=comp_scores,
@@ -145,11 +114,7 @@ def _degraded_scorecard(
 
 
 async def _guarded(coro, *, label: str, timeout: float):
-    """Await ``coro`` with a timeout; on ANY error return ``None`` to fall back.
-
-    The scoring pipeline is latency-tolerant but must never let one transient
-    provider error or hang destroy a completed interview's scorecard.
-    """
+    """限制单阶段耗时；超时或普通异常返回 None，由调用方选择降级结果。"""
     try:
         return await asyncio.wait_for(coro, timeout=timeout)
     except Exception:
@@ -158,12 +123,7 @@ async def _guarded(coro, *, label: str, timeout: float):
 
 
 async def _maybe_distill_skill(session_id: str, deps: Deps) -> None:
-    """Best-effort closed-loop step (WP-10): propose a reusable playbook delta.
-
-    Gated behind ``settings.enable_skill_distiller`` (OFF by default). Writes a
-    draft into the review queue only — never the live library, never the score
-    response. Any failure is logged and swallowed.
-    """
+    """启用后仅提出待审技能草稿；失败不影响成绩单，也不自动发布到正式库。"""
     if not deps.settings.enable_skill_distiller:
         return
     try:
@@ -177,42 +137,26 @@ async def _maybe_distill_skill(session_id: str, deps: Deps) -> None:
         log.exception("post: skill distiller failed for session %s", session_id)
 
 
-# Per-session scoring locks. Scoring is triggered from the API process (both the
-# worker's shutdown POST /api/score and a report page opening land here), so an
-# in-process lock serializes the common concurrent case and prevents two runs of
-# the paid LLM pipeline racing to overwrite the same scorecard. Keyed by session
-# id; created lazily.
-_scoring_locks: dict[str, asyncio.Lock] = {}
+# 按会话串行化当前进程中的评分，避免重复模型费用；此锁不协调多个 API 进程。
+_scoring_locks = KeyedLocks()
 
 
 def _scoring_lock(session_id: str) -> asyncio.Lock:
-    lock = _scoring_locks.get(session_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _scoring_locks[session_id] = lock
-    return lock
+    return _scoring_locks.get(session_id)
 
 
 async def run_score(req: ScoreRequest, deps: Deps) -> ScoreCard:
-    """Score an interview session and return (and persist) its ``ScoreCard``.
+    """串行处理同一会话的评分，完成后复用已保存的成绩单。
 
-    Each stage (evaluate / coach / report) is individually guarded with a
-    timeout and a structured fallback, so a transient provider failure degrades
-    the scorecard rather than raising (which would 500 the API and leave the
-    session stuck mid-scoring). Whenever a context exists the resulting card is
-    persisted and the session is marked ``complete``.
+    缺少上下文、没有有效回答或能力评估失败时不保存成绩单；
+    语言或报告生成失败则保留能力分数，保存降级结果并标记 complete。
     """
-    # Serialize concurrent scorings of the same session (see _scoring_locks): the
-    # loser waits and then hits the idempotency short-circuit below instead of
-    # re-running the pipeline.
     async with _scoring_lock(req.session_id):
         return await _run_score_locked(req, deps)
 
 
 async def _run_score_locked(req: ScoreRequest, deps: Deps) -> ScoreCard:
-    # Idempotency: scoring re-runs the full paid LLM pipeline, so a retry /
-    # double-click against an already-scored session returns the persisted card
-    # instead of re-billing and overwriting it.
+    # 锁内再次检查完成状态，让并发请求等待后复用结果。
     view = await deps.repo.get_session_view(req.session_id)
     if view is not None and view.status == "complete" and view.scorecard is not None:
         log.info("post: session %s already scored; returning persisted card", req.session_id)
@@ -220,44 +164,27 @@ async def _run_score_locked(req: ScoreRequest, deps: Deps) -> ScoreCard:
 
     ctx = await deps.repo.load_context(req.session_id)
     if ctx is None:
-        # No context to score. Returning (rather than persisting) is correct for
-        # both an unknown session (nothing to write) and a prep-errored session
-        # (don't overwrite its "error" status with "complete").
+        # 无上下文时仅返回空结果，保留准备失败会话的原状态。
         return _missing_context_scorecard(req.session_id)
 
-    # An answer only counts if it carries a non-empty transcript: the live
-    # save_answer tool can record empty or unmatched answers that would pass a
-    # bare list-truthiness check yet be unscorable (-> blank "complete" card).
+    # 答案列表可能只有空记录，必须检查正文才能判定是否可评分。
     if not any((a.transcript or "").strip() for a in ctx.answers):
-        # A context exists but no answers were captured (interview ended before
-        # any question was answered, or answers never persisted). Do NOT run the
-        # LLM scoring stages or mark the session "complete" with a blank card —
-        # that yields a misleading all-zeros report. Flag it "no_answers" so the
-        # UI shows an honest empty state, and persist NO scorecard.
         log.info("post: session %s has no answers; skipping scoring (no_answers)", req.session_id)
         await deps.repo.update_status(req.session_id, "no_answers")
         return _no_answers_scorecard(req.session_id)
 
     timeout = deps.settings.score_stage_timeout_sec
 
-    # Trace the scoring work so `intervyn traces` and GET /api/traces show
-    # per-stage spans + LLM calls for this session. No-op when disabled.
     with start_trace("score", session_id=req.session_id):
         with start_span("post.evaluate"):
             comp_scores = await _guarded(evaluate(ctx, deps), label="evaluate", timeout=timeout)
         if comp_scores is None:
-            # The WHOLE evaluate stage failed for an interview that HAS answers
-            # (per-question failures are isolated inside evaluate; None means the
-            # stage itself died). Persisting a zero-score card as "complete" would
-            # misreport an answered interview as scoring 0 — mark the session
-            # errored (retriable: a later /api/score re-runs from the same context)
-            # and return a well-formed card without persisting it.
+            # 整体能力评估失败不能视为零分；保留上下文并标记 error，允许重试。
             log.error("post: evaluate stage failed for %s; marking error (no card persisted)", req.session_id)
             await deps.repo.update_status(req.session_id, "error")
             return _degraded_scorecard(ctx, [], _fallback_language_report())
 
-        # Optional adversarial calibration pass (gated, OFF by default). Guarded so a
-        # verifier failure leaves the evaluated scores untouched rather than degrading.
+        # 校准失败时沿用原分数，避免可选验证阶段使评分失效。
         if deps.settings.enable_score_verifier:
             with start_span("post.verify"):
                 verified = await _guarded(
@@ -287,8 +214,6 @@ async def _run_score_locked(req: ScoreRequest, deps: Deps) -> ScoreCard:
             {"overall": scorecard.overall_score, "competencies": len(scorecard.competency_scores)},
         )
 
-        # Closed-loop (WP-10): propose a reusable playbook delta. Off by default,
-        # best-effort, and fully guarded so it can never affect the returned card.
         await _maybe_distill_skill(req.session_id, deps)
 
         return scorecard

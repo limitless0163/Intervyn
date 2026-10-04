@@ -47,7 +47,7 @@ def test_checkpoint_flushes_only_when_transcript_grows() -> None:
     assert calls == [1, 2]
 
 
-def test_checkpoint_swallows_flush_errors_and_retries_next_tick() -> None:
+def test_checkpoint_swallows_flush_errors_and_retries_next_tick(caplog) -> None:
     attempts: list[int] = []
 
     async def flaky(ctx, transcript: list[dict]) -> None:
@@ -63,6 +63,8 @@ def test_checkpoint_swallows_flush_errors_and_retries_next_tick() -> None:
     asyncio.run(flusher._checkpoint())
     asyncio.run(flusher._checkpoint())
     assert attempts == [1, 1]
+    assert "checkpoint failed; will retry" in caplog.text
+    assert "api down" in caplog.text
 
 
 def test_start_is_noop_when_interval_non_positive() -> None:
