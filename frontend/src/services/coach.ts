@@ -1,4 +1,4 @@
-import type { CoachReply, Citation, Language } from "@deepinterview/shared";
+import type { CoachReply, Citation, Language } from "@intervyn/shared";
 
 export type { CoachReply, Citation };
 

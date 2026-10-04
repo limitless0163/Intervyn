@@ -35,8 +35,11 @@ ee/
 # Product spec / internal design docs (kept local, not published)
 site/
 
-# Local agent instructions — never publish
+# Track only the scoped Claude Code import shims; guidance lives in AGENTS.md.
 CLAUDE.md
+!CLAUDE.md
+!frontend/CLAUDE.md
+!backend/CLAUDE.md
 
 # Supabase CLI local state (project ref, pooler URL)
 infra/supabase/.temp/
@@ -45,6 +48,6 @@ infra/supabase/.temp/
 # accepted packs are published as GitHub Release artifacts + CDN.
 frontend/public/avatars/
 
-# Local trace store (WP-12): `deepinterview traces` reads this; per-run JSONL,
+# Local trace store (WP-12): `intervyn traces` reads this; per-run JSONL,
 # machine-local and never committed. Override location with TRACE_DIR.
-.deepinterview/
+.intervyn/

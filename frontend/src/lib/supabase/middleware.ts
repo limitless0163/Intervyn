@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { gateRequest } from "@deepinterview/ee";
+import { gateRequest } from "@intervyn/ee";
 import { isSupabaseConfigured, publicEnv } from "@/lib/env";
 
 type CookieToSet = {

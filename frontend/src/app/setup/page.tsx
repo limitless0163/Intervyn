@@ -28,7 +28,7 @@ export default async function SetupPage() {
     <main className="mx-auto max-w-[720px] px-6 py-12">
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">
-          <Eyebrow>DeepInterview</Eyebrow>
+          <Eyebrow>Intervyn</Eyebrow>
         </Link>
         <div className="flex items-center gap-3">
           <LanguageToggle />

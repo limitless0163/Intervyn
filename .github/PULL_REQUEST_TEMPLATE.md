@@ -1,5 +1,5 @@
 <!--
-Thanks for contributing to DeepInterview! Keep PRs small — one work package
+Thanks for contributing to Intervyn! Keep PRs small — one work package
 (or one focused change) per PR. See CONTRIBUTING.md for the full workflow.
 -->
 

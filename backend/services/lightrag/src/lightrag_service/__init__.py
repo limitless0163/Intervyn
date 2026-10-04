@@ -1,4 +1,4 @@
-"""DeepInterview knowledge sidecar (WP-8).
+"""Intervyn knowledge sidecar (WP-8).
 
 A standalone FastAPI service (Docker, :9621) that powers the Prep Coach. It keeps
 one RAG store per ``user_id`` and exposes ``POST /kb/ingest`` and ``POST /kb/query``.
@@ -10,7 +10,7 @@ Two backends:
 * ``LightRAGBackend`` (``RAG_BACKEND=lightrag``) — the real LightRAG + RAG-Anything
   + bge-m3 stack, lazily imported and gated behind the optional ``rag`` extra.
 
-This package is intentionally standalone: it does NOT import ``@deepinterview/shared``
+This package is intentionally standalone: it does NOT import ``@intervyn/shared``
 or the agent's ``shared_models`` — the wire models are mirrored locally in
 :mod:`lightrag_service.models` (snake_case identical to the shared contracts).
 """

@@ -16,7 +16,7 @@ import type {
   InterviewContext,
   JobSpec,
   QuestionPlan,
-} from "@deepinterview/shared";
+} from "@intervyn/shared";
 import {
   fetchSessionView,
   resetSessionPolling,
@@ -108,7 +108,7 @@ export function PrepSummary({
   return (
     <main className="mx-auto max-w-[920px] px-6 py-12">
       <header className="flex items-center justify-between">
-        <Eyebrow>DeepInterview</Eyebrow>
+        <Eyebrow>Intervyn</Eyebrow>
         <Badge variant="outline">{STATUS_BADGE[status]}</Badge>
       </header>
 

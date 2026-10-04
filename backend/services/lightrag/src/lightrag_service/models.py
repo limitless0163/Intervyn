@@ -1,6 +1,6 @@
 """Local Pydantic mirror of the shared KB wire contracts.
 
-This service is standalone (it cannot import ``@deepinterview/shared`` or the
+This service is standalone (it cannot import ``@intervyn/shared`` or the
 agent's ``shared_models``), so the request/response shapes are redefined here.
 They are snake_case identical to ``frontend/packages/shared`` and the agent's mirror, so
 the agent's ``HttpKnowledge`` client can parse responses straight into the shared

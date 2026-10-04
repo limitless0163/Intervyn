@@ -1,11 +1,11 @@
 # backend/services/lightrag — Knowledge sidecar (WP-8)
 
-The DeepInterview **knowledge service** that powers the Prep Coach. It keeps one
+The Intervyn **knowledge service** that powers the Prep Coach. It keeps one
 RAG store/graph **per `user_id`** and answers grounded questions with citations.
 
 Runs as a standalone Docker sidecar on **:9621**. This is a self-contained `uv`
 project (NOT a node/turbo workspace package): it does not import
-`@deepinterview/shared` — the KB wire models are mirrored locally in
+`@intervyn/shared` — the KB wire models are mirrored locally in
 `src/lightrag_service/models.py` (snake_case identical to the shared contracts),
 so the agent's `HttpKnowledge` client parses responses straight into the shared
 `Citation` model.
@@ -86,6 +86,6 @@ uv run python -m lightrag_service.app   # serve on :9621 (env LIGHTRAG_PORT)
 ## Docker
 
 ```bash
-docker build -t deepinterview-lightrag backend/services/lightrag
-docker run -p 9621:9621 deepinterview-lightrag   # NaiveRAG backend
+docker build -t intervyn-lightrag backend/services/lightrag
+docker run -p 9621:9621 intervyn-lightrag   # NaiveRAG backend
 ```

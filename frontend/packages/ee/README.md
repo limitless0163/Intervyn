@@ -1,4 +1,4 @@
-# @deepinterview/ee
+# @intervyn/ee
 
 The **open-core extension seam**. This OSS package ships inert defaults
 (`features.*` all `false`, `edition: "oss"`) under Apache-2.0 — the OSS build

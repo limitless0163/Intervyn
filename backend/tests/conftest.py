@@ -14,7 +14,7 @@ regardless of what ``.env`` contains. We likewise BLANK the Supabase creds so
 ``get_repository()`` falls back to the in-memory repo: a real ``.env`` now ships a
 Supabase URL + service-role key, and without this the suite would select
 ``SupabaseRepository`` and fail on the optional ``supabase`` SDK (not installed in
-the test venv). Set ``DEEPINTERVIEW_TEST_USE_ENV=1`` to opt out (e.g. a deliberate
+the test venv). Set ``INTERVYN_TEST_USE_ENV=1`` to opt out (e.g. a deliberate
 live integration run).
 """
 
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import os
 
-if os.environ.get("DEEPINTERVIEW_TEST_USE_ENV") != "1":
+if os.environ.get("INTERVYN_TEST_USE_ENV") != "1":
     for _var in (
         "LLM_PROVIDER",
         "STT_PROVIDER",

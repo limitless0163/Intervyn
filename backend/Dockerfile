@@ -1,4 +1,4 @@
-# DeepInterview agent — production image (WP-12).
+# Intervyn agent — production image (WP-12).
 #
 # One image, two run modes:
 #
@@ -13,7 +13,7 @@
 #            docker-compose.yml runs the worker via the `live` profile.
 #
 # BUILD CONTEXT = repo root (matches docker-compose.yml `context: .`):
-#     docker build -f backend/Dockerfile -t deepinterview-agent .
+#     docker build -f backend/Dockerfile -t intervyn-agent .
 
 FROM python:3.11-slim AS base
 

@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import type { CompetencyScore } from "@deepinterview/shared";
+import type { CompetencyScore } from "@intervyn/shared";
 
 const ACCENT = "#4338ca";
 const LINE = "#e7e3da";

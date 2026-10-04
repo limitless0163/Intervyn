@@ -4,8 +4,8 @@ import {
   CoachReplySchema,
   LanguageSchema,
   type CoachReply,
-} from "@deepinterview/shared";
-import { gateRequest } from "@deepinterview/ee";
+} from "@intervyn/shared";
+import { gateRequest } from "@intervyn/ee";
 import { serverEnv } from "@/lib/env";
 import { getUser } from "@/lib/supabase/server";
 

@@ -6,7 +6,7 @@
 **/.venv
 **/*.egg-info
 .git
-.deepinterview
+.intervyn
 **/.pytest_cache
 **/.ruff_cache
 .env

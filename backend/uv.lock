@@ -529,7 +529,7 @@ wheels = [
 ]
 
 [[package]]
-name = "deepinterview-agent"
+name = "intervyn-agent"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [

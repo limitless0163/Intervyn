@@ -6,12 +6,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to file a bug! Please search
-        [existing issues](https://github.com/ngoanpv/DeepInterview/issues)
+        Thanks for taking the time to file a bug! Please search existing issues
         first to avoid duplicates.
 
-        **Security issue?** Do not file it here — email
-        `security@deepinterview.dev` instead (see `SECURITY.md`).
+        **Security issue?** Do not file it publicly. Use private vulnerability
+        reporting instead.
 
   - type: textarea
     id: what-happened

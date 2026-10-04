@@ -8,7 +8,7 @@ import {
   type ScoreRequest,
   type ScoreResponse,
   type StudyPlan,
-} from "@deepinterview/shared";
+} from "@intervyn/shared";
 import { serverEnv } from "@/lib/env";
 
 async function postJson<T>(

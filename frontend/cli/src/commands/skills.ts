@@ -1,5 +1,5 @@
 /**
- * `deepinterview skills lint [paths…]` — validate skill packs before a PR.
+ * `intervyn skills lint [paths…]` — validate skill packs before a PR.
  *
  * With no paths, lints every pack in `backend/skills/` and `backend/skills/_review/` (files
  * whose content opens with a `---` frontmatter fence; README/SCHEMA are
@@ -48,7 +48,7 @@ function report(path: string, issues: LintIssue[]): void {
 export async function runSkills(args: string[]): Promise<void> {
   const [sub, ...paths] = args;
   if (sub !== "lint") {
-    console.error("Usage: deepinterview skills lint [paths…]");
+    console.error("Usage: intervyn skills lint [paths…]");
     process.exitCode = 1;
     return;
   }

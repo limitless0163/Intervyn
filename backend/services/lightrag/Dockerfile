@@ -1,4 +1,4 @@
-# DeepInterview knowledge sidecar (WP-8) — FastAPI RAG service on :9621.
+# Intervyn knowledge sidecar (WP-8) — FastAPI RAG service on :9621.
 #
 # Default build installs the NaiveRAG backend only (fastapi/uvicorn/pydantic) so the
 # image is small and runs fully offline. To ship the real LightRAG + RAG-Anything +

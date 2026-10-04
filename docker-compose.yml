@@ -1,4 +1,4 @@
-name: deepinterview
+name: intervyn
 
 # WP-12 full stack. `docker compose up` brings up the base stack: web +
 # agent-api + lightrag (all run offline on mock providers / naive RAG with no

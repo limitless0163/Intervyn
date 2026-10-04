@@ -1,5 +1,5 @@
 {
-  "name": "deepinterview",
+  "name": "intervyn",
   "version": "0.3.0",
   "private": true,
   "description": "Open-source (Apache-2.0), voice-first AI mock-interview platform. English-first, multilingual.",
@@ -14,9 +14,9 @@
     "test": "turbo run test",
     "gen:schema": "turbo run gen:schema",
     "dev": "turbo run dev",
-    "lint": "prettier --check \"frontend/src/**/*.{ts,tsx}\" \"frontend/tests/**/*.{ts,tsx}\" \"frontend/cli/src/**/*.ts\" \"frontend/packages/shared/src/**/*.ts\" \"frontend/packages/shared/scripts/**/*.mts\" && pnpm --filter @deepinterview/agent run lint",
+    "lint": "prettier --check \"frontend/src/**/*.{ts,tsx}\" \"frontend/tests/**/*.{ts,tsx}\" \"frontend/cli/src/**/*.ts\" \"frontend/packages/shared/src/**/*.ts\" \"frontend/packages/shared/scripts/**/*.mts\" && pnpm --filter @intervyn/agent run lint",
     "format": "prettier --write \"frontend/src/**/*.{ts,tsx}\" \"frontend/tests/**/*.{ts,tsx}\" \"frontend/cli/src/**/*.ts\" \"frontend/packages/shared/src/**/*.ts\" \"frontend/packages/shared/scripts/**/*.mts\"",
-    "deepinterview": "node frontend/cli/dist/index.js"
+    "intervyn": "node frontend/cli/dist/index.js"
   },
   "devDependencies": {
     "prettier": "^3.9.6",

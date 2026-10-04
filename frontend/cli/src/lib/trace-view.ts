@@ -1,5 +1,5 @@
 /**
- * Pure trace-view helpers for `deepinterview traces`.
+ * Pure trace-view helpers for `intervyn traces`.
  *
  * Mirrors the event shapes written by
  * `backend/app/core/tracing.py` (one JSON object per
@@ -62,7 +62,7 @@ export function resolveTraceDir(explicit?: string): string {
   if (explicit) return explicit;
   const fromEnv = process.env.TRACE_DIR;
   if (fromEnv && fromEnv.trim()) return fromEnv;
-  return ".deepinterview/traces";
+  return ".intervyn/traces";
 }
 
 export function parseTraceLines(text: string): TraceEvent[] {

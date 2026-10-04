@@ -33,7 +33,7 @@ from .logging import get_logger
 from .tracing import init_tracing
 from .tracing import start_span as _real_start_span
 
-_log = get_logger("deepinterview.observability")
+_log = get_logger("intervyn.observability")
 
 _initialized = False
 

@@ -1,4 +1,4 @@
-"""LiveKit Agents worker entrypoint for the DeepInterview live voice loop (WP-5).
+"""LiveKit Agents worker entrypoint for the Intervyn live voice loop (WP-5).
 
 REQUIRES the optional ``livekit`` extra and live keys to RUN:
 
@@ -124,7 +124,7 @@ def wire_transcript_capture(
         text = getattr(item, "text_content", None)
         if role in ("user", "assistant") and text:
             # Land every committed turn in the live trace too (role + size only,
-            # never the verbatim text), so `deepinterview traces show` replays
+            # never the verbatim text), so `intervyn traces show` replays
             # the interview's shape. No-op when tracing is disabled or when no
             # live trace is open (e.g. the study-coach session).
             add_event("turn", {"role": role, "chars": len(text)})
@@ -836,7 +836,7 @@ async def entrypoint(ctx: JobContext) -> None:
     lang_mode = interview_ctx.plan.language_mode
 
     # Trace the live session: turn events (wire_transcript_capture, below) land
-    # here so `deepinterview traces show` / GET /api/traces/{id} replay the
+    # here so `intervyn traces show` / GET /api/traces/{id} replay the
     # interview's shape. The trace spans the whole job — opened here, closed in
     # the shutdown callback the SDK always runs at job end. No-op when disabled.
     _live_trace = start_trace(
@@ -1111,7 +1111,7 @@ def main() -> None:
             # Local `livekit-server --dev` honors the same dispatch, so the
             # local path keeps working once the token carries roomConfig.
             agent_name=getattr(settings, "livekit_agent_name", None)
-            or "deepinterview-interviewer",
+            or "intervyn-interviewer",
             # All persistence (transcript + context + scoring trigger) happens in
             # the shutdown callback; the SDK default 10s can kill the job process
             # mid-write (the live-result POST alone allows 20s). Give shutdown

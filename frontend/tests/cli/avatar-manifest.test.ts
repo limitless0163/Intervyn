@@ -8,7 +8,6 @@ import {
 
 const VALID = JSON.stringify({
   version: 1,
-  release: "https://github.com/ngoanpv/DeepInterview/releases",
   packs: [
     {
       persona: "recruiter",
@@ -17,7 +16,7 @@ const VALID = JSON.stringify({
         {
           name: "recruiter-idle.mp4",
           sha256: "a".repeat(64),
-          url: "https://github.com/ngoanpv/DeepInterview/releases/download/avatars-v1/recruiter-idle.mp4",
+          url: "https://assets.example.test/avatars/recruiter-idle.mp4",
         },
       ],
     },
@@ -31,7 +30,7 @@ describe("parseManifest", () => {
     );
     expect(
       parseManifest(
-        JSON.stringify({ version: 1, release: "https://x", packs: [] }),
+        JSON.stringify({ version: 1, packs: [] }),
       ).packs,
     ).toEqual([]);
   });
@@ -43,13 +42,13 @@ describe("parseManifest", () => {
     expect(() =>
       parseManifest(
         VALID.replace(
-          "https://github.com/ngoanpv/DeepInterview/releases/download",
-          "http://github.com/ngoanpv/DeepInterview/releases/download",
+          "https://assets.example.test/avatars",
+          "http://assets.example.test/avatars",
         ),
       ),
     ).toThrow(/https/);
     expect(() =>
-      parseManifest('{"version":2,"release":"x","packs":[]}'),
+      parseManifest('{"version":2,"packs":[]}'),
     ).toThrow(/version/);
     expect(() => parseManifest("[]")).toThrow(/object/);
     expect(() => parseManifest("{not json")).toThrow(/valid JSON/);

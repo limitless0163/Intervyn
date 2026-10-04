@@ -4,8 +4,8 @@ import {
   KbQueryResponseSchema,
   LanguageSchema,
   type KbQueryResponse,
-} from "@deepinterview/shared";
-import { gateRequest } from "@deepinterview/ee";
+} from "@intervyn/shared";
+import { gateRequest } from "@intervyn/ee";
 import { getUser } from "@/lib/supabase/server";
 import { serverEnv } from "@/lib/env";
 

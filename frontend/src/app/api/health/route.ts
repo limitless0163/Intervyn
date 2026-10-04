@@ -2,7 +2,7 @@ import {
   InterviewContextSchema,
   SAMPLE_INTERVIEW_CONTEXT,
   LANGUAGES,
-} from "@deepinterview/shared";
+} from "@intervyn/shared";
 
 export function GET() {
   const parsed = InterviewContextSchema.parse(SAMPLE_INTERVIEW_CONTEXT);

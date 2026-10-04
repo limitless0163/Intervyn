@@ -240,7 +240,7 @@ async def _run_score_locked(req: ScoreRequest, deps: Deps) -> ScoreCard:
 
     timeout = deps.settings.score_stage_timeout_sec
 
-    # Trace the scoring work so `deepinterview traces` and GET /api/traces show
+    # Trace the scoring work so `intervyn traces` and GET /api/traces show
     # per-stage spans + LLM calls for this session. No-op when disabled.
     with start_trace("score", session_id=req.session_id):
         with start_span("post.evaluate"):

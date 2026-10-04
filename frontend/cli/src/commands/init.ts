@@ -12,7 +12,7 @@ import {
   note,
   log,
 } from "@clack/prompts";
-import { LANGUAGES } from "@deepinterview/shared";
+import { LANGUAGES } from "@intervyn/shared";
 import { parseEnv, renderEnv } from "../lib/env-template";
 
 function findRepoRoot(start: string): string {
@@ -393,7 +393,7 @@ function nextSteps(values: Values): string {
   }
   lines.push(
     "",
-    "Re-run `deepinterview init` anytime — existing values are offered as defaults.",
+    "Re-run `intervyn init` anytime — existing values are offered as defaults.",
   );
   return lines.join("\n");
 }
@@ -412,7 +412,7 @@ function runNonInteractive(
   if (existsSync(target) && !force) {
     console.error(
       ".env already exists — re-run with --force to re-sync the local-dev " +
-        "copies (backend/.env, frontend/.env.local), or run `deepinterview " +
+        "copies (backend/.env, frontend/.env.local), or run `intervyn " +
         "init` in a terminal for the interactive key wizard.",
     );
     process.exit(1);
@@ -421,7 +421,7 @@ function runNonInteractive(
     copyFileSync(example, target);
     console.log(
       `✓ Wrote ${target} from .env.example (non-interactive). Fill in keys, or ` +
-        "run `deepinterview init` in a terminal for the guided wizard.",
+        "run `intervyn init` in a terminal for the guided wizard.",
     );
   } else {
     console.log(`✓ Kept ${target} (sync source — your keys are preserved)`);
@@ -429,7 +429,7 @@ function runNonInteractive(
   syncCopy(target, join(root, "backend", ".env"), root, force);
   syncCopy(target, join(root, "frontend", ".env.local"), root, force);
   console.log(
-    `\nDeepInterview supports ${LANGUAGES.length} languages (English-first).`,
+    `\nIntervyn supports ${LANGUAGES.length} languages (English-first).`,
   );
 }
 
@@ -476,7 +476,7 @@ export async function runInit(args: string[]): Promise<void> {
     ? parseEnv(readFileSync(target, "utf8"))
     : {};
 
-  intro("DeepInterview setup");
+  intro("Intervyn setup");
   if (Object.keys(existing).length > 0) {
     log.info(
       "Found an existing .env — current values are offered as defaults.",

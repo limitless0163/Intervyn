@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { InterviewContextSchema, ScoreCardSchema } from "@deepinterview/shared";
+import { InterviewContextSchema, ScoreCardSchema } from "@intervyn/shared";
 
 /**
  * Client/server-shared view of a prep session as exposed by the agent

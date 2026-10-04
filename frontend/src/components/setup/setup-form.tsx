@@ -7,7 +7,7 @@ import {
   LANGUAGES,
   type Language,
   type LanguageMode,
-} from "@deepinterview/shared";
+} from "@intervyn/shared";
 import { startSession } from "@/app/setup/actions";
 import { PERSONAS, DEFAULT_PERSONA_ID } from "@/constants/personas";
 import { useMessages } from "@/hooks/use-i18n";

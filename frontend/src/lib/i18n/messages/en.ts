@@ -1,7 +1,7 @@
 /** English message dictionary (English-first default). */
 export const en = {
   common: {
-    appName: "DeepInterview",
+    appName: "Intervyn",
     continue: "Continue",
     back: "Back",
     cancel: "Cancel",
@@ -19,7 +19,7 @@ export const en = {
     titleLead: "Rehearse the interview that",
     titleAccent: "actually lands the offer",
     subtitle:
-      "DeepInterview reads your CV and the job, researches the company, then runs an adaptive voice interview — and shows you exactly what to fix.",
+      "Intervyn reads your CV and the job, researches the company, then runs an adaptive voice interview — and shows you exactly what to fix.",
     ctaStart: "Start a mock interview",
     ctaLogin: "Sign in",
   },

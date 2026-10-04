@@ -1,14 +1,14 @@
 /**
- * `deepinterview traces` — easy tracking of agent work from the terminal.
+ * `intervyn traces` — easy tracking of agent work from the terminal.
  *
  * Reads the local JSONL trace store written by the agent
  * (`backend/app/core/tracing.py`, default
- * `.deepinterview/traces/<trace_id>.jsonl`; override with TRACE_DIR):
+ * `.intervyn/traces/<trace_id>.jsonl`; override with TRACE_DIR):
  *
- *   deepinterview traces [list] [--limit N] [--session ID] [--dir PATH] [--json]
- *   deepinterview traces show <trace-id> [--dir PATH] [--json]
- *   deepinterview traces tail [--limit N]      (alias for list, newest first)
- *   deepinterview traces open <trace-id>       (local path + Langfuse hint)
+ *   intervyn traces [list] [--limit N] [--session ID] [--dir PATH] [--json]
+ *   intervyn traces show <trace-id> [--dir PATH] [--json]
+ *   intervyn traces tail [--limit N]      (alias for list, newest first)
+ *   intervyn traces open <trace-id>       (local path + Langfuse hint)
  *
  * Exit 1 on unknown trace / unreadable dir so the command is script-friendly.
  */
@@ -89,14 +89,14 @@ async function runList(args: string[], dir: string): Promise<void> {
   }
   console.log(formatSummaryTable(summaries));
   console.log(
-    `\n${summaries.length} trace(s) — \`deepinterview traces show <trace-id>\` for detail.`,
+    `\n${summaries.length} trace(s) — \`intervyn traces show <trace-id>\` for detail.`,
   );
 }
 
 async function runShow(args: string[], dir: string): Promise<void> {
   const id = args[0];
   if (!id) {
-    fail("Usage: deepinterview traces show <trace-id> [--dir PATH] [--json]");
+    fail("Usage: intervyn traces show <trace-id> [--dir PATH] [--json]");
     return;
   }
   if (id.includes("/") || id.startsWith(".")) {
@@ -120,7 +120,7 @@ async function runShow(args: string[], dir: string): Promise<void> {
 async function runOpen(args: string[], dir: string): Promise<void> {
   const id = args[0];
   if (!id) {
-    fail("Usage: deepinterview traces open <trace-id>");
+    fail("Usage: intervyn traces open <trace-id>");
     return;
   }
   console.log(`Local:  ${join(dir, `${id}.jsonl`)}`);
@@ -161,7 +161,7 @@ export async function runTraces(args: string[]): Promise<void> {
         break;
       }
       console.error(
-        "Usage: deepinterview traces [list|show <id>|tail|open <id>] [--dir PATH] [--json]",
+        "Usage: intervyn traces [list|show <id>|tail|open <id>] [--dir PATH] [--json]",
       );
       process.exitCode = 1;
   }

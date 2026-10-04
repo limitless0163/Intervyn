@@ -899,13 +899,13 @@ def test_worker_agent_name_default_matches_web_token() -> None:
     """Worker and web must agree on the dispatch name.
 
     The web token requests `LIVEKIT_AGENT_NAME` (default
-    "deepinterview-interviewer") via roomConfig.agents; the worker registers
+    "intervyn-interviewer") via roomConfig.agents; the worker registers
     under the same name. A mismatch means the dispatch matches nothing and the
     interviewer never joins.
     """
     from app.core.config import Settings
 
-    assert Settings().livekit_agent_name == "deepinterview-interviewer"
+    assert Settings().livekit_agent_name == "intervyn-interviewer"
 
 
 def test_load_context_with_retry_waits_for_prep(

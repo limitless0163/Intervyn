@@ -31,10 +31,10 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1127.0
         version: 3.1127.0
-      '@deepinterview/ee':
+      '@intervyn/ee':
         specifier: workspace:*
         version: link:packages/ee
-      '@deepinterview/shared':
+      '@intervyn/shared':
         specifier: workspace:*
         version: link:packages/shared
       '@livekit/components-react':
@@ -116,7 +116,7 @@ importers:
       '@clack/prompts':
         specifier: ^1.7.0
         version: 1.7.0
-      '@deepinterview/shared':
+      '@intervyn/shared':
         specifier: workspace:*
         version: link:../packages/shared
       yaml:

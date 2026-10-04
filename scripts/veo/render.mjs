@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * render.mjs — DeepInterview avatar render CLI (WP-9).
+ * render.mjs — Intervyn avatar render CLI (WP-9).
  *
  * Renders the idle + speaking Veo 3.1 loops for each avatar persona, then
  * (optionally) uploads the MP4s to Cloudflare R2 and prints the resulting URLs
@@ -108,7 +108,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(
     [
-      "DeepInterview avatar render CLI (WP-9)",
+      "Intervyn avatar render CLI (WP-9)",
       "",
       "Usage:",
       "  node scripts/veo/render.mjs [--persona <id>] [--final]",
@@ -159,7 +159,7 @@ function r2Config() {
 function dryRun(personas, model) {
   const r2 = r2Config();
   console.log("");
-  console.log("DeepInterview · Veo 3.1 avatar render (DRY RUN)");
+  console.log("Intervyn · Veo 3.1 avatar render (DRY RUN)");
   console.log("================================================");
   console.log("");
   console.log("GEMINI_API_KEY is not set — no network calls will be made.");

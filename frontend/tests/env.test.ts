@@ -70,7 +70,7 @@ describe("provider-configured guards (offline-safe defaults)", () => {
   it("defaults the agent dispatch name so web and worker agree (issue #67)", () => {
     snapshot();
     clearAll();
-    expect(serverEnv.livekitAgentName).toBe("deepinterview-interviewer");
+    expect(serverEnv.livekitAgentName).toBe("intervyn-interviewer");
     process.env.LIVEKIT_AGENT_NAME = "custom-interviewer";
     expect(serverEnv.livekitAgentName).toBe("custom-interviewer");
   });

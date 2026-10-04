@@ -14,26 +14,26 @@
     "test": {
       "dependsOn": ["gen:schema"]
     },
-    "@deepinterview/agent#test": {
-      "dependsOn": ["@deepinterview/shared#gen:schema"]
+    "@intervyn/agent#test": {
+      "dependsOn": ["@intervyn/shared#gen:schema"]
     },
     "dev": {
       "cache": false,
       "persistent": true
     },
-    "@deepinterview/cli#test": {
+    "@intervyn/cli#test": {
       "dependsOn": ["gen:schema"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/cli/**"]
     },
-    "@deepinterview/cli#typecheck": {
+    "@intervyn/cli#typecheck": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/cli/**"]
     },
-    "@deepinterview/shared#test": {
+    "@intervyn/shared#test": {
       "dependsOn": ["gen:schema"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/shared/**"]
     },
-    "@deepinterview/shared#typecheck": {
+    "@intervyn/shared#typecheck": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/frontend/tests/shared/**"]
     }

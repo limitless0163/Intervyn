@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { gateRequest } from "@deepinterview/ee";
+import { gateRequest } from "@intervyn/ee";
 import { presignUpload } from "@/lib/r2";
 import { isR2Configured, isSupabaseConfigured } from "@/lib/env";
 import { getUser } from "@/lib/supabase/server";

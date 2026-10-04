@@ -1,4 +1,4 @@
-import type { ModelAnswer } from "@deepinterview/shared";
+import type { ModelAnswer } from "@intervyn/shared";
 import {
   Card,
   CardDescription,

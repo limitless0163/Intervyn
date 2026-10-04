@@ -159,5 +159,5 @@ jobs:
           #
           # Option B — Render / Fly.io (region: sin):
           #   flyctl deploy --image ghcr.io/${{ github.repository }}-agent-worker:${{ github.sha }} \
-          #     --regions sin --app deepinterview-worker
+          #     --regions sin --app intervyn-worker
           echo "(placeholder) uncomment one option above to go live."

@@ -104,7 +104,7 @@ async def run_prep_for_session(
     designed to run as a fire-and-forget background task.
     """
     # One trace per prep run (fetch + validate + graph + persist) so
-    # `deepinterview traces` and GET /api/traces show per-node spans + LLM
+    # `intervyn traces` and GET /api/traces show per-node spans + LLM
     # calls for this session. No-op when tracing is disabled (TRACE_ENABLED=0).
     # Rejected input still leaves a (small) trace — useful signal, not noise.
     with start_trace(

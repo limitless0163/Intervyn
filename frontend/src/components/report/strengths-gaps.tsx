@@ -1,4 +1,4 @@
-import type { ScoreCard } from "@deepinterview/shared";
+import type { ScoreCard } from "@intervyn/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 

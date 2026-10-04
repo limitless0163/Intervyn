@@ -1,5 +1,5 @@
 /**
- * @deepinterview/ee — DeepInterview's open-core extension seam.
+ * @intervyn/ee — Intervyn's open-core extension seam.
  *
  * This OSS stub ships inert defaults under Apache-2.0. A downstream
  * distribution (e.g. a hosted/commercial edition) replaces the CONTENTS of

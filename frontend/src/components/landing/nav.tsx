@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { features } from "@deepinterview/ee";
+import { features } from "@intervyn/ee";
 import { Container } from "@/components/ui/container";
 import { buttonClasses } from "@/components/ui/button";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { MobileMenu } from "@/components/landing/mobile-menu";
-import { GITHUB_URL } from "@/constants/site";
 
 export const NAV_LINKS = [
   { href: "#how", label: "How it works" },
@@ -20,7 +19,7 @@ export function Nav() {
         <a href="#top" className="flex items-center gap-[9px]">
           <BrandMark size={22} />
           <span className="text-[17px] font-semibold tracking-[-0.01em]">
-            DeepInterview
+            Intervyn
           </span>
         </a>
 
@@ -33,14 +32,6 @@ export function Nav() {
         </div>
 
         <div className="flex items-center gap-3.5">
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="hidden text-[14.5px] text-ink-soft hover:text-ink min-[861px]:inline"
-          >
-            GitHub
-          </a>
           {features.auth ? (
             <Link
               href="/login"

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
-import { type ScoreCard, type InterviewContext } from "@deepinterview/shared";
+import { type ScoreCard, type InterviewContext } from "@intervyn/shared";
 import { serverEnv } from "@/lib/env";
 import { SessionViewSchema } from "@/types/session";
 import {
@@ -203,7 +203,7 @@ function StatusShell({ children }: { children: React.ReactNode }) {
     <main className="mx-auto max-w-[920px] px-6 py-12">
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">
-          <Eyebrow>DeepInterview</Eyebrow>
+          <Eyebrow>Intervyn</Eyebrow>
         </Link>
       </header>
       <div className="mt-16 flex justify-center">{children}</div>
@@ -385,7 +385,7 @@ export default async function ReportPage({
       {/* Header */}
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">
-          <Eyebrow>DeepInterview</Eyebrow>
+          <Eyebrow>Intervyn</Eyebrow>
         </Link>
         {loaded.state === "sample" && (
           <Badge variant="outline">Preview (sample data)</Badge>

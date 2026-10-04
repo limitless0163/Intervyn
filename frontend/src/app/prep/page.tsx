@@ -4,7 +4,7 @@ import { Eyebrow } from "@/components/ui/eyebrow";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { LanguageToggle } from "@/components/language-toggle";
-import type { ScoreCard, StudyModule } from "@deepinterview/shared";
+import type { ScoreCard, StudyModule } from "@intervyn/shared";
 import { serverEnv } from "@/lib/env";
 import { SessionViewSchema } from "@/types/session";
 import { SAMPLE_SCORECARD } from "@/features/report/sample-scorecard";
@@ -86,7 +86,7 @@ export default async function PrepPage({
       {/* Header */}
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">
-          <Eyebrow>DeepInterview</Eyebrow>
+          <Eyebrow>Intervyn</Eyebrow>
         </Link>
         <div className="flex items-center gap-3">
           {isSample && <Badge variant="outline">Preview (sample data)</Badge>}

@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "DeepInterview — Practice the interview out loud";
+export const alt = "Intervyn — Practice the interview out loud";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -40,7 +40,7 @@ export default function OpengraphImage() {
           letterSpacing: "-0.02em",
         }}
       >
-        DeepInterview
+        Intervyn
       </div>
       <div
         style={{

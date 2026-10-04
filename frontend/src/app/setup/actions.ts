@@ -1,7 +1,7 @@
 "use server";
 
-import type { PrepRequest } from "@deepinterview/shared";
-import { features } from "@deepinterview/ee";
+import type { PrepRequest } from "@intervyn/shared";
+import { features } from "@intervyn/ee";
 import { requestPrep } from "@/services/api";
 import { getUser } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";

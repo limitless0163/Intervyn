@@ -146,7 +146,7 @@ class Settings(BaseSettings):
     # is how LiveKit Cloud Agents routes a job to this worker. Without it the
     # room joins with no agent listening ("Connecting your interviewer…"
     # forever, issue #67).
-    livekit_agent_name: str = "deepinterview-interviewer"
+    livekit_agent_name: str = "intervyn-interviewer"
 
     # --- knowledge (LightRAG sidecar) ----------------------------------------
     # When set, the knowledge adapter + /api/kb/ingest forward to this base URL;
@@ -255,10 +255,10 @@ class Settings(BaseSettings):
     # --- tracing (WP-12: local JSONL + optional Langfuse) ---------------------
     # Local trace files are the default "easy tracking" tool: every prep/score/
     # live run appends spans to TRACE_DIR/<trace_id>.jsonl, readable offline via
-    # `deepinterview traces` (CLI) and GET /api/traces. No extra deps, never
+    # `intervyn traces` (CLI) and GET /api/traces. No extra deps, never
     # raises. Set TRACE_ENABLED=0 to disable (the test suite does this).
     trace_enabled: bool = True
-    trace_dir: str = ".deepinterview/traces"
+    trace_dir: str = ".intervyn/traces"
     # When True, LLM spans also store short prompt previews (first 500 chars).
     # Default OFF so trace files never hold full CVs/JDs (lengths always logged).
     trace_include_prompts: bool = False

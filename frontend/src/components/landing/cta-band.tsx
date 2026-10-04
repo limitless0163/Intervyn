@@ -3,7 +3,6 @@ import { Container } from "@/components/ui/container";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Reveal } from "@/components/ui/reveal";
 import { buttonClasses } from "@/components/ui/button";
-import { GITHUB_URL } from "@/constants/site";
 
 export function CtaBand() {
   return (
@@ -22,14 +21,6 @@ export function CtaBand() {
               <Link href="/setup" className={buttonClasses()}>
                 Start free
               </Link>
-              <a
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noreferrer"
-                className={buttonClasses({ variant: "out" })}
-              >
-                View on GitHub
-              </a>
             </div>
           </div>
         </Reveal>

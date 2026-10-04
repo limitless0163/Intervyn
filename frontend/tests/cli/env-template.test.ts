@@ -73,7 +73,7 @@ describe("renderEnv", () => {
 
   it("appends keys that are not present in the template", () => {
     const out = renderEnv(TEMPLATE, { RAG_BACKEND: "lightrag" });
-    expect(out).toContain("Added by `deepinterview init`");
+    expect(out).toContain("Added by `intervyn init`");
     expect(out).toContain("RAG_BACKEND=lightrag");
   });
 

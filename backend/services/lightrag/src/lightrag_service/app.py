@@ -1,4 +1,4 @@
-"""FastAPI app for the DeepInterview knowledge sidecar (:9621).
+"""FastAPI app for the Intervyn knowledge sidecar (:9621).
 
 Endpoints:
 * ``GET  /health``     — liveness probe.
@@ -112,7 +112,7 @@ async def _resolve_file(ref: str) -> tuple[str, str]:
 def create_app(backend: RagBackend | None = None) -> FastAPI:
     """Build the FastAPI app. A ``backend`` may be injected (tests); else selected."""
     backend = backend or get_backend()
-    app = FastAPI(title="DeepInterview Knowledge Sidecar", version="0.0.0")
+    app = FastAPI(title="Intervyn Knowledge Sidecar", version="0.0.0")
 
     @app.get("/health")
     async def health() -> dict[str, str]:

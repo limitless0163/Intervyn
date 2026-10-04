@@ -2,7 +2,7 @@ import type {
   KbQueryResponse,
   Citation,
   Language,
-} from "@deepinterview/shared";
+} from "@intervyn/shared";
 
 export type { KbQueryResponse, Citation };
 

@@ -1,4 +1,4 @@
-import type { ScoreCard } from "@deepinterview/shared";
+import type { ScoreCard } from "@intervyn/shared";
 import { cn } from "@/utils/cn";
 import { Eyebrow } from "@/components/ui/eyebrow";
 

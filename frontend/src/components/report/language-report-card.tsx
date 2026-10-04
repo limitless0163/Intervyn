@@ -1,4 +1,4 @@
-import type { LanguageReport } from "@deepinterview/shared";
+import type { LanguageReport } from "@intervyn/shared";
 import {
   Card,
   CardContent,

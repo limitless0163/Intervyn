@@ -1,5 +1,5 @@
 /**
- * IP-safe Veo 3.1 prompts for the DeepInterview avatar library (handoff §8.1).
+ * IP-safe Veo 3.1 prompts for the Intervyn avatar library (handoff §8.1).
  *
  * One-time render workflow (see ./README.md and ./render.mjs):
  *   1. Generate ONE reference still per character from `reference`.

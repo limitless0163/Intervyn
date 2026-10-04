@@ -1,14 +1,14 @@
-# DeepInterview web (Next.js 15, App Router) — production image (WP-12).
+# Intervyn web (Next.js 15, App Router) — production image (WP-12).
 #
 # Multi-stage, Next.js *standalone* output (see frontend/next.config.ts:
 # `output: 'standalone'`). The final image is a slim `node server.js` with no
 # install step at runtime.
 #
 # BUILD CONTEXT = repo root (this is a pnpm + Turborepo monorepo; the web app
-# depends on the `@deepinterview/shared` workspace package, which must be built
+# depends on the `@intervyn/shared` workspace package, which must be built
 # first). Build from the root:
 #
-#     docker build -f frontend/Dockerfile -t deepinterview-web .
+#     docker build -f frontend/Dockerfile -t intervyn-web .
 #
 # (docker-compose.yml already sets `context: .` + this dockerfile.)
 
@@ -29,7 +29,7 @@ COPY frontend/packages/ee/package.json frontend/packages/ee/package.json
 COPY frontend/cli/package.json frontend/cli/package.json
 RUN pnpm install --frozen-lockfile
 
-# ---- builder: build @deepinterview/shared then the web app ------------------
+# ---- builder: build @intervyn/shared then the web app ------------------
 FROM node:22-slim AS builder
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -63,8 +63,8 @@ COPY . .
 # runner COPY below never fails even when there are no static assets yet.
 RUN mkdir -p frontend/public
 
-# Turbo builds the `@deepinterview/shared` dependency first (^build), then web.
-RUN pnpm build --filter @deepinterview/web...
+# Turbo builds the `@intervyn/shared` dependency first (^build), then web.
+RUN pnpm build --filter @intervyn/web...
 
 # ---- runner: slim standalone server ----------------------------------------
 FROM node:22-slim AS runner

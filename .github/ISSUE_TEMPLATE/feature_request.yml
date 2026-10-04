@@ -6,8 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the idea! Please search
-        [existing issues and Discussions](https://github.com/ngoanpv/DeepInterview/issues)
+        Thanks for the idea! Please search existing issues and discussions
         first — there may already be a thread.
 
   - type: textarea

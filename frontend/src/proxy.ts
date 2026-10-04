@@ -18,7 +18,7 @@ export const config = {
      *   api/session is polled every ~1.2s by the prep screen and reads no
      *   auth; api/coach + api/upload resolve the user in-handler (route
      *   handlers can write cookies, so supabase-js refreshes the session
-     *   itself) and self-gate via @deepinterview/ee; api/health is
+     *   itself) and self-gate via @intervyn/ee; api/health is
      *   identity-free.
      * api/kb stays matched (kb/query resolves the user). The distribution gate
      * in updateSession applies to pages only; API handlers self-gate with 401s.

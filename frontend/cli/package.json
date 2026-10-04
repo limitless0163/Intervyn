@@ -1,11 +1,11 @@
 {
-  "name": "@deepinterview/cli",
+  "name": "@intervyn/cli",
   "version": "0.3.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "deepinterview": "./dist/index.js"
+    "intervyn": "./dist/index.js"
   },
   "files": [
     "dist"
@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",
-    "@deepinterview/shared": "workspace:*",
+    "@intervyn/shared": "workspace:*",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

@@ -14,7 +14,7 @@ export interface ManifestFile {
   name: string;
   /** Lowercase hex SHA-256 of the exact accepted bytes. */
   sha256: string;
-  /** Download URL (GitHub Release asset — maintainer-controlled hosting). */
+  /** HTTPS URL for the hosted asset. */
   url: string;
 }
 
@@ -28,7 +28,6 @@ export interface ManifestPack {
 
 export interface AvatarManifest {
   version: 1;
-  release: string;
   packs: ManifestPack[];
 }
 
@@ -53,8 +52,6 @@ export function parseManifest(text: string): AvatarManifest {
   }
   const m = data as Record<string, unknown>;
   if (m.version !== 1) throw new Error("manifest `version` must be 1");
-  if (typeof m.release !== "string")
-    throw new Error("manifest `release` must be a URL string");
   if (!Array.isArray(m.packs))
     throw new Error("manifest `packs` must be an array");
   for (const pack of m.packs as Record<string, unknown>[]) {

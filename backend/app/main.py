@@ -1,4 +1,4 @@
-"""FastAPI application factory for the DeepInterview agent API.
+"""FastAPI application factory for the Intervyn agent API.
 
 Exposes a health check plus the prep and score routers. ``main()`` runs the app
 under uvicorn on the configured port.
@@ -19,7 +19,7 @@ def create_app() -> FastAPI:
     # local JSONL tracing works out of the box (TRACE_ENABLED=0 disables).
     init_observability(get_settings())
 
-    app = FastAPI(title="DeepInterview Agent API")
+    app = FastAPI(title="Intervyn Agent API")
 
     @app.get("/health")
     async def health() -> dict[str, bool]:

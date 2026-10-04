@@ -73,7 +73,7 @@ export function renderEnv(
   const extras = Object.keys(values).filter((key) => !seen.has(key));
   if (extras.length > 0) {
     lines.push("");
-    lines.push("# Added by `deepinterview init` (keys not in .env.example):");
+    lines.push("# Added by `intervyn init` (keys not in .env.example):");
     for (const key of extras)
       lines.push(`${key}=${formatValue(values[key] ?? "")}`);
   }

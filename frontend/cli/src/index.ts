@@ -6,24 +6,24 @@ import { runTraces } from "./commands/traces";
 const [, , command, ...args] = process.argv;
 
 function printHelp(): void {
-  console.log(`deepinterview — DeepInterview CLI
+  console.log(`intervyn — Intervyn CLI
 
 Usage:
-  deepinterview init             Guided setup: pick a run mode, enter provider
+  intervyn init             Guided setup: pick a run mode, enter provider
                                  keys, and write the .env files
-  deepinterview init --no-input  Non-interactive: copy .env.example → .env
+  intervyn init --no-input  Non-interactive: copy .env.example → .env
                                  (for CI / scripted setups; --yes is an alias)
-  deepinterview init --force     Re-sync the local-dev copies from the root .env
+  intervyn init --force     Re-sync the local-dev copies from the root .env
                                  (non-interactive)
-  deepinterview skills lint      Validate skill packs in backend/skills/ (frontmatter
+  intervyn skills lint      Validate skill packs in backend/skills/ (frontmatter
                                  schema + conventions) before opening a PR
-  deepinterview avatars pull     Fetch published avatar packs (SHA-256 verified
+  intervyn avatars pull     Fetch published avatar packs (SHA-256 verified
                                  against frontend/cli/avatars.manifest.json)
-  deepinterview avatars verify   Pre-flight local avatar files before submitting
+  intervyn avatars verify   Pre-flight local avatar files before submitting
                                  a pack (technical contract + hashes)
-  deepinterview traces [list]    Show recent agent runs (prep/score/live) from
-                                 the local trace store (.deepinterview/traces)
-  deepinterview traces show <id> Replay one run: nested spans, LLM calls, errors
+  intervyn traces [list]    Show recent agent runs (prep/score/live) from
+                                 the local trace store (.intervyn/traces)
+  intervyn traces show <id> Replay one run: nested spans, LLM calls, errors
 
 \`init\` writes three files:
   .env                 → read by docker compose (the full stack)

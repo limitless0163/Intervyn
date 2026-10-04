@@ -1,5 +1,5 @@
 /**
- * <BrandMark> — the small-context DeepInterview mark ("Di" as pure geometry,
+ * <BrandMark> — the small-context Intervyn mark ("Di" as pure geometry,
  * the i's tittle as the indigo speaking dot). Inline SVG so it renders
  * identically everywhere — no font dependency, no asset request. The
  * large-context variant (with the prep → interview → feedback loop arc)

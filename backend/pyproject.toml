@@ -1,7 +1,7 @@
 [project]
-name = "deepinterview-agent"
+name = "intervyn-agent"
 version = "0.3.0"
-description = "DeepInterview live voice interviewer + prep/post pipelines (WP-0 shell)."
+description = "Intervyn live voice interviewer + prep/post pipelines (WP-0 shell)."
 license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [

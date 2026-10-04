@@ -2,7 +2,7 @@ import {
   ScoreCardSchema,
   SAMPLE_INTERVIEW_CONTEXT,
   type ScoreCard,
-} from "@deepinterview/shared";
+} from "@intervyn/shared";
 
 /**
  * A realistic, varied, VALID sample ScoreCard used as the offline fallback for

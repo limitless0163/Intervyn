@@ -41,7 +41,7 @@ export const serverEnv = {
    * as healthy and the UI sits on "Connecting your interviewer…" forever).
    */
   get livekitAgentName(): string {
-    return process.env.LIVEKIT_AGENT_NAME || "deepinterview-interviewer";
+    return process.env.LIVEKIT_AGENT_NAME || "intervyn-interviewer";
   },
   get r2AccountId(): string | undefined {
     return process.env.R2_ACCOUNT_ID || undefined;

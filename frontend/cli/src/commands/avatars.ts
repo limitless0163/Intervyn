@@ -1,6 +1,6 @@
 /**
- * `deepinterview avatars pull`            — fetch + SHA-256-verify accepted packs
- * `deepinterview avatars verify <files…>` — contributor pre-flight on local files
+ * `intervyn avatars pull`            — fetch + SHA-256-verify accepted packs
+ * `intervyn avatars verify <files…>` — contributor pre-flight on local files
  *
  * The manifest (repo-root `frontend/cli/avatars.manifest.json`) is the source of truth for
  * what ships; assets land in the gitignored `frontend/public/avatars/`. The
@@ -23,7 +23,7 @@ const DEST_DIR = join("frontend", "public", "avatars");
 async function loadManifest(): Promise<AvatarManifest> {
   if (!existsSync(MANIFEST_PATH)) {
     throw new Error(
-      `${MANIFEST_PATH} not found — run from the repo root (pnpm deepinterview avatars pull).`,
+      `${MANIFEST_PATH} not found — run from the repo root (pnpm intervyn avatars pull).`,
     );
   }
   return parseManifest(await readFile(MANIFEST_PATH, "utf8"));
@@ -89,7 +89,7 @@ async function pull(): Promise<void> {
 async function verify(paths: string[]): Promise<void> {
   if (paths.length === 0) {
     console.error(
-      "Usage: deepinterview avatars verify <file.mp4|file.jpg> […]",
+      "Usage: intervyn avatars verify <file.mp4|file.jpg> […]",
     );
     process.exitCode = 1;
     return;
@@ -127,6 +127,6 @@ export async function runAvatars(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
   if (sub === "pull") return pull();
   if (sub === "verify") return verify(rest);
-  console.error("Usage: deepinterview avatars <pull | verify <files…>>");
+  console.error("Usage: intervyn avatars <pull | verify <files…>>");
   process.exitCode = 1;
 }

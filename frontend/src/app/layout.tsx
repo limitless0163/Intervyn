@@ -25,27 +25,27 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ?? "https://deepinterview.ai",
-  ),
+  metadataBase: process.env.NEXT_PUBLIC_SITE_URL
+    ? new URL(process.env.NEXT_PUBLIC_SITE_URL)
+    : undefined,
   title: {
-    default: "DeepInterview — Practice the interview out loud",
-    template: "%s · DeepInterview",
+    default: "Intervyn — Practice the interview out loud",
+    template: "%s · Intervyn",
   },
   description:
-    "Open-source, voice-first AI mock interviews. DeepInterview reads your CV and the job, researches the company, runs an adaptive voice interview, then shows you exactly what to fix. English-first, 10+ languages.",
-  applicationName: "DeepInterview",
+    "Open-source, voice-first AI mock interviews. Intervyn reads your CV and the job, researches the company, runs an adaptive voice interview, then shows you exactly what to fix. English-first, 10+ languages.",
+  applicationName: "Intervyn",
   openGraph: {
-    title: "DeepInterview — Practice the interview out loud",
+    title: "Intervyn — Practice the interview out loud",
     description:
       "Open-source, voice-first AI mock interviews — practice out loud, then pass the real one.",
     url: "/",
-    siteName: "DeepInterview",
+    siteName: "Intervyn",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "DeepInterview — Practice the interview out loud",
+    title: "Intervyn — Practice the interview out loud",
     description:
       "Open-source, voice-first AI mock interviews — practice out loud, then pass the real one.",
   },

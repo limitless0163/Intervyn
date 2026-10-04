@@ -1,5 +1,4 @@
-<!-- Skill-pack PR template. Use it via:
-     https://github.com/ngoanpv/DeepInterview/compare/main...YOUR_BRANCH?template=skill_pack.md -->
+<!-- Skill-pack pull request template. -->
 
 ## New skill pack(s)
 
@@ -9,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `pnpm deepinterview skills lint` passes with no errors
+- [ ] `pnpm intervyn skills lint` passes with no errors
 - [ ] `role` is a kebab-case slug; `status: draft`; `id` is `{company}-{role}-{level}`
 - [ ] Body has **Round structure / Question bank / Signals / Pitfalls**
 - [ ] Questions are original and generalized — recollection-based, no verbatim

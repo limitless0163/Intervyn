@@ -8,7 +8,7 @@
  * does the file walking.
  */
 import { parse } from "yaml";
-import { SenioritySchema } from "@deepinterview/shared";
+import { SenioritySchema } from "@intervyn/shared";
 
 export interface LintIssue {
   level: "error" | "warning";

@@ -1,5 +1,4 @@
 import { Container } from "@/components/ui/container";
-import { GITHUB_URL } from "@/constants/site";
 
 export function AnnouncementBar() {
   return (
@@ -12,14 +11,6 @@ export function AnnouncementBar() {
         <b className="font-semibold text-ink">
           Open source &amp; self-hostable
         </b>
-        <a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="text-muted hover:text-ink"
-        >
-          ★ Star us on GitHub →
-        </a>
       </Container>
     </div>
   );

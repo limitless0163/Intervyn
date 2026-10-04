@@ -7,7 +7,7 @@ collapses int/number, and unwraps nullable unions) so the only thing that can
 break parity is a field's name, coarse type, or required-ness.
 
 The Zod schemas live in frontend/packages/shared/schema/<Name>.json and are produced by
-`pnpm --filter @deepinterview/shared gen:schema`. If that directory is empty
+`pnpm --filter @intervyn/shared gen:schema`. If that directory is empty
 (schemas not yet generated) the parity tests are skipped rather than failed.
 """
 
@@ -94,7 +94,7 @@ _SCHEMAS_PRESENT = SCHEMA_DIR.exists() and any(SCHEMA_DIR.glob("*.json"))
 
 @pytest.mark.skipif(
     not _SCHEMAS_PRESENT,
-    reason="Zod JSON Schemas not generated; run `pnpm --filter @deepinterview/shared gen:schema`",
+    reason="Zod JSON Schemas not generated; run `pnpm --filter @intervyn/shared gen:schema`",
 )
 @pytest.mark.parametrize("name", list(MODELS.keys()))
 def test_schema_parity(name: str) -> None:
@@ -121,7 +121,7 @@ def test_schema_parity(name: str) -> None:
 
 @pytest.mark.skipif(
     not _SCHEMAS_PRESENT,
-    reason="Zod JSON Schemas not generated; run `pnpm --filter @deepinterview/shared gen:schema`",
+    reason="Zod JSON Schemas not generated; run `pnpm --filter @intervyn/shared gen:schema`",
 )
 def test_every_generated_schema_has_a_pydantic_mirror() -> None:
     """Reverse coverage: a TS-only model (new schema/*.json with no Pydantic

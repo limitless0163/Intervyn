@@ -5,7 +5,7 @@ Two sinks, both best-effort and never raising:
 - **Local JSONL (default ON):** every :func:`start_trace` writes
   ``<trace_dir>/<trace_id>.jsonl`` — one JSON object per line
   (``trace_start`` / ``span_start`` / ``span_end`` / ``event`` / ``llm_call`` /
-  ``trace_end``). Readable offline via the ``deepinterview traces`` CLI and
+  ``trace_end``). Readable offline via the ``intervyn traces`` CLI and
   ``GET /api/traces``. No extra dependencies.
 - **Langfuse (opt-in):** when ``LANGFUSE_*`` keys are set and the
   ``observability`` extra is installed, spans are additionally emitted as
@@ -107,7 +107,7 @@ def is_enabled() -> bool:
 
 
 def trace_dir() -> Path:
-    raw = _overrides.get("dir") or os.environ.get("TRACE_DIR") or ".deepinterview/traces"
+    raw = _overrides.get("dir") or os.environ.get("TRACE_DIR") or ".intervyn/traces"
     return Path(raw)
 
 
@@ -148,7 +148,7 @@ def _otel() -> Any | None:
     try:
         from opentelemetry import trace as otel_trace  # part of langfuse's deps
 
-        _otel_tracer = otel_trace.get_tracer("deepinterview")
+        _otel_tracer = otel_trace.get_tracer("intervyn")
         return _otel_tracer
     except Exception:  # noqa: BLE001 - OTel is optional
         return None
