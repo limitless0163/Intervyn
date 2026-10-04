@@ -1,8 +1,11 @@
 .PHONY: help setup install dev up start stop down restart logs logs-web ps shell build typecheck test lint format schema
 
-COMPOSE = docker compose -f docker-compose.yml -f docker-compose.dev.yml
+LIVEKIT_CONFIGURED := $(shell [ -f .env ] && grep -Eq '^LIVEKIT_URL=.+$$' .env && grep -Eq '^LIVEKIT_API_KEY=.+$$' .env && grep -Eq '^LIVEKIT_API_SECRET=.+$$' .env && echo 1)
+LIVE_PROFILE = $(if $(LIVEKIT_CONFIGURED),--profile live)
+COMPOSE = docker compose $(LIVE_PROFILE) -f docker-compose.yml -f docker-compose.dev.yml
 DOCKER_START_TIMEOUT ?= 120
 WEB_START_TIMEOUT ?= 180
+WORKER_START_TIMEOUT ?= 120
 
 help: ## 列出常用命令
 	@awk 'BEGIN {FS = ":.*##"; printf "Intervyn 开发命令：\n"} /^[a-zA-Z_-]+:.*##/ {printf "  make %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -13,7 +16,7 @@ setup: ## 安装前端和后端开发依赖
 install: ## 根据锁文件安装 pnpm 依赖
 	pnpm install --frozen-lockfile
 
-dev: ## 启动 Docker 开发环境和前端热更新，等待就绪后打开浏览器
+dev: ## 启动 Docker 开发环境；LiveKit 配置齐全时也启动语音 Worker
 	@set -eu; \
 	if ! command -v docker >/dev/null 2>&1; then \
 		echo "错误：未找到 docker 命令，请先安装 Docker Desktop。" >&2; exit 1; \
@@ -45,6 +48,21 @@ dev: ## 启动 Docker 开发环境和前端热更新，等待就绪后打开浏�
 		done; \
 	fi; \
 	$(COMPOSE) up --build --renew-anon-volumes -d; \
+	if [ "$(LIVEKIT_CONFIGURED)" = "1" ]; then \
+		echo "等待 LiveKit Worker 注册（最多 $(WORKER_START_TIMEOUT) 秒）……"; \
+		attempt=0; \
+		until $(COMPOSE) logs --no-color --tail=100 agent-worker 2>/dev/null | grep -q "registered worker"; do \
+			attempt=$$((attempt + 1)); \
+			if [ "$$attempt" -ge "$(WORKER_START_TIMEOUT)" ]; then \
+				echo "错误：LiveKit Worker 未能注册，最近日志如下：" >&2; \
+				$(COMPOSE) logs --tail=80 agent-worker; exit 1; \
+			fi; \
+			sleep 1; \
+		done; \
+		echo "LiveKit Worker 已注册。"; \
+	else \
+		echo "LiveKit 配置不完整，按离线模式启动；语音 Worker 未启动。"; \
+	fi; \
 	echo "等待前端就绪（最多 $(WEB_START_TIMEOUT) 秒）……"; \
 	attempt=0; \
 	until curl --fail --silent http://localhost:3000/api/health >/dev/null; do \
