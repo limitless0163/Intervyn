@@ -59,7 +59,12 @@ async def verify_scores(
 
     需要修正时限制新分数范围并重新推导等级。
     """
-    timeout = deps.settings.score_verifier_timeout_sec
+    semaphore = asyncio.Semaphore(4)
+    count = sum(cs.level in _VERIFY_LEVELS for cs in comp_scores)
+    waves = max(1, (count + 3) // 4)
+    timeout = min(
+        deps.settings.score_verifier_timeout_sec, deps.settings.score_stage_timeout_sec * 0.8 / waves
+    )
 
     # 按目标能力收集实际回答并截断，避免仅审核首轮模型自己生成的证据。
     answers_by_qid = {a.question_id: a for a in ctx.answers}
@@ -72,11 +77,9 @@ async def verify_scores(
         joined = f"{prev}\n\n{a.transcript}".strip()
         transcript_by_competency[q.target_competency] = joined[:4000]
 
-    verified: list[CompetencyScore] = []
-    for cs in comp_scores:
+    async def verify_one(cs: CompetencyScore) -> CompetencyScore:
         if cs.level not in _VERIFY_LEVELS:
-            verified.append(cs)
-            continue
+            return cs
 
         system, user = verify_score_prompts(
             cs.competency,
@@ -84,22 +87,19 @@ async def verify_scores(
             cs.score,
             transcript_excerpt=transcript_by_competency.get(cs.competency, ""),
         )
-        verdict = await _guarded(
-            deps.llm.complete_json(system=system, user=user, schema=_Verdict),
-            label=f"score:{cs.competency}",
-            timeout=timeout,
-        )
+        async with semaphore:
+            verdict = await _guarded(
+                deps.llm.complete_json(system=system, user=user, schema=_Verdict),
+                label=f"score:{cs.competency}", timeout=timeout,
+            )
         if verdict is None or verdict.justified:
-            verified.append(cs)
-            continue
+            return cs
 
         adjusted = _clamp_score(verdict.adjusted_score)
-        verified.append(
-            CompetencyScore(
-                competency=cs.competency,
-                score=adjusted,
-                evidence=cs.evidence,
-                level=level_for_score(adjusted),
-            )
+        return CompetencyScore(
+            competency=cs.competency,
+            score=adjusted,
+            evidence=cs.evidence,
+            level=level_for_score(adjusted),
         )
-    return verified
+    return list(await asyncio.gather(*(verify_one(cs) for cs in comp_scores)))

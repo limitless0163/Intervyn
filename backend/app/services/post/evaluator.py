@@ -106,11 +106,17 @@ async def evaluate(ctx: InterviewContext, deps: Deps) -> list[CompetencyScore]:
     ]
 
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_SCORING)
+    waves = max(1, (len(answered) + _MAX_CONCURRENT_SCORING - 1) // _MAX_CONCURRENT_SCORING)
+    question_timeout = min(
+        deps.settings.llm_call_timeout_sec, deps.settings.score_stage_timeout_sec * 0.8 / waves
+    )
 
     async def _score_one(question: PlannedQuestion, answer: AnswerRecord) -> CompetencyScore | None:
         async with semaphore:
             try:
-                return await _score_question(question, answer, deps)
+                return await asyncio.wait_for(
+                    _score_question(question, answer, deps), timeout=question_timeout
+                )
             except Exception:
                 log.exception("evaluator: scoring failed for question %s; skipping", question.id)
                 return None

@@ -63,7 +63,8 @@ def _coverage_pct(ctx: InterviewContext) -> float:
     total = len(ctx.plan.questions)
     if total == 0:
         return 1.0
-    answered_ids = {a.question_id for a in ctx.answers if a.transcript and a.transcript.strip()}
+    by_question = {a.question_id: a for a in ctx.answers}
+    answered_ids = {qid for qid, a in by_question.items() if a.transcript.strip()}
     answered = sum(1 for q in ctx.plan.questions if q.id in answered_ids)
     return answered / total
 
