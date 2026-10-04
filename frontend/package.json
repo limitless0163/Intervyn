@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
-    "@aws-sdk/s3-request-presigner": "^3.1127.0",
+    "@aws-sdk/s3-request-presigner": "^3.1144.0",
     "@intervyn/ee": "workspace:*",
     "@intervyn/shared": "workspace:*",
     "@livekit/components-react": "^2.9.24",
