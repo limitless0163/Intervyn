@@ -1,12 +1,9 @@
 /**
- * Environment accessors. Read lazily — NEVER throw at import/build time so the
- * app builds and renders with zero configured keys (offline / provider-agnostic).
- *
- * Public values MUST use static `process.env.NEXT_PUBLIC_*` references so Next.js
- * can inline them into the browser bundle. Dynamic indexing is undefined client-side.
+ * 延迟读取配置，允许缺少密钥时构建。NEXT_PUBLIC_* 必须静态引用，
+ * 才能由 Next.js 在构建时内联；动态索引无法在浏览器中读取。
  */
 
-/** Browser-safe public config. Inlined by Next at build time. */
+/** 浏览器可用的配置，取值在构建时内联。 */
 export const publicEnv = {
   get supabaseUrl(): string | undefined {
     return process.env.NEXT_PUBLIC_SUPABASE_URL || undefined;
@@ -19,7 +16,7 @@ export const publicEnv = {
   },
 };
 
-/** Server-only config. Never imported into client components. */
+/** 仅供服务端使用；客户端组件不得导入此配置对象。 */
 export const serverEnv = {
   get supabaseServiceRoleKey(): string | undefined {
     return process.env.SUPABASE_SERVICE_ROLE_KEY || undefined;
@@ -33,13 +30,7 @@ export const serverEnv = {
   get livekitApiSecret(): string | undefined {
     return process.env.LIVEKIT_API_SECRET || undefined;
   },
-  /**
-   * Dispatch name the voice worker registers under (`agent_name`).
-   * Must match the worker's `LIVEKIT_AGENT_NAME` so the token's explicit
-   * `roomConfig.agents` dispatch actually routes to it (issue #67: without an
-   * explicit dispatch the interviewer never joins — LiveKit reports the room
-   * as healthy and the UI sits on "Connecting your interviewer…" forever).
-   */
+  /** 必须与工作进程的 LIVEKIT_AGENT_NAME 一致，否则显式调度找不到面试官。 */
   get livekitAgentName(): string {
     return process.env.LIVEKIT_AGENT_NAME || "intervyn-interviewer";
   },
@@ -61,22 +52,20 @@ export const serverEnv = {
   get agentApiUrl(): string {
     return process.env.AGENT_API_URL || "http://localhost:8000";
   },
-  /** Shared secret for the agent API's guarded write endpoints (opt-in). */
+  /** Agent API 的可选内部密钥，与知识侧车密钥分开配置。 */
   get internalApiSecret(): string | undefined {
     return process.env.INTERNAL_API_SECRET || undefined;
   },
-  /** Shared secret for the LightRAG sidecar's guarded endpoints (opt-in). */
+  /** 知识侧车的可选内部密钥。 */
   get lightragApiSecret(): string | undefined {
     return process.env.LIGHTRAG_API_SECRET || undefined;
   },
 };
 
-/** True when both public Supabase keys are present (needed for auth). */
 export function isSupabaseConfigured(): boolean {
   return Boolean(publicEnv.supabaseUrl && publicEnv.supabaseAnonKey);
 }
 
-/** True when LiveKit URL + API credentials are all present. */
 export function isLiveKitConfigured(): boolean {
   return Boolean(
     serverEnv.livekitUrl &&
@@ -85,7 +74,6 @@ export function isLiveKitConfigured(): boolean {
   );
 }
 
-/** True when all R2 credentials needed to presign an upload are present. */
 export function isR2Configured(): boolean {
   return Boolean(
     serverEnv.r2AccountId &&

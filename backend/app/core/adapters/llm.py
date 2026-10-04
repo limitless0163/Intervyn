@@ -29,7 +29,7 @@ _DEFAULT_TIMEOUT_SEC = 90.0
 
 
 def _tool_schema(schema: type) -> dict[str, Any]:
-    """Inline local refs for compatible providers that mishandle nested $defs."""
+    """展开本地引用以兼容提供方工具格式；循环引用直接拒绝，避免无限展开。"""
     root = schema.model_json_schema()
 
     def expand(value: Any, seen: tuple[str, ...] = ()) -> Any:
@@ -52,8 +52,7 @@ def _tool_schema(schema: type) -> dict[str, Any]:
     if schema.__name__ == "QuestionPlan":
         from ...schemas.shared_models import LANGUAGES
 
-        # LocalizedText's AfterValidator is absent from its JSON Schema. Encode
-        # that contract in the output tool as well as validating it afterwards.
+        # JSON Schema 不包含 AfterValidator 的约束，工具定义也需要求英语回退键。
         result["properties"]["questions"]["items"]["properties"]["text"] = {
             "type": "object",
             "properties": {lang: {"type": "string"} for lang in LANGUAGES},
@@ -64,11 +63,9 @@ def _tool_schema(schema: type) -> dict[str, Any]:
 
 
 def _normalize_arrays(value: Any, contract: dict[str, Any]) -> Any:
-    """Losslessly unwrap MiniMax's occasional {item: [...]} array envelopes.
+    """兼容 MiniMax 的数组外壳和冗余嵌套，保留原文与顺序。
 
-    Redundant nesting in string lists is flattened in source order. A string
-    where a string-list is required is a one-item list. No missing
-    fields are filled and no source text is rewritten; validation still follows.
+    不补缺失字段；未知类型仍交由后续契约校验拒绝。
     """
     if contract.get("type") == "array":
         items = contract.get("items", {})
@@ -119,21 +116,11 @@ def _schema_prompt(system: str, schema: type) -> str:
 
 
 def _loads_json(text: str, schema: type | None = None, *, normalize_arrays: bool = False) -> Any:
-    """Parse JSON from an LLM response, tolerating ```json fences, stray prose, and
-    *trailing* "Extra data".
+    """解析模型响应中的 JSON，容忍代码围栏、前导说明和尾部多余内容。
 
-    With a schema, select the first complete top-level value that validates.
-    An echoed contract must not hide a valid answer after it, and nested objects
-    in an invalid/truncated response must never be mistaken for the answer.
-
-    The keystone failure this fixes: the question planner has the largest schema,
-    so its real Gemini response is the biggest — and a complete JSON object was
-    sometimes FOLLOWED by extra content (a second object / trailing commentary).
-    Plain ``json.loads`` raises ``Extra data`` on that, and the old greedy
-    ``\\{.*\\}`` fallback spanned to the LAST brace (swallowing the trailing junk
-    into invalid JSON), so every plan silently fell back to the generic mock —
-    an interview that asks one question literally titled "mock". ``raw_decode``
-    returns the FIRST complete JSON value and ignores anything after it.
+    传入 schema 时，扫描首个通过校验的完整顶层值；无效值整体跳过，
+    截断的外层 JSON 直接失败，避免把嵌套片段误当作完整回答。
+    normalize_arrays 仅在提供 schema 时启用提供方数组格式兼容。
     """
     import re
 
@@ -145,14 +132,9 @@ def _loads_json(text: str, schema: type | None = None, *, normalize_arrays: bool
         return schema.model_validate(obj)
 
     t = (text or "").strip()
-    # Strip reasoning blocks BEFORE looking for JSON. Local reasoning models
-    # (Qwen3 via Ollama) routinely return "<think>…</think>" inline in content,
-    # and the tolerant scan below takes the FIRST '{' it sees — so a brace
-    # anywhere in the model's scratchpad would be decoded instead of the answer.
-    # Cloud models don't emit these tags, so this is a no-op for them.
+    # 先移除推理内容，避免将其中的 JSON 片段误当作最终回答。
     t = re.sub(r"<(think|thinking)>.*?</\1>", "", t, flags=re.DOTALL | re.IGNORECASE).strip()
-    # An unterminated block means the reply was cut off mid-thought; everything
-    # after the opening tag is scratchpad, never the answer.
+    # 未闭合的推理块视为截断，其后的内容不能作为回答解析。
     t = re.sub(r"<(think|thinking)>.*\Z", "", t, flags=re.DOTALL | re.IGNORECASE).strip()
     # Strip a wrapping ```json ... ``` / ``` ... ``` markdown fence, if present.
     if t.startswith("```"):
@@ -165,8 +147,7 @@ def _loads_json(text: str, schema: type | None = None, *, normalize_arrays: bool
         pass
     else:
         return validate(obj)
-    # Tolerant path: decode the first complete JSON value starting at the first
-    # '{' or '[', ignoring any trailing data (raw_decode is "Extra data"-safe).
+    # 按完整顶层值扫描，允许跳过回显的契约并忽略回答后的附加内容。
     decoder = json.JSONDecoder()
     i = 0
     validation_error = None
@@ -177,7 +158,7 @@ def _loads_json(text: str, schema: type | None = None, *, normalize_arrays: bool
                 obj, _end = decoder.raw_decode(t, i)
             except json.JSONDecodeError:
                 if schema:
-                    # Never accept a nested object from a truncated outer response.
+                    # 外层截断时不能继续扫描其内部片段，否则可能接受不完整回答。
                     raise
                 i += 1
                 continue
@@ -187,8 +168,7 @@ def _loads_json(text: str, schema: type | None = None, *, normalize_arrays: bool
                 return validate(obj)
             except ValidationError as exc:
                 validation_error = exc
-                # Skip this entire value (e.g. an echoed schema), including its
-                # nested $defs, before looking for the actual answer.
+                # 跳过整个无效值，包括嵌套定义，再寻找下一份顶层回答。
                 i = _end
                 continue
         i += 1

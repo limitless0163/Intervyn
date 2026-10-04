@@ -15,6 +15,7 @@ export const LANGUAGES = [
 export const LanguageSchema = z.enum(LANGUAGES);
 export type Language = z.infer<typeof LanguageSchema>;
 
+// 英语为必需回退文本，其他键仅允许约定语言；此校验需与 Python 镜像保持一致。
 export const LocalizedTextSchema = z
   .record(z.string(), z.string())
   .refine((v) => typeof v.en === "string" && v.en.length > 0, {

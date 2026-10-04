@@ -8,9 +8,7 @@ import { isSupabaseConfigured } from "@/lib/env";
 
 export type StartSessionResult =
   | { ok: true; session_id: string }
-  // `error` stays required (existing consumers read `result.error`); `reason`
-  // is an additive discriminator the client uses to route to /login
-  // (auth_required). OSS is billing-free — there is no interview cap.
+  // error 供界面展示，reason 供客户端识别需要登录的情况。
   | {
       ok: false;
       error: string;
@@ -18,16 +16,8 @@ export type StartSessionResult =
     };
 
 /**
- * Kick off the prep pipeline and return the new session id. We return
- * `{session_id}` (rather than redirect()) so the client owns navigation via
- * router.push — this also keeps the Next 15 redirect-in-action pitfall out of
- * the picture.
- *
- * OSS is self-host, bring-your-own-keys, and UNCAPPED: there is no billing and
- * no per-tier interview limit (payments/gating live in the private cloud fork).
- * When Supabase is configured we resolve the signed-in user so the agent can
- * stamp `sessions.user_id`; an anonymous user simply proceeds. A distribution
- * that requires auth (the ee `features.auth` seam, off in OSS) fails closed.
+ * 返回新会话 ID，由客户端负责导航；服务端解析用户身份并绑定会话所有者。
+ * 要求认证的发行版在缺少配置或用户时拒绝创建，开源版允许匿名使用。
  */
 export async function startSession(
   input: PrepRequest,
@@ -40,11 +30,7 @@ export async function startSession(
   }
 
   if (!userId && features.auth) {
-    // Distribution gate (no-op in OSS): server actions are public POST
-    // endpoints, so a required-auth distribution must fail closed here even
-    // though its proxy already redirects anonymous visitors off /setup.
-    // Deliberately independent of Supabase config: a missing/broken env must
-    // never let anonymous callers create sessions in such a build.
+    // Server Action 可被直接调用，不能只依赖页面代理的登录重定向。
     return {
       ok: false,
       error: "Sign in to start an interview.",
@@ -53,10 +39,7 @@ export async function startSession(
   }
 
   try {
-    // Forward the signed-in user's id so the agent stamps it on the `sessions`
-    // row (sessions.user_id). Without this the row is unowned (NULL) and the
-    // report's RLS read (auth.uid() = user_id) can never see it, so the page
-    // falls back to sample data. Anonymous/dev has no user → omit it.
+    // 使用服务端认证身份覆盖输入，确保会话所有者与报告的 RLS 读取条件一致。
     const { session_id } = await requestPrep({
       ...input,
       user_id: userId ?? undefined,

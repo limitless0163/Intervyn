@@ -1,22 +1,6 @@
-"""Read/write skill files (Markdown + YAML frontmatter) and retrieve them.
+"""读写带 YAML 元数据的技能文件；检索扫描正式库后仅返回匹配且排名靠前的技能。
 
-File format::
-
-    ---
-    id: examplecorp-backend-senior
-    company: ExampleCorp
-    ...
-    ---
-    # body markdown...
-
-The store is the only place that knows this on-disk shape. ``find_relevant`` is
-deliberately *targeted*: it loads only the skill(s) matching ``company × role``
-(optionally ``level``) rather than all-loading the library, protecting prep
-latency/cost as the library grows.
-
-YAML quirk handled here: an unquoted ``last_verified: 2026-06-08`` parses to a
-``datetime.date``, which a ``str``-typed Pydantic field will reject — so frontmatter
-date/datetime values are coerced to ISO strings before model construction.
+YAML 自动解析的日期需转为 ISO 字符串，才能通过字符串字段校验。
 """
 
 from __future__ import annotations
@@ -153,13 +137,7 @@ _STATUS_RANK = {"promoted": 0, "review": 1, "draft": 2}
 _CONFIDENCE_HALF_LIFE_DAYS = 180.0
 
 
-# Spellings that mean the same job but tokenize differently. Both sides of the
-# match run through ``_role_tokens``, so every entry works in either direction:
-# a title written "Front End Engineer" finds a ``frontend-engineer`` pack, and a
-# hypothetical ``front-end-engineer`` pack is found by "Frontend Engineer".
-#
-# Expansion is monotone (if A's tokens were a subset of B's before, they still
-# are after), so this can only ADD matches, never remove one that worked.
+# 查询与技能角色都扩展复合词，兼容 Front End 与 frontend 等等价写法。
 _COMPOUND_FORMS: dict[str, tuple[str, ...]] = {
     "frontend": ("front", "end"),
     "backend": ("back", "end"),
@@ -218,11 +196,7 @@ def _role_tokens(text: str) -> set[str]:
 def effective_confidence(
     fm: SkillFrontmatter, *, today: _dt.date | None = None
 ) -> float:
-    """``confidence`` decayed by the age of ``last_verified``.
-
-    Half-life ``_CONFIDENCE_HALF_LIFE_DAYS``: a pack verified 180 days ago is
-    worth half its stated confidence. An unparseable date applies no decay.
-    """
+    """按验证日期衰减置信度，默认半衰期为 180 天；无效日期不衰减，未来日期按零龄处理。"""
     try:
         verified = _dt.date.fromisoformat(fm.last_verified[:10])
     except ValueError:
@@ -240,20 +214,10 @@ def find_relevant(
     level: str | None = None,
     limit: int = 2,
 ) -> list[Skill]:
-    """Targeted, ranked retrieval for the prep planner (top ``limit`` packs).
+    """返回前 limit 个匹配技能，排除 deprecated 状态。
 
-    Matching (all case-insensitive):
-      - **role** — the pack's slug tokens must be a subset of the query's
-        tokens, so a ``role: backend-engineer`` pack matches the live JD title
-        ``"Senior Backend Engineer"``.
-      - **company** — packs for the exact company rank above ``generic``
-        fallback packs; packs for *other* companies never match.
-      - **level** — soft: an exact level match ranks higher, but a senior pack
-        still serves a staff query when nothing closer exists.
-
-    Ranking: company tier → level match → status (promoted > review > draft)
-    → age-decayed confidence. ``deprecated`` packs are excluded. Retrieval
-    stays targeted — only the winning packs are returned, never the library.
+    技能角色词须为查询角色词的子集；仅匹配指定公司或 generic。
+    依次按公司、级别、状态、时间衰减后的置信度和技能 ID 排序；级别为软匹配。
     """
     want_company = company.strip().lower()
     want_role = _role_tokens(role)

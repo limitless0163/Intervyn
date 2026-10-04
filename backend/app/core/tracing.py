@@ -1,25 +1,7 @@
-"""Local-first tracing for agent work (WP-12).
+"""以本地 JSONL 记录追踪，可选同步到 Langfuse；记录失败不应中断业务。
 
-Two sinks, both best-effort and never raising:
-
-- **Local JSONL (default ON):** every :func:`start_trace` writes
-  ``<trace_dir>/<trace_id>.jsonl`` — one JSON object per line
-  (``trace_start`` / ``span_start`` / ``span_end`` / ``event`` / ``llm_call`` /
-  ``trace_end``). Readable offline via the ``intervyn traces`` CLI and
-  ``GET /api/traces``. No extra dependencies.
-- **Langfuse (opt-in):** when ``LANGFUSE_*`` keys are set and the
-  ``observability`` extra is installed, spans are additionally emitted as
-  OpenTelemetry spans, which Langfuse v4 captures automatically once its
-  client is constructed in :func:`init_tracing`. Missing SDK ⇒ skipped.
-
-Gating: :func:`is_enabled` is the single switch. Resolution order is
-explicit overrides (tests / :func:`init_tracing` from Settings at process
-start) → ``TRACE_ENABLED`` env → default ON. The test suite sets
-``TRACE_ENABLED=0`` (see ``tests/conftest.py``), so the offline suite writes
-nothing unless a test opts in with :func:`init_tracing`.
-
-Context tracking uses :mod:`contextvars`, so concurrent prep/score runs and
-async tasks each keep their own trace/span stack.
+配置优先级为显式覆盖、环境变量、默认值。ContextVar 隔离异步任务的追踪上下文，
+提示词预览默认关闭，避免简历和职位资料进入日志。
 """
 
 from __future__ import annotations
@@ -267,11 +249,7 @@ def _otel_end(cm: Any | None, span: Any | None, *, status: str, error: str | Non
 def start_trace(
     name: str, *, session_id: str | None = None, metadata: dict[str, Any] | None = None
 ) -> Iterator[str]:
-    """Open a trace; yields its id. Nested traces reuse the outer one.
-
-    When disabled this yields a throwaway id and writes nothing, so call
-    sites need no ``is_enabled()`` guards of their own.
-    """
+    """上下文管理器产出追踪 ID；嵌套时复用外层追踪，禁用时产出占位 ID 且不写事件。"""
     if not is_enabled():
         yield "tr_disabled"
         return
@@ -322,13 +300,8 @@ def start_trace(
         try:
             _current_trace.reset(token)
         except ValueError:
-            # A LiveKit job opens its trace in the entrypoint task but runs
-            # shutdown callbacks in a separate asyncio Context. ContextVar
-            # tokens may only be reset in the Context that created them, so a
-            # cross-context close would otherwise raise here *after* writing
-            # trace_end and abort the caller's shutdown work. Clear only when
-            # this Context inherited the same trace; never disturb an unrelated
-            # trace that may already be active in the closing Context.
+            # 关闭回调可能运行在另一异步上下文，无法重置原 ContextVar 令牌。
+            # 仅清除继承的同一追踪，避免打断收尾或覆盖另一个活跃追踪。
             if _current_trace.get() is info:
                 _current_trace.set(outer)
 
@@ -480,11 +453,9 @@ def traced(name: str | None = None):
 
 
 class TracedLLM:
-    """An :class:`LLMAdapter` decorator that records timing + outcome per call.
+    """代理模型适配器并记录耗时和结果，包括离线模拟调用。
 
-    Wraps whatever adapter ``get_llm`` returned (mock included — mock calls
-    show up as near-zero-latency spans, which keeps traces complete offline).
-    Full prompt text is never stored unless ``TRACE_INCLUDE_PROMPTS=1``.
+    仅显式启用提示词记录时保存截断预览，不保存完整提示词。
     """
 
     def __init__(self, inner: Any, *, provider: str = "") -> None:

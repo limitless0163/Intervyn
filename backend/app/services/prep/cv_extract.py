@@ -1,26 +1,7 @@
-"""Server-side CV/résumé document extraction (PDF/DOCX/HTML -> plain text).
+"""将粘贴文本、data URL 或远程简历文档转换为正文，避免将二进制内容送入分析。
 
-THE BUG this fixes: an uploaded CV reaches prep as either a ``data:`` URL of raw
-file bytes or an ``http(s)`` URL pointing at a PDF/DOCX. The old ``fetch_cv`` did
-``resp.text`` on those bytes, so the "CV" was binary garbage — validation flagged
-it and prep fell back to a mock candidate.
-
-:func:`extract_cv_text` resolves the document to real text:
-
-* plain text (the paste path) is returned verbatim — no parsing;
-* a ``data:`` URL is base64-decoded to ``(bytes, mime)``;
-* an ``http(s)`` URL is fetched to ``(bytes, content_type)`` (on fetch failure we
-  fall back to treating the URL string itself as the document text, preserving
-  the offline-tolerant behaviour the prep tests rely on);
-* bytes are converted with Microsoft **markitdown** (in a worker thread), and if
-  that yields empty/garbage AND a Gemini key is configured, **Gemini** native
-  multimodal document understanding is the fallback for scanned/image PDFs.
-
-It is best-effort and never raises: the worst case returns ``("", [warning])`` so
-prep proceeds with limited candidate info rather than crashing.
-
-Heavy/optional SDKs (markitdown, google-genai) are lazy-imported INSIDE the
-helpers, so this module imports cleanly even when they aren't installed.
+优先使用 markitdown；仅配置 Gemini 提供方及密钥时尝试多模态兜底。
+转换失败通过空正文或警告降级；远程文件读取失败保留原地址供后续校验。
 """
 
 from __future__ import annotations
@@ -211,13 +192,9 @@ _MAX_CV_REDIRECTS = 5
 
 
 async def _fetch_url_bytes(cv_url: str) -> tuple[bytes, str] | None:
-    """GET ``cv_url`` returning ``(bytes, content_type)``; ``None`` on any failure.
+    """读取文件并返回 (bytes, content_type)，失败返回 None。
 
-    Redirects are followed MANUALLY (``follow_redirects=False``) so every hop's
-    Location is re-validated by ``_is_fetchable_url``. httpx's automatic redirect
-    following would bypass the SSRF guard entirely: a public host could 302 to
-    ``http://169.254.169.254/...`` or the internal sidecar and the body would be
-    reflected into the readable session view.
+    手动跟随有限次重定向并逐跳校验目标，避免公网 URL 跳转内网后绕过检查。
     """
     if not _is_fetchable_url(cv_url):
         log.warning("fetch_cv: refusing non-public URL %r", cv_url)
@@ -277,16 +254,10 @@ async def _extract_from_bytes(data: bytes, mime: str, deps: Deps) -> tuple[str, 
 
 
 async def extract_cv_text(cv_url: str, deps: Deps) -> tuple[str, list[str]]:
-    """Resolve ``cv_url`` to plain CV text. Returns ``(text, warnings)``.
+    """返回 (text, warnings)：粘贴文本原样返回，data URL 解码后解析，HTTP(S) 文件读取后解析。
 
-    Dispatch:
-
-    * ``data:`` URL  -> base64-decode -> parse bytes (markitdown / Gemini);
-    * ``http(s)`` URL -> GET bytes -> parse; on fetch failure fall back to using
-      the URL string itself as the document text (offline-tolerant, no warning);
-    * anything else  -> the paste path: return the text verbatim, no parsing.
-
-    Best-effort and never raises.
+    远程读取失败时保留原 URL 且不追加警告，以兼容离线流程；
+    远程内容解析为空时保留原 URL 和解析警告。
     """
     if not cv_url:
         return "", []

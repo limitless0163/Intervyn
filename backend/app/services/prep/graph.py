@@ -1,20 +1,4 @@
-"""Compiled LangGraph ``StateGraph`` for the prep pipeline.
-
-Topology (fan-out then join then sequential keystone)::
-
-    START ─┬─> fetch_cv ─> cv_analysis ─┐
-           ├─> jd_analysis ─────────────┼─> gap_matching ─> question_planner ─> END
-           └─> company_research ────────┘
-
-``cv_analysis``, ``jd_analysis`` and ``company_research`` run concurrently. The
-join into ``gap_matching`` uses a list ``start_key`` so LangGraph waits for all
-three branches before running it — ``gap_matching`` reads ``candidate`` + ``job``,
-while ``company`` finishes independently and is consumed by ``question_planner``
-along with the gap analysis.
-
-Deps are bound into each node with :func:`functools.partial` so the compiled node
-presents the ``(state)`` signature LangGraph invokes.
-"""
+"""准备流程先并行分析简历、职位和公司，再汇合生成差距分析与问题计划。"""
 
 from __future__ import annotations
 
@@ -33,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def build_prep_graph(deps: Deps) -> CompiledStateGraph:
-    """Build and compile the prep ``StateGraph`` with ``deps`` bound into nodes."""
+    """将依赖绑定到节点，保留 LangGraph 所需的单一状态参数签名。"""
     graph: StateGraph = StateGraph(PrepState)
 
     graph.add_node("fetch_cv", partial(nodes.fetch_cv, deps=deps))
@@ -43,16 +27,14 @@ def build_prep_graph(deps: Deps) -> CompiledStateGraph:
     graph.add_node("gap_matching", partial(nodes.gap_matching, deps=deps))
     graph.add_node("question_planner", partial(nodes.question_planner, deps=deps))
 
-    # Fan-out: three independent branches start from START concurrently.
     graph.add_edge(START, "fetch_cv")
     graph.add_edge("fetch_cv", "cv_analysis")
     graph.add_edge(START, "jd_analysis")
     graph.add_edge(START, "company_research")
 
-    # Join: gap_matching waits for candidate (cv) + job (jd) + company research.
+    # 列表起点形成汇合屏障，确保后续规划读取到三个分支的完整结果。
     graph.add_edge(["cv_analysis", "jd_analysis", "company_research"], "gap_matching")
 
-    # Sequential keystone then finish.
     graph.add_edge("gap_matching", "question_planner")
     graph.add_edge("question_planner", END)
 

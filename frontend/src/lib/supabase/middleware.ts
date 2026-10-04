@@ -10,14 +10,8 @@ type CookieToSet = {
 };
 
 /**
- * Refresh the Supabase auth session cookie on every matched request, then
- * consult the distribution gate (no-op in OSS).
- *
- * When Supabase is not configured the refresh is skipped, but the gate still
- * runs with `isAuthenticated: false` — a required-auth distribution must fail
- * CLOSED on missing/broken env, not silently serve everything. Do NOT insert
- * logic between `createServerClient` and `auth.getUser()` — the cookie
- * refresh depends on that ordering.
+ * 刷新认证 Cookie 后检查页面访问门控。缺少 Supabase 配置时仍以未认证身份检查，
+ * 避免要求登录的发行版因配置缺失而放行；开源版门控默认允许访问。
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -45,13 +39,12 @@ export async function updateSession(request: NextRequest) {
       },
     );
 
-    // IMPORTANT: keep this immediately after client creation; refreshes the token.
+    // 紧接客户端创建校验用户，以便本次请求与响应都使用刷新后的 Cookie。
     const { data } = await supabase.auth.getUser();
     isAuthenticated = Boolean(data.user);
   }
 
-  // Distribution gate (no-op in OSS): pages only — API routes self-gate with
-  // 401s in their handlers, a redirect-to-login is the wrong shape for them.
+  // 页面可重定向到登录页；API 的鉴权由各处理器返回适当的 HTTP 状态。
   const pathname = request.nextUrl.pathname;
   if (!pathname.startsWith("/api/")) {
     const gate = gateRequest({ pathname, isAuthenticated });
@@ -59,7 +52,7 @@ export async function updateSession(request: NextRequest) {
       const redirectResponse = NextResponse.redirect(
         new URL(gate.redirectTo ?? "/login", request.url),
       );
-      // Carry any refreshed auth cookies over to the redirect.
+      // 重定向响应也须携带刷新后的 Cookie，否则客户端会丢失更新。
       for (const cookie of supabaseResponse.cookies.getAll()) {
         redirectResponse.cookies.set(cookie);
       }

@@ -1,14 +1,6 @@
-"""FastAPI app for the Intervyn knowledge sidecar (:9621).
+"""知识侧车的 HTTP 接口；原始文本可直接入库，URL 仅在成功读取时入库。
 
-Endpoints:
-* ``GET  /health``     — liveness probe.
-* ``POST /kb/ingest``  — fetch each file URL (raw-text fallback offline) and ingest.
-* ``POST /kb/query``   — retrieve a grounded answer + citations for a user.
-
-The ingest handler fetches file URLs with httpx **only if it is installed**; when
-httpx is absent or a fetch fails it treats the ``files[]`` entry as raw text (same
-spirit as the prep CV fallback), so the service stays runnable fully offline with
-just fastapi/uvicorn/pydantic.
+被拒绝或读取失败的 URL 返回空正文并跳过入库，不把 URL 本身当作资料。
 """
 
 from __future__ import annotations
@@ -37,12 +29,9 @@ _FETCH_TIMEOUT = 15.0
 
 
 def _is_public_http_url(url: str) -> bool:
-    """SSRF guard: only http(s), never loopback/private/link-local/reserved hosts.
+    """校验协议、主机名与 IP 字面量，拒绝本地或私有目标。
 
-    The ingest fetch runs server-side, so a caller-supplied URL could otherwise
-    make the sidecar probe the internal network (cloud metadata, other services)
-    and reflect the body back via /kb/query. Hostname-literal checks only (no DNS
-    resolution) — pair with network egress policy for defence in depth.
+    不解析 DNS，不能阻止域名解析到内网；部署时仍需限制网络出口。
     """
     try:
         parts = urlsplit(url)
@@ -79,32 +68,26 @@ async def require_secret(
 
 
 async def _resolve_file(ref: str) -> tuple[str, str]:
-    """Resolve one ``files[]`` entry to ``(source_id, text)``.
+    """将文件引用转换为 (source_id, text)。
 
-    If ``ref`` is a PUBLIC http(s) URL and httpx is installed, fetch it; on any
-    failure (no httpx, network error, non-http ref, or a refused non-public URL)
-    fall back to treating ``ref`` itself as raw text. ``source_id`` is the URL
-    when fetched, else a short label.
+    非 HTTP(S) 引用按原始文本处理；URL 被拒绝或读取失败时保留来源并返回空正文。
     """
     is_url = ref.startswith(("http://", "https://"))
     if is_url:
         if not _is_public_http_url(ref):
-            # Refuse SSRF targets: keep the URL as the source id but ingest no body.
+            # 拒绝目标不尝试联网，也不将地址本身作为正文。
             return (ref, "")
         try:
             import httpx
 
-            # Follow no redirects: an allowed public URL could otherwise 302 to an
-            # internal target, bypassing the guard above.
+            # 禁止自动重定向，避免合法公网地址跳转至内网后绕过检查。
             async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
                 resp = await client.get(ref, follow_redirects=False)
                 resp.raise_for_status()
                 return (ref, resp.text)
-        except Exception:  # noqa: BLE001 - any fetch failure -> raw-text fallback
-            # Couldn't fetch (offline / no httpx / bad status): keep the URL as the
-            # source id but we have no body, so skip ingesting empty content.
+        except Exception:  # noqa: BLE001 - 读取失败时跳过该来源
             return (ref, "")
-    # Not a URL: treat the entry itself as raw text. Use a stable short label.
+    # 文本首行作为稳定来源标签，正文保留完整内容。
     label = ref.strip().split("\n", 1)[0][:60] or "text"
     return (label, ref)
 

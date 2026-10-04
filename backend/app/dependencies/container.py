@@ -1,8 +1,4 @@
-"""Dependency bundle wiring config + adapters + persistence together.
-
-Pipelines and API routes receive a single :class:`Deps` instance, so swapping a
-provider (mock vs real) is a config concern, not a code concern.
-"""
+"""集中组装配置、提供方和仓库，业务流程通过 Deps 使用可替换的依赖。"""
 
 from __future__ import annotations
 
@@ -33,9 +29,7 @@ def _assemble(settings: Settings) -> Deps:
     provider = (settings.llm_provider or "mock").lower()
     return Deps(
         settings=settings,
-        # Every LLM call (prep/post/scoring, mock included) is timed + counted
-        # into the active trace. The wrapper delegates the Protocol, so this
-        # is transparent to pipelines; tracing no-ops when disabled.
+        # 统一记录模型调用，包括离线模拟；关闭追踪时仍保留原适配器接口。
         llm=TracedLLM(raw_llm, provider=provider),
         search=get_search(settings),
         embeddings=get_embeddings(settings),
@@ -44,15 +38,12 @@ def _assemble(settings: Settings) -> Deps:
     )
 
 
-# Cached default bundle: API routes call build_deps() per request, and without
-# this every request rebuilt every adapter INCLUDING a fresh Supabase client
-# (new HTTP connection pool per request). Keyed on the get_settings() instance
-# so clearing the settings cache (tests) transparently invalidates this too.
+# 跨请求复用适配器和连接池；配置缓存清空后，实例变化会使依赖缓存失效。
 _default_deps: Deps | None = None
 
 
 def build_deps(settings: Settings | None = None) -> Deps:
-    """Assemble the dependency bundle (defaults to cached settings + cached deps)."""
+    """默认依赖按配置实例缓存；显式传入配置时重新组装。"""
     global _default_deps
     if settings is not None:
         return _assemble(settings)

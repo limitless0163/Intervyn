@@ -1,16 +1,4 @@
-"""Background coverage watcher for the live interview.
-
-REQUIRES the optional ``livekit-agents`` extra at runtime (it is started from the
-worker), but its only hard dependency is ``asyncio`` + the livekit-free
-``state`` module. It is kept here (not in ``state.py``) because it is part of the
-live runtime, and ``live/__init__.py`` must not pull it in.
-
-The :class:`Director` runs OFF the turn-critical path as a fire-and-forget
-asyncio task. It periodically samples how far the interview has progressed
-through the plan and updates a coverage pointer / logs it. It never awaits on the
-turn loop and never mutates shared interview state, so it cannot block or corrupt
-a turn — it only observes.
-"""
+"""后台观察计划覆盖率与可选难度建议，不推进游标或修改回答。"""
 
 from __future__ import annotations
 
@@ -25,15 +13,7 @@ log = get_logger(__name__)
 
 
 class Director:
-    """Observes plan coverage in the background; never blocks a turn.
-
-    When ``enable_adaptive`` is set it ALSO caches an advisory difficulty
-    ``recommendation``/``rationale`` each tick (computed by the pure
-    :func:`state.evaluate_difficulty`). This is read-only w.r.t. the turn cursor
-    and purely observational — the live model consults the same pure function via
-    a tool; the cache here is for logging/observability. Defaults OFF so existing
-    call sites (``Director(userdata)``) and tests are unaffected.
-    """
+    """难度建议缓存仅用于观测；实时模型通过工具读取同一纯函数的结果。"""
 
     def __init__(
         self,
@@ -47,7 +27,7 @@ class Director:
         self._enable_adaptive = enable_adaptive
         self._task: asyncio.Task[None] | None = None
         self.coverage: float = 0.0
-        # Advisory adaptive signal; populated only when enable_adaptive is True.
+        # 仅启用自适应观测时更新，不能作为推进面试的状态。
         self.recommendation: Recommendation | None = None
         self.rationale: str = ""
 

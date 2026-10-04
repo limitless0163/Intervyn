@@ -1,14 +1,6 @@
-"""RAG backends for the knowledge sidecar.
+"""知识检索后端按 user_id 隔离；默认 NaiveRAG 为离线内存实现。
 
-``NaiveRAG`` is the default: a dependency-light, deterministic, in-memory store
-with simple token-overlap (TF) scoring. It needs no network and no ML deps, so
-the service runs and tests fully offline.
-
-``LightRAGBackend`` is the real cross-lingual knowledge-graph stack (LightRAG +
-RAG-Anything + bge-m3). It is lazy-imported and only constructed when
-``RAG_BACKEND=lightrag`` and the optional ``rag`` extra is installed.
-
-Both keep **one store/graph per ``user_id``** (per-user isolation).
+LightRAGBackend 仅保留集成骨架，实际入库和检索尚未实现。
 """
 
 from __future__ import annotations
@@ -32,7 +24,7 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 def _tokenize(text: str) -> list[str]:
-    """Lowercased alphanumeric tokens. Cross-lingual-friendly enough for naive TF."""
+    """仅提取 ASCII 字母和数字；不提供中文分词或跨语言语义检索。"""
     return _TOKEN_RE.findall(text.lower())
 
 
@@ -102,11 +94,7 @@ class RagBackend(Protocol):
 
 
 class NaiveRAG:
-    """Dependency-light, deterministic, in-memory per-user RAG.
-
-    No network, no ML deps. Stores chunked docs per ``user_id`` and ranks them by
-    token-overlap TF at query time.
-    """
+    """按用户在内存中分块存储，以词频重合排序；不持久化，也不生成或翻译回答。"""
 
     def __init__(self) -> None:
         # user_id -> list[_Chunk]
@@ -117,7 +105,7 @@ class NaiveRAG:
         for source_id, text in docs:
             for chunk_text in _chunk_text(text):
                 store.append(_Chunk(source_id, chunk_text, len(store)))
-        # Deterministic-but-unique track id derived from the user + store size.
+        # 随机后缀区分多次入库；检索排序的确定性不依赖此任务标识。
         return f"naive-{user_id}-{len(store)}-{uuid.uuid4().hex[:8]}"
 
     async def query(
@@ -129,8 +117,7 @@ class NaiveRAG:
             return ("", [])
 
         scored = [(chunk.score(query_tokens), chunk) for chunk in store]
-        # Drop zero-relevance chunks, then sort by (-score, index) for a stable,
-        # deterministic top-k that never depends on insertion/dict ordering.
+        # 仅返回相关片段，同分时按入库序号排序，保证结果稳定。
         scored = [pair for pair in scored if pair[0] > 0.0]
         if not scored:
             return ("", [])
@@ -154,12 +141,7 @@ class NaiveRAG:
 
 
 class LightRAGBackend:
-    """Real LightRAG + RAG-Anything + bge-m3 backend (gated, lazy-imported).
-
-    Only constructed when ``RAG_BACKEND=lightrag`` and the optional ``rag`` extra
-    is installed. It will not run offline; the skeleton documents the integration
-    points (per-user working dir, bge-m3 embeddings, ``/query/data`` for citations).
-    """
+    """可选真实后端的集成骨架；安装依赖后仍需实现各方法才能使用。"""
 
     def __init__(self, working_dir: str | None = None) -> None:
         self._working_dir = working_dir or os.environ.get(
@@ -179,12 +161,7 @@ class LightRAGBackend:
             ) from exc
 
     def _instance(self, user_id: str) -> object:  # pragma: no cover - needs extra
-        """Return (or lazily build) the per-user LightRAG instance.
-
-        Real wiring (sketch): one working dir per user, bge-m3 as the embedding
-        function, and a reranker (bge-reranker-v2-m3). RAG-Anything handles
-        multimodal ingestion (PDF/DOCX/PPTX/images).
-        """
+        """预留按用户构建独立知识图谱的入口，当前调用会抛出 NotImplementedError。"""
         raise NotImplementedError(
             "LightRAGBackend is a skeleton; wire LightRAG(working_dir=.../{user_id}) "
             "with bge-m3 embeddings here."

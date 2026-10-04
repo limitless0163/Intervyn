@@ -1,8 +1,4 @@
-/**
- * Pure, side-effect-free helpers for reading and rendering the project's `.env`
- * files. Kept dependency-free so the wizard's file logic is unit-testable
- * without a TTY or filesystem.
- */
+/** 纯函数形式解析和渲染环境模板，便于在不访问终端或文件系统的情况下验证向导。 */
 
 const KEY_LINE = /^(\s*)([A-Z][A-Z0-9_]*)=(.*)$/;
 
@@ -17,10 +13,7 @@ function unquote(value: string): string {
   return value;
 }
 
-/**
- * Parse `KEY=VALUE` pairs from a `.env` body into a map. Comments, blank lines
- * and malformed lines are skipped; surrounding quotes on a value are stripped.
- */
+/** 解析简单 KEY=VALUE 行并去除外层引号；不展开变量或执行 Shell 表达式。 */
 export function parseEnv(body: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const raw of body.split(/\r?\n/)) {
@@ -35,10 +28,7 @@ export function parseEnv(body: string): Record<string, string> {
   return out;
 }
 
-/**
- * Quote a value for a `.env` line only when it contains characters a dotenv
- * parser would otherwise split on (whitespace, `#`) or quotes. Empty stays empty.
- */
+/** 为包含空白、# 或引号的值加引号，并转义双引号和反斜杠。 */
 export function formatValue(value: string): string {
   if (value === "") return "";
   if (/[\s#"']/.test(value)) return `"${value.replace(/(["\\])/g, "\\$1")}"`;
@@ -46,11 +36,8 @@ export function formatValue(value: string): string {
 }
 
 /**
- * Render a `.env` file by overlaying `values` onto the annotated `template`
- * (the `.env.example`), preserving its comments, ordering and blank lines. A key
- * present in the template takes `values[key]` when provided, else keeps its
- * template default. Keys in `values` absent from the template are appended under
- * a trailing section so nothing the caller asked for is silently dropped.
+ * 覆盖模板中指定键的值，保留原注释、顺序和空行；未提供的键沿用模板默认值。
+ * 模板外的键追加到末尾，避免丢弃调用方配置。
  */
 export function renderEnv(
   template: string,

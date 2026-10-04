@@ -1,3 +1,4 @@
+/** 服务端调用 Agent API 并校验共享响应契约；内部密钥不得通过浏览器转发。 */
 import {
   PrepResponseSchema,
   ScoreResponseSchema,
@@ -39,17 +40,14 @@ async function postJson<T>(
   return parse(await res.json());
 }
 
-/** Kick off the prep pipeline for a CV + JD + company. */
 export function requestPrep(body: PrepRequest): Promise<PrepResponse> {
   return postJson("/api/prep", body, (d) => PrepResponseSchema.parse(d));
 }
 
-/** Score a completed interview session. */
 export function requestScore(body: ScoreRequest): Promise<ScoreResponse> {
   return postJson("/api/score", body, (d) => ScoreResponseSchema.parse(d));
 }
 
-/** Build a Study Coach plan from a scorecard's weak competencies (server-side). */
 export function requestCoachPlan(scorecard: ScoreCard): Promise<StudyPlan> {
   return postJson("/api/coach/plan", { scorecard }, (d) =>
     StudyPlanSchema.parse(d),

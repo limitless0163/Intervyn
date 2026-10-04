@@ -7,13 +7,10 @@ import {
 import { isLiveKitConfigured, serverEnv } from "@/lib/env";
 
 export interface CreateInterviewTokenArgs {
-  /** LiveKit room name — we use the interview session id. */
+  /** 房间名使用已验证的面试 session_id，调度元数据也复用此值。 */
   room: string;
-  /** Participant identity (e.g. the user id, or a dev identity offline). */
   identity: string;
-  /** Optional display name. */
   name?: string;
-  /** Optional JSON-serializable metadata attached to the participant. */
   metadata?: Record<string, unknown>;
 }
 
@@ -23,18 +20,8 @@ export interface InterviewToken {
 }
 
 /**
- * Mint a LiveKit access token granting a participant join+publish in `room`.
- *
- * The token carries an EXPLICIT agent dispatch (`roomConfig.agents`): the
- * voice worker registers under `LIVEKIT_AGENT_NAME` and LiveKit Cloud Agents
- * only routes a job to it when the token requests it. Without this the room
- * joins fine with no agent listening — the exact "Connecting your
- * interviewer…" hang in issue #67. The dispatch metadata carries the
- * session id so the worker can resolve its InterviewContext even when room
- * metadata is absent.
- *
- * Throws a clear error when LiveKit is not configured — call only behind an
- * `isLiveKitConfigured()` check (the token route does this). Never throws at import.
+ * 签发房间加入令牌并显式调度面试官；缺少 LiveKit 配置时抛出异常。
+ * 调度元数据携带 session_id，使工作进程无需依赖房间元数据即可加载上下文。
  */
 export async function createInterviewToken({
   room,
@@ -66,11 +53,7 @@ export async function createInterviewToken({
     canPublishData: true,
   });
 
-  // Explicit dispatch: route the interviewer worker into THIS room. `room`
-  // IS the session id (interview page pins room = verified session id), and
-  // the metadata lets the worker resolve it without depending on room
-  // metadata being set. `livekitAgentName` must match the worker's
-  // `agent_name` (LIVEKIT_AGENT_NAME) or the dispatch matches nothing.
+  // 仅加入房间不会启动面试官，调度名称须与工作进程注册名称一致。
   at.roomConfig = new RoomConfiguration({
     agents: [
       new RoomAgentDispatch({

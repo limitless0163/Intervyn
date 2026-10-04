@@ -4,9 +4,9 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { isR2Configured, serverEnv } from "@/lib/env";
 
 export interface PresignedUpload {
-  /** Pre-signed PUT URL — upload the file bytes directly to this. */
+  /** 在有效期内将文件字节直接 PUT 到此地址。 */
   uploadUrl: string;
-  /** Public URL where the object will be readable after upload. */
+  /** 对象读取地址；可访问性依赖存储桶或公共域名配置。 */
   publicUrl: string;
 }
 
@@ -26,10 +26,8 @@ function r2Client(): S3Client {
 }
 
 /**
- * Pre-sign a PUT upload to Cloudflare R2 for `key`.
- *
- * Throws a clear error when R2 is not configured — call only behind an
- * `isR2Configured()` check (the upload route does this). Never throws at import.
+ * 为对象签发十分钟有效的上传地址；缺少 R2 配置时抛出异常。
+ * contentLength 可选，以字节计；调用方应先校验上传类型和大小。
  */
 export async function presignUpload(
   key: string,
@@ -42,9 +40,7 @@ export async function presignUpload(
     );
   }
 
-  // Binding ContentType + ContentLength into the signature forces the client's
-  // PUT to match exactly, so a presigned URL can't be reused to upload a
-  // different (or unbounded) object than the one the caller was authorized for.
+  // 将获准类型与可选长度传入预签名请求，客户端上传需使用相同请求参数。
   const command = new PutObjectCommand({
     Bucket: serverEnv.r2Bucket,
     Key: key,

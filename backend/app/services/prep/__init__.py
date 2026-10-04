@@ -1,16 +1,4 @@
-"""WP-6 prep pipeline: the LangGraph that turns a ``PrepRequest`` into a
-persisted, ready-to-interview ``InterviewContext``.
-
-Public entry point is :func:`run_prep`, whose signature is the stable contract
-the API layer and tests depend on::
-
-    async def run_prep(req: PrepRequest, deps: Deps) -> str
-
-It creates a session, runs the prep graph (CV/JD/company research fan-out → gap
-analysis → question planning), assembles and persists the ``InterviewContext``,
-marks the session ``ready``, and returns the ``session_id``. Any failure marks
-the session ``error`` and re-raises.
-"""
+"""准备流程负责校验输入、生成并保存上下文，通过会话状态报告后台执行结果。"""
 
 from __future__ import annotations
 
@@ -39,13 +27,9 @@ async def _ingest_prep_materials(
     ctx: InterviewContext,
     deps: Deps,
 ) -> None:
-    """Ingest the prep documents (CV, JD, company intel) into the session's
-    knowledge store, keyed by ``session_id``.
+    """按 session_id 入库准备材料，与教练检索使用相同键。
 
-    Best-effort and self-contained: any knowledge failure is logged and
-    swallowed so it can never turn a successful prep into an ``error``. With no
-    knowledge sidecar configured the adapter is the offline mock (a no-op that
-    returns a deterministic track id), so this stays free in the default flow.
+    知识服务失败仅记录日志，不使已完成的准备流程失败。
     """
     files: list[str] = []
     if cv_text and cv_text.strip():
@@ -81,12 +65,7 @@ async def _ingest_prep_materials(
 
 
 async def run_prep(req: PrepRequest, deps: Deps) -> str:
-    """Run the prep pipeline inline and return the new ``session_id``.
-
-    Stable contract for tests / skilllib: creates a session then runs the
-    pipeline synchronously on it. The session ends ``ready`` (or ``rejected`` for
-    wholly meaningless input, or ``error`` if no plan could be produced).
-    """
+    """创建会话并等待准备流程结束，返回 session_id；最终状态可能为 ready、rejected 或 error。"""
     session_id = await deps.repo.create_session(req)
     await run_prep_for_session(session_id, req, deps)
     return session_id
@@ -95,27 +74,18 @@ async def run_prep(req: PrepRequest, deps: Deps) -> str:
 async def run_prep_for_session(
     session_id: str, req: PrepRequest, deps: Deps
 ) -> None:
-    """Run the prep pipeline against an EXISTING session row.
+    """为现有会话执行准备流程；无效输入标记 rejected，执行失败标记 error。
 
-    Validates inputs first (after fetching the CV so the resolved document text
-    is judged), then runs the graph, persists the ``InterviewContext`` and marks
-    the session ``ready``. Wholly meaningless input → ``rejected`` (no graph, no
-    LLM). A pipeline that cannot produce a plan → ``error``. Never raises: this is
-    designed to run as a fire-and-forget background task.
+    先提取简历再校验；异常在内部记录，便于 API 将其作为后台任务执行。
     """
-    # One trace per prep run (fetch + validate + graph + persist) so
-    # `intervyn traces` and GET /api/traces show per-node spans + LLM
-    # calls for this session. No-op when tracing is disabled (TRACE_ENABLED=0).
-    # Rejected input still leaves a (small) trace — useful signal, not noise.
+    # 校验与图执行共用追踪，便于定位拒绝原因和模型调用。
     with start_trace(
         "prep",
         session_id=session_id,
         metadata={"company": req.company, "primary": req.language_mode.primary},
     ):
         try:
-            # Parse the CV document first so validation judges the EXTRACTED text
-            # (real prose from a PDF/DOCX), not the data:/URL pointer or raw bytes.
-            # Pass session_id so any "couldn't read the CV" warning is persisted.
+            # 校验提取后的正文，避免把文件地址或二进制内容当作候选人资料。
             fetched = await fetch_cv({"req": req, "session_id": session_id}, deps)
             cv_text = fetched.get("cv_text", req.cv_url)
 
@@ -124,13 +94,12 @@ async def run_prep_for_session(
                 await deps.repo.add_warnings(session_id, warnings)
 
             if not ok:
-                # Wholly meaningless CV + JD: reject without spending a model call.
+                # 两项材料均无有效内容时直接拒绝，避免无效模型调用。
                 await deps.repo.update_status(session_id, "rejected")
                 add_event("prep.rejected", {"warnings": len(warnings)})
                 return
 
-            # A junk company is a warning (not a rejection); signal the graph to skip
-            # company research so we don't fabricate intel or waste calls.
+            # 公司名无效只跳过研究，仍可依据简历和职位准备面试。
             company_ok = not any("company name" in w for w in warnings)
 
             graph = build_prep_graph(deps)
@@ -159,10 +128,7 @@ async def run_prep_for_session(
             await deps.repo.update_status(session_id, "ready")
             add_event("prep.ready", {"questions": len(ctx.plan.questions)})
 
-            # Close the WP-8 loop: ingest the prep materials into THIS session's
-            # knowledge store so the Study Coach (which retrieves by session_id) can
-            # ground answers in the candidate's CV/JD/company intel. Keyed by
-            # session_id — the same key search() uses. Best-effort: never fail prep.
+            # 为后续教练问答提供依据；入库失败不阻断准备流程。
             await _ingest_prep_materials(session_id, req, cv_text, ctx, deps)
         except Exception:
             log.exception("run_prep_for_session(%s) failed", session_id)

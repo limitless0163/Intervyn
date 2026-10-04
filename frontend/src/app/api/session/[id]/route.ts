@@ -1,20 +1,12 @@
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env";
 
-// Reads server-only config (AGENT_API_URL) and proxies a live agent call;
-// never prerender / always run on the server per request.
+// 每次请求读取服务端配置并查询最新会话，避免预渲染固化状态。
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/session/[id] — server-side proxy to the agent's
- * `GET ${AGENT_API_URL}/api/session/{id}` (SessionView).
- *
- * We proxy (rather than call the agent from the browser) so `AGENT_API_URL`
- * stays server-only and CORS is a non-issue. On any fetch failure — agent down,
- * offline dev with no keys, timeout — we return a 503 with a prep-shaped body so
- * the client keeps showing the calm "preparing" view instead of crashing.
- *
- * Next 15: dynamic route `params` is a Promise.
+ * 通过服务端代理读取会话，使 Agent 地址留在服务端并避免浏览器跨域请求。
+ * 上游不可用或未返回 JSON 时，以 503 和准备中占位数据维持客户端轮询。
  */
 export async function GET(
   _request: Request,
@@ -37,19 +29,18 @@ export async function GET(
         method: "GET",
         headers: { accept: "application/json" },
         cache: "no-store",
-        // Don't let a slow / hung agent block the poll forever.
+        // 单次查询设置超时，避免阻塞后续轮询。
         signal: AbortSignal.timeout(15_000),
       },
     );
 
-    // Pass through the upstream JSON + status (incl. 404 for unknown sessions).
+    // 保留上游状态，未知会话的 404 不应变成准备中占位结果。
     const json = await upstream.json().catch(() => null);
     if (json === null) {
       return NextResponse.json(preparing, { status: 503 });
     }
     return NextResponse.json(json, { status: upstream.status });
   } catch {
-    // Agent unreachable / timeout / bad body — stay in the preparing state.
     return NextResponse.json(preparing, { status: 503 });
   }
 }

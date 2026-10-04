@@ -1,19 +1,4 @@
-"""Hard cost / duration guard for the live interview (Golden Rule #5).
-
-REQUIRES the optional ``livekit-agents`` extra at runtime (it is started from
-the worker), but its only hard dependency is ``asyncio`` + the livekit-free
-``state`` module: it talks to the running session through a tiny duck-typed
-surface (``say`` / ``shutdown``), so it is fully unit-testable with a fake
-session and a fake clock.
-
-The :class:`SessionGuard` runs OFF the turn-critical path as a fire-and-forget
-asyncio task (like :class:`~app.services.live.director.Director`). It
-enforces two ceilings — wall-clock duration and total transcript turns — and,
-when either is reached, says a brief closing line and shuts the session down
-gracefully (draining), which triggers the worker's persist + score shutdown
-callback. The web layer caps interview *creation* per tier; this is the in-room
-backstop so a stalled or looping model can never run a voice session unbounded.
-"""
+"""后台限制面试时长和转录轮数；触限后禁止新题，并为当前回答保留有界宽限期。"""
 
 from __future__ import annotations
 
@@ -36,10 +21,7 @@ _WRAP_UP_LINE = (
     "Thank you — your feedback will be ready shortly."
 )
 
-# Localized closing lines, keyed by primary-language code. The guard speaks this
-# via TTS, so it must match the interview's language (golden rule 3) — a
-# Vietnamese interview shouldn't end in English. Falls back to the English line
-# for any language not listed here.
+# 收尾语会直接进入 TTS，须匹配面试语言；未覆盖的语言回退到英语。
 _WRAP_UP_LINES: dict[str, str] = {
     "en": _WRAP_UP_LINE,
     "zh": "本次面试时间已到，我们就先进行到这里。感谢你的回答，面试反馈报告稍后就会准备好。",
@@ -56,11 +38,10 @@ def wrap_up_line(language: str | None) -> str:
 
 
 class SessionGuard:
-    """Enforce hard duration/turn ceilings on a live session; never blocks a turn.
+    """实时会话的兜底限制，不阻塞正常轮次。
 
-    ``session`` only needs an async ``say(text)`` and a ``shutdown(*, drain)``
-    method (the livekit ``AgentSession`` surface), so tests can pass a fake.
-    ``time_fn`` defaults to :func:`time.monotonic` and is injectable for tests.
+    answer_grace_sec 为触限后的回答宽限期，负值按零处理；
+    time_fn 使用单调时钟，可注入以便测试。
     """
 
     def __init__(
@@ -115,8 +96,7 @@ class SessionGuard:
         """Say a closing line (best-effort) then shut the session down gracefully."""
         log.warning("session_guard: %s for %s — wrapping up", reason, self._ud.session_id)
         self._ud.closing = True
-        # Cancel queued/generated questions before speaking the closing line.
-        # Otherwise say() queues behind a fresh question and ends it unanswered.
+        # 先中断已排队的新题，避免收尾语等待新题播完后留下未回答的问题。
         with contextlib.suppress(Exception):
             await self._session.interrupt()  # type: ignore[attr-defined]
         with contextlib.suppress(Exception):
@@ -136,9 +116,7 @@ class SessionGuard:
                     return
                 reason = self._limit_reached(elapsed)
                 if reason is not None:
-                    # A budget is a stop-after-this-question signal. Keep a
-                    # bounded grace period for the pending question/answer;
-                    # progression tools observe this flag and do not start Q+1.
+                    # 推进工具读取此标记后不再开新题；当前回答仍可在宽限期内结束。
                     self._ud.time_limit_reached = True
                     if self._limit_at is None:
                         self._limit_at = elapsed

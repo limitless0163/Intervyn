@@ -1,12 +1,4 @@
-"""Shared state for the WP-6 prep ``StateGraph``.
-
-``PrepState`` is the single channel dict threaded through every node. It is
-``total=False`` so the graph can start from just ``{"req": ...}`` and each node
-contributes the one (or few) keys it computes; LangGraph merges them across
-supersteps. The final ``ainvoke`` result therefore carries every key below,
-which :func:`app.services.prep.run_prep` reads out to assemble the
-``InterviewContext``.
-"""
+"""准备图的增量状态；各分支写入不同字段，由 LangGraph 汇合。"""
 
 from __future__ import annotations
 
@@ -23,12 +15,12 @@ from ...schemas.shared_models import (
 
 
 class PrepState(TypedDict, total=False):
-    """Mutable, additive state carried through the prep graph."""
+    """字段可缺省，允许流程从请求开始，逐步补齐上下文。"""
 
     req: PrepRequest
-    # Carried so nodes can report completion against an existing session row.
+    # 复用已创建的会话，供各节点写入进度。
     session_id: str
-    # False when the company name is junk -> company_research short-circuits.
+    # 公司名无效时跳过研究，避免生成无依据的公司信息。
     company_ok: bool
     cv_text: str
     candidate: CandidateProfile
