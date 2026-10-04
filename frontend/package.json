@@ -29,7 +29,7 @@
     "@livekit/components-styles": "^1.2.0",
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.116.0",
-    "@xyflow/react": "^12.11.6",
+    "@xyflow/react": "^12.12.0",
     "clsx": "^2.1.1",
     "livekit-client": "^2.22.2",
     "livekit-server-sdk": "^2.17.0",
