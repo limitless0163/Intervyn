@@ -101,7 +101,7 @@ jobs:
       # is the LAST stage, so a build with NO `target:` would push the worker as
       # the API image. Build and push each explicitly to its own tag.
       - name: Build + push API image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: backend/Dockerfile
@@ -114,7 +114,7 @@ jobs:
             ghcr.io/${{ github.repository }}-agent:${{ github.sha }}
 
       - name: Build + push worker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: backend/Dockerfile
