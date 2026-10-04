@@ -41,6 +41,13 @@ describe("parseEnv", () => {
       B: "x",
     });
   });
+
+  it("leaves single-quoted and bare backslashes literal", () => {
+    expect(parseEnv("A='path\\with\\slashes'\nB=path\\with\\slashes")).toEqual({
+      A: "path\\with\\slashes",
+      B: "path\\with\\slashes",
+    });
+  });
 });
 
 describe("formatValue", () => {
@@ -85,5 +92,19 @@ describe("renderEnv", () => {
     const parsed = parseEnv(out);
     expect(parsed.GEMINI_API_KEY).toBe("secret key with spaces");
     expect(parsed.LLM_PROVIDER).toBe("gemini");
+  });
+
+  it.each([
+    'secret"with"quotes',
+    "C:\\models\\local model",
+    'secret\\"mixed\\"quotes',
+    "literal\\n with spaces",
+    "single'quote",
+  ])("preserves escaped values across repeated init runs: %s", (value) => {
+    const first = renderEnv(TEMPLATE, { GEMINI_API_KEY: value });
+    const parsed = parseEnv(first);
+    expect(parsed.GEMINI_API_KEY).toBe(value);
+    const second = renderEnv(TEMPLATE, parsed);
+    expect(parseEnv(second).GEMINI_API_KEY).toBe(value);
   });
 });

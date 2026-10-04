@@ -78,14 +78,26 @@ describe.each(routes)("$name API boundary", (route) => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([{}, { query: "" }, { query: 42 }])(
-    "rejects invalid request %j before calling an upstream",
-    async (body) => {
-      const response = await route.post(request(body));
-      expect(response.status).toBe(400);
-      expect(fetchMock).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    {},
+    { query: "" },
+    { query: "   " },
+    { query: 42 },
+    { query: "a".repeat(8001) },
+    { query: "Help", session_id: "" },
+  ])("rejects invalid request %j before calling an upstream", async (body) => {
+    const response = await route.post(request(body));
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses Chinese sample copy without invented source links offline", async () => {
+    fetchMock.mockRejectedValue(new TypeError("offline"));
+    const response = await route.post(request({ query: "STAR", lang: "zh" }));
+    const body = await response.json();
+    expect(body.answer).toContain("示例回答");
+    expect(body.citations).toEqual([]);
+  });
 
   it("rejects malformed JSON", async () => {
     const response = await route.post(

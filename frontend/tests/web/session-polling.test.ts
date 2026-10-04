@@ -26,6 +26,12 @@ afterEach(() => {
 });
 
 describe("client session polling", () => {
+  it("does not accept another session's terminal response", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({ ...pending, session_id: "other", status: "complete" }),
+    );
+    expect((await fetchSessionView(id)).status).toBe("prep");
+  });
   it("encodes the id and supplies a bounded, cancellable request", async () => {
     const controller = new AbortController();
     fetchMock.mockResolvedValue(Response.json(pending));

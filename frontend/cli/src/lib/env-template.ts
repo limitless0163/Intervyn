@@ -3,11 +3,11 @@
 const KEY_LINE = /^(\s*)([A-Z][A-Z0-9_]*)=(.*)$/;
 
 function unquote(value: string): string {
-  if (
-    value.length >= 2 &&
-    ((value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'")))
-  ) {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    // 仅还原 formatValue 写出的转义；保留字面量 \n 和其他反斜杠序列。
+    return value.slice(1, -1).replace(/\\(["\\])/g, "$1");
+  }
+  if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
     return value.slice(1, -1);
   }
   return value;

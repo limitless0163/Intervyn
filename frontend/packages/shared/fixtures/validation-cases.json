@@ -1,0 +1,128 @@
+[
+  {
+    "name": "supported multilingual mode",
+    "schema": "LanguageMode",
+    "set": { "primary": "zh", "mixed": true },
+    "valid": true
+  },
+  {
+    "name": "unsupported language",
+    "schema": "LanguageMode",
+    "set": { "primary": "xx", "mixed": false },
+    "valid": false
+  },
+  {
+    "name": "missing mixed flag",
+    "schema": "LanguageMode",
+    "set": { "primary": "en" },
+    "valid": false
+  },
+  {
+    "name": "legacy answer defaults",
+    "schema": "AnswerRecord",
+    "base_path": "answers.0",
+    "remove": ["duration_sec", "followups_asked"],
+    "valid": true,
+    "expected": { "duration_sec": null, "followups_asked": [] }
+  },
+  {
+    "name": "nullable answer duration",
+    "schema": "AnswerRecord",
+    "base_path": "answers.0",
+    "set": { "duration_sec": null },
+    "valid": true
+  },
+  {
+    "name": "fractional answer duration",
+    "schema": "AnswerRecord",
+    "base_path": "answers.0",
+    "set": { "duration_sec": 1.25 },
+    "valid": true
+  },
+  {
+    "name": "invalid answer duration",
+    "schema": "AnswerRecord",
+    "base_path": "answers.0",
+    "set": { "duration_sec": {} },
+    "valid": false
+  },
+  {
+    "name": "answer followups must be a list",
+    "schema": "AnswerRecord",
+    "base_path": "answers.0",
+    "set": { "followups_asked": "why" },
+    "valid": false
+  },
+  {
+    "name": "localized question with English fallback",
+    "schema": "PlannedQuestion",
+    "base_path": "plan.questions.0",
+    "set": { "text": { "en": "Explain retries", "zh": "解释重试" } },
+    "valid": true
+  },
+  {
+    "name": "question requires English fallback",
+    "schema": "PlannedQuestion",
+    "base_path": "plan.questions.0",
+    "set": { "text": { "zh": "解释重试" } },
+    "valid": false
+  },
+  {
+    "name": "English fallback cannot be empty",
+    "schema": "PlannedQuestion",
+    "base_path": "plan.questions.0",
+    "set": { "text": { "en": "" } },
+    "valid": false
+  },
+  {
+    "name": "unsupported localized question key",
+    "schema": "PlannedQuestion",
+    "base_path": "plan.questions.0",
+    "set": { "text": { "en": "Explain retries", "xx": "unsupported" } },
+    "valid": false
+  },
+  {
+    "name": "localized question values must be strings",
+    "schema": "PlannedQuestion",
+    "base_path": "plan.questions.0",
+    "set": { "text": { "en": 42 } },
+    "valid": false
+  },
+  {
+    "name": "difficulty must be an integer",
+    "schema": "PlannedQuestion",
+    "base_path": "plan.questions.0",
+    "set": { "difficulty": 1.5 },
+    "valid": false
+  },
+  {
+    "name": "unsupported question section",
+    "schema": "PlannedQuestion",
+    "base_path": "plan.questions.0",
+    "set": { "section": "unknown" },
+    "valid": false
+  },
+  {
+    "name": "legacy scorecard coverage defaults to full",
+    "schema": "ScoreCard",
+    "base_path": "scorecard",
+    "remove": ["coverage_pct"],
+    "valid": true,
+    "expected": { "coverage_pct": 1 }
+  },
+  {
+    "name": "scorecard preserves partial coverage",
+    "schema": "ScoreCard",
+    "base_path": "scorecard",
+    "set": { "coverage_pct": 0.5 },
+    "valid": true,
+    "expected": { "coverage_pct": 0.5 }
+  },
+  {
+    "name": "scorecard requires language report",
+    "schema": "ScoreCard",
+    "base_path": "scorecard",
+    "remove": ["language_report"],
+    "valid": false
+  }
+]

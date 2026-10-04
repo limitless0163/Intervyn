@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { askCoach } from "../../src/services/coach";
+import { queryKnowledge } from "../../src/services/kb";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -30,4 +31,22 @@ it("passes the session and language through a cancellable coach request", async 
 it("rejects HTTP errors so the chat can show its failure state", async () => {
   fetchMock.mockResolvedValue(new Response(null, { status: 503 }));
   await expect(askCoach("Help")).rejects.toThrow("Coach chat failed (503)");
+});
+
+it.each([askCoach, queryKnowledge])(
+  "rejects malformed replies before rendering chat turns",
+  async (query) => {
+    fetchMock.mockResolvedValue(Response.json({ answer: 42, citations: null }));
+    await expect(query("Help")).rejects.toThrow();
+  },
+);
+
+it("bounds and cancels knowledge requests as well as coach requests", async () => {
+  fetchMock.mockResolvedValue(
+    Response.json({ answer: "Use STAR.", citations: [] }),
+  );
+  const controller = new AbortController();
+  await queryKnowledge("Help", "zh", "session-1", controller.signal);
+  controller.abort();
+  expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
 });
