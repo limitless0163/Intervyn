@@ -1,10 +1,11 @@
 "use server";
 
-import type { PrepRequest } from "@intervyn/shared";
+import { PrepRequestSchema, type PrepRequest } from "@intervyn/shared";
 import { features } from "@intervyn/ee";
 import { requestPrep } from "@/services/api";
 import { getUser } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
+import { MIN_CV_CHARS, MIN_JD_CHARS } from "@/lib/cv-upload";
 
 export type StartSessionResult =
   | { ok: true; session_id: string }
@@ -12,7 +13,7 @@ export type StartSessionResult =
   | {
       ok: false;
       error: string;
-      reason?: "auth_required";
+      reason?: "auth_required" | "invalid_input" | "service_unavailable";
     };
 
 /**
@@ -22,32 +23,48 @@ export type StartSessionResult =
 export async function startSession(
   input: PrepRequest,
 ): Promise<StartSessionResult> {
-  let userId: string | null = null;
-
-  if (isSupabaseConfigured()) {
-    const user = await getUser();
-    if (user) userId = user.id;
-  }
-
-  if (!userId && features.auth) {
-    // Server Action 可被直接调用，不能只依赖页面代理的登录重定向。
+  const parsed = PrepRequestSchema.safeParse(input);
+  if (
+    !parsed.success ||
+    !parsed.data.cv_url.trim() ||
+    (!/^(https?:\/\/|data:)/i.test(parsed.data.cv_url.trim()) &&
+      parsed.data.cv_url.trim().length < MIN_CV_CHARS) ||
+    parsed.data.jd_text.trim().length < MIN_JD_CHARS
+  ) {
     return {
       ok: false,
-      error: "Sign in to start an interview.",
-      reason: "auth_required",
+      error: "Add a CV and the full job description.",
+      reason: "invalid_input",
     };
   }
-
   try {
+    let userId: string | null = null;
+
+    if (isSupabaseConfigured()) {
+      const user = await getUser();
+      if (user) userId = user.id;
+    }
+
+    if (!userId && features.auth) {
+      // Server Action 可被直接调用，不能只依赖页面代理的登录重定向。
+      return {
+        ok: false,
+        error: "Sign in to start an interview.",
+        reason: "auth_required",
+      };
+    }
+
     // 使用服务端认证身份覆盖输入，确保会话所有者与报告的 RLS 读取条件一致。
     const { session_id } = await requestPrep({
-      ...input,
+      ...parsed.data,
       user_id: userId ?? undefined,
     });
     return { ok: true, session_id };
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Could not reach the prep service.";
-    return { ok: false, error: message };
+  } catch {
+    return {
+      ok: false,
+      error: "Could not start the interview. Please try again.",
+      reason: "service_unavailable",
+    };
   }
 }

@@ -2,8 +2,8 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { AlertTriangle } from "lucide-react";
 import { type ScoreCard, type InterviewContext } from "@intervyn/shared";
-import { serverEnv } from "@/lib/env";
-import { SessionViewSchema } from "@/types/session";
+import { loadSession } from "@/services/session";
+import { reportState, type ReportState } from "@/features/report/report-state";
 import {
   SAMPLE_SCORECARD,
   SAMPLE_INTERVIEW,
@@ -48,11 +48,8 @@ export const dynamic = "force-dynamic";
  *             never joined would spin forever. See issue #67.
  * - `error`   session errored (scoring failed — retriable) → honest notice.
  */
-type ReportState =
-  "ready" | "sample" | "empty" | "scoring" | "preparing" | "waiting" | "error";
-
 interface Loaded {
-  state: ReportState;
+  state: ReportState | "sample";
   scorecard: ScoreCard;
   /**
    * The agent deliberately persists degraded cards (numbers-only when the
@@ -83,81 +80,22 @@ async function load(id: string): Promise<Loaded> {
     role: SAMPLE_INTERVIEW.role,
   };
 
-  try {
-    const res = await fetch(
-      `${serverEnv.agentApiUrl}/api/session/${encodeURIComponent(id)}`,
-      { cache: "no-store", signal: AbortSignal.timeout(15_000) },
-    );
-    if (!res.ok) return sample;
-
-    const parsed = SessionViewSchema.safeParse(await res.json());
-    if (!parsed.success) return sample;
-
-    const view = parsed.data;
-    const base = {
-      degraded: false,
-      context: view.context,
-      company: view.context?.job.company_name ?? null,
-      role: view.context?.job.title ?? null,
-    };
-    const answers = view.context?.answers.length ?? 0;
-    const hasScores = (view.scorecard?.competency_scores?.length ?? 0) > 0;
-
-    // Honest empty: no answers were captured. New sessions are flagged
-    // `no_answers`; legacy rows may be `complete` with a blank (score-less) card.
-    if (
-      view.status === "no_answers" ||
-      (answers === 0 && !!view.scorecard && !hasScores)
-    ) {
-      return { ...base, state: "empty", scorecard: SAMPLE_SCORECARD };
-    }
-    // `error` now also covers a scoring (evaluate) failure for an answered
-    // interview — retriable, so the error copy invites a re-run.
-    if (view.status === "error" || view.status === "rejected") {
-      return { ...base, state: "error", scorecard: SAMPLE_SCORECARD };
-    }
-    // A persisted card ALWAYS renders — the agent deliberately writes degraded
-    // (numbers-only / narrative-less) cards, and a `complete` session is
-    // terminal: polling it forever would never change anything. Flag partial
-    // cards so the page shows an honest notice instead of silent blanks.
-    if (view.scorecard && (hasScores || view.status === "complete")) {
-      const c = view.scorecard;
-      const narrativeMissing =
-        c.strengths.length === 0 && c.weaknesses.length === 0;
-      return {
-        ...base,
-        state: "ready",
-        scorecard: c,
-        degraded: !hasScores || narrativeMissing,
-      };
-    }
-    // `complete` but no card at all (partial/legacy write): terminal — treat as
-    // a retriable scoring error rather than polling forever.
-    if (view.status === "complete") {
-      return { ...base, state: "error", scorecard: SAMPLE_SCORECARD };
-    }
-    // Prep still running: the interview hasn't happened, so don't claim to be
-    // scoring it. Genuinely transient — poll.
-    if (view.status === "prep") {
-      return { ...base, state: "preparing", scorecard: SAMPLE_SCORECARD };
-    }
-    if (view.status === "scoring") {
-      return { ...base, state: "scoring", scorecard: SAMPLE_SCORECARD };
-    }
-    // Prepped, but nothing was ever recorded. Only the voice worker writes a
-    // terminal status (`complete` / `no_answers`), so if it never joined the
-    // room this session stays `ready` forever — polling it was the infinite
-    // "Scoring your interview…" spinner in #67. Answer the user's real question
-    // instead: the interview hasn't run.
-    if (answers === 0) {
-      return { ...base, state: "waiting", scorecard: SAMPLE_SCORECARD };
-    }
-    // Answers exist but no card yet — scoring really is in flight. Poll, but
-    // the poller gives up and says so rather than spinning forever.
-    return { ...base, state: "scoring", scorecard: SAMPLE_SCORECARD };
-  } catch {
-    return sample;
-  }
+  const view = await loadSession(id);
+  if (!view) return sample;
+  const state = reportState(view);
+  const card = view.scorecard;
+  return {
+    state,
+    scorecard: state === "ready" && card ? card : SAMPLE_SCORECARD,
+    degraded:
+      state === "ready" &&
+      !!card &&
+      (card.competency_scores.length === 0 ||
+        (card.strengths.length === 0 && card.weaknesses.length === 0)),
+    context: view.context,
+    company: view.context?.job.company_name ?? null,
+    role: view.context?.job.title ?? null,
+  };
 }
 
 /** Build the question-text lookup + ordered transcript turns. */
@@ -203,7 +141,11 @@ function buildTranscript(loaded: Loaded): {
 /** Shared page chrome for the non-report (status) states. */
 function StatusShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-[920px] px-6 py-12">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto max-w-[920px] px-6 py-12"
+    >
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">
           <Eyebrow>Intervyn</Eyebrow>
@@ -254,6 +196,8 @@ export default async function ReportPage({
                 : t(messages, "report.scoreProgress")}
             </p>
             <ScoringPoll
+              sessionId={id}
+              state={loaded.state}
               stalledMessage={
                 preparing
                   ? t(messages, "report.prepStalled")
@@ -367,7 +311,11 @@ export default async function ReportPage({
   const { questionText, turns } = buildTranscript(loaded);
 
   return (
-    <main className="mx-auto max-w-[920px] px-6 py-12">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto max-w-[920px] px-6 py-12"
+    >
       {/* Header */}
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">

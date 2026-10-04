@@ -2,48 +2,58 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { watchReport } from "@/features/report/watch-report";
+import { Button } from "@/components/ui/button";
+import { useMessages } from "@/hooks/use-i18n";
+import { t } from "@/lib/i18n";
 
 /**
- * Re-runs the server component (which re-fetches the session view) on an
- * interval while the session is still in flight, so the report flips to the
- * real result the moment it's ready — without the user refreshing.
- *
- * Polling is BOUNDED. A session only leaves its non-terminal state because
- * something else writes to it (the voice worker at shutdown, or the scoring
- * stage), and when that something is broken or was never running, an unbounded
- * poll spins forever behind a spinner that claims progress — the "Grading your
- * interview" hang in issue #67. After `stopAfterMs` the interval is cleared and
- * `stalledMessage` is shown, so a stuck pipeline looks stuck.
+ * Bounded JSON polling avoids repeated server renders and overlapping reads.
+ * Refresh the server page only when its report state changes.
  */
 export function ScoringPoll({
+  sessionId,
+  state,
   intervalMs = 2500,
   stopAfterMs = 120_000,
   stalledMessage,
 }: {
+  sessionId: string;
+  state: "scoring" | "preparing";
   intervalMs?: number;
   stopAfterMs?: number;
   stalledMessage?: string;
 }) {
   const router = useRouter();
+  const messages = useMessages();
   const [stalled, setStalled] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    if (stalled) return;
-    const poll = setInterval(() => router.refresh(), intervalMs);
-    const deadline = setTimeout(() => setStalled(true), stopAfterMs);
-    return () => {
-      clearInterval(poll);
-      clearTimeout(deadline);
-    };
-  }, [router, intervalMs, stopAfterMs, stalled]);
+    setStalled(false);
+    return watchReport(sessionId, {
+      state,
+      intervalMs,
+      stopAfterMs,
+      isVisible: () => document.visibilityState !== "hidden",
+      onChange: () => router.refresh(),
+      onStalled: () => setStalled(true),
+    });
+  }, [sessionId, state, router, intervalMs, stopAfterMs, retryKey]);
 
-  if (!stalled || !stalledMessage) return null;
+  if (!stalled) return null;
   return (
-    <p
-      role="status"
-      className="mt-2 max-w-sm text-sm leading-relaxed text-muted"
-    >
-      {stalledMessage}
-    </p>
+    <div className="mt-2 flex flex-col items-center gap-3">
+      <p role="status" className="max-w-sm text-sm leading-relaxed text-muted">
+        {stalledMessage}
+      </p>
+      <Button
+        variant="out"
+        size="sm"
+        onClick={() => setRetryKey((key) => key + 1)}
+      >
+        {t(messages, "report.retry")}
+      </Button>
+    </div>
   );
 }

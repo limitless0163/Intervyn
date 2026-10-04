@@ -172,7 +172,11 @@ function Scaffold({
 }) {
   const messages = useMessages();
   return (
-    <main className="relative min-h-screen overflow-hidden bg-paper">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="relative min-h-screen overflow-hidden bg-paper"
+    >
       {/* Calm backdrop wash behind the frosted panels. */}
       <div
         aria-hidden

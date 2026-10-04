@@ -14,7 +14,7 @@ export default function Home() {
     <>
       <AnnouncementBar />
       <Nav />
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <Hero />
         <LogoCloud />
         <HowItWorks />

@@ -1,17 +1,7 @@
 "use client";
 
-import {
-  ReactFlow,
-  Background,
-  Handle,
-  Position,
-  MarkerType,
-  type Node,
-  type Edge,
-  type NodeProps,
-  type NodeTypes,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import dynamic from "next/dynamic";
+import { useMemo } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
@@ -22,92 +12,15 @@ import {
 } from "@/features/prep/sample-mastery";
 import { MASTERY_LABEL, MASTERY_COLORS } from "@/components/prep/status-chip";
 
-/** Data carried by each custom mastery node. */
-type MasteryNodeData = {
-  label: string;
-  state: MasteryState;
-  statusLabel: string;
-};
-type MasteryFlowNode = Node<MasteryNodeData, "mastery">;
-
-/**
- * Read-only mastery node, styled with the shared `MASTERY_COLORS` palette so it
- * matches the study-plan chips exactly. Handles are present (so prerequisite
- * edges connect) but rendered nearly invisible to keep the editorial calm.
- */
-function MasteryNodeComponent({ data }: NodeProps<MasteryFlowNode>) {
-  const c = MASTERY_COLORS[data.state];
-  return (
-    <div
-      className="rounded-[10px] border px-3.5 py-2.5 text-center"
-      style={{
-        backgroundColor: c.bg,
-        borderColor: c.border,
-        minWidth: 150,
-      }}
-    >
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{ opacity: 0, width: 1, height: 1, border: "none" }}
-        isConnectable={false}
-      />
-      <p className="text-[13px] font-medium" style={{ color: "#17171a" }}>
-        {data.label}
-      </p>
-      <p
-        className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em]"
-        style={{ color: c.fg }}
-      >
-        {data.statusLabel}
-      </p>
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ opacity: 0, width: 1, height: 1, border: "none" }}
-        isConnectable={false}
-      />
-    </div>
-  );
-}
-
-// Module-level constant — defining nodeTypes inline would remount on every
-// render and trip a React Flow warning.
-const NODE_TYPES: NodeTypes = { mastery: MasteryNodeComponent };
-
-function toFlow(
-  graph: MasteryGraph,
-  labels: Record<MasteryState, string>,
-): {
-  nodes: MasteryFlowNode[];
-  edges: Edge[];
-} {
-  const nodes: MasteryFlowNode[] = graph.nodes.map((n) => ({
-    id: n.id,
-    type: "mastery",
-    position: { x: n.x, y: n.y },
-    data: { label: n.label, state: n.state, statusLabel: labels[n.state] },
-    draggable: false,
-    selectable: false,
-    connectable: false,
-  }));
-
-  const edges: Edge[] = graph.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    type: "smoothstep",
-    style: { stroke: "#d9d4c8", strokeWidth: 1.5 },
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      color: "#c9c3b5",
-      width: 16,
-      height: 16,
-    },
-  }));
-
-  return { nodes, edges };
-}
+const MasteryFlow = dynamic(
+  () => import("./mastery-flow").then((module) => module.MasteryFlow),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full bg-line-2 motion-safe:animate-pulse" />
+    ),
+  },
+);
 
 /**
  * Read-only prerequisite map over the candidate's competency entities, colored
@@ -120,16 +33,18 @@ export function MasteryGraphView({
   graph?: MasteryGraph;
 }) {
   const messages = useMessages();
-  const masteryLabels: Record<MasteryState, string> = {
-    unseen: t(messages, "prep.notStarted"),
-    learning: t(messages, "prep.learning"),
-    shaky: t(messages, "prep.shaky"),
-    mastered: t(messages, "prep.mastered"),
-  };
-  const { nodes, edges } = toFlow(graph, masteryLabels);
+  const masteryLabels = useMemo<Record<MasteryState, string>>(
+    () => ({
+      unseen: t(messages, "prep.notStarted"),
+      learning: t(messages, "prep.learning"),
+      shaky: t(messages, "prep.shaky"),
+      mastered: t(messages, "prep.mastered"),
+    }),
+    [messages],
+  );
 
   return (
-    <section aria-labelledby="mastery-heading">
+    <section className="min-w-0" aria-labelledby="mastery-heading">
       <header className="mb-4">
         <Eyebrow>{t(messages, "prep.knowledgeMap")}</Eyebrow>
         <h2 id="mastery-heading" className="mt-2 font-serif text-2xl text-ink">
@@ -145,27 +60,16 @@ export function MasteryGraphView({
         role="img"
         aria-label={t(messages, "prep.graphLabel")}
       >
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={NODE_TYPES}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          proOptions={{ hideAttribution: true }}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          panOnDrag={false}
-          zoomOnScroll={false}
-          zoomOnPinch={false}
-          zoomOnDoubleClick={false}
-          preventScrolling={false}
-          minZoom={0.4}
-          maxZoom={1.2}
-        >
-          <Background color="#e7e3da" gap={22} size={1.2} />
-        </ReactFlow>
+        <MasteryFlow graph={graph} labels={masteryLabels} />
       </div>
+
+      <ul className="sr-only" aria-label={t(messages, "prep.masteryGraph")}>
+        {graph.nodes.map((node) => (
+          <li key={node.id}>
+            {node.label}: {masteryLabels[node.state]}
+          </li>
+        ))}
+      </ul>
 
       {/* Legend */}
       <div className="mt-3 flex flex-wrap gap-3">

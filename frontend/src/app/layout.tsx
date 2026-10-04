@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { LocaleProvider } from "@/components/locale-provider";
+import { getMessages, t } from "@/lib/i18n";
 import "@/styles/globals.css";
 
 const inter = Inter({
@@ -68,6 +69,12 @@ export default async function RootLayout({
       className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable}`}
     >
       <body className="font-sans">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-panel focus:px-4 focus:py-2 focus:shadow-md"
+        >
+          {t(getMessages(locale), "common.skipToContent")}
+        </a>
         <noscript>
           <style
             dangerouslySetInnerHTML={{

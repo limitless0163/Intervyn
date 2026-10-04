@@ -10,12 +10,14 @@ import { cn } from "@/utils/cn";
 import { askCoach, type Citation } from "@/services/coach";
 import { useLocale, useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
+import { safeExternalUrl } from "@/utils/safe-url";
 
 interface ChatTurn {
   id: string;
   role: "user" | "coach";
   text: string;
   citations?: Citation[];
+  followUps?: string[];
 }
 
 /**
@@ -29,10 +31,17 @@ interface ChatTurn {
  * (retrieving → grounding) so a multi-second retrieval feels intentional, not
  * stalled.
  */
-export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
+export function GroundedChat({
+  sessionId,
+  topic,
+}: {
+  sessionId?: string | null;
+  topic?: string | null;
+}) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [failedQuestion, setFailedQuestion] = useState<string | null>(null);
   const [phase, setPhase] = useState<"retrieving" | "grounding">("retrieving");
   const scrollRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<AbortController | null>(null);
@@ -50,12 +59,17 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
     setTurns([]);
     setInput("");
     setLoading(false);
+    setFailedQuestion(null);
     followLatest.current = true;
     return () => {
       requestRef.current?.abort();
       requestRef.current = null;
     };
   }, [sessionId]);
+
+  useEffect(() => {
+    if (topic) setInput(topic);
+  }, [sessionId, topic]);
 
   // Cycle the thinking label so a slow retrieval reads as progress.
   useEffect(() => {
@@ -89,6 +103,7 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
     setTurns((prev) => [...prev, userTurn]);
     setInput("");
     setLoading(true);
+    setFailedQuestion(null);
     setPhase("retrieving");
     followLatest.current = true;
 
@@ -107,18 +122,12 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
           role: "coach",
           text: res.answer,
           citations: res.citations,
+          followUps: res.follow_ups,
         },
       ]);
     } catch {
       if (controller.signal.aborted) return;
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: `c-${Date.now()}`,
-          role: "coach",
-          text: t(messages, "prep.chatFailed"),
-        },
-      ]);
+      setFailedQuestion(q);
     } finally {
       if (requestRef.current === controller) {
         requestRef.current = null;
@@ -128,7 +137,7 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
   }
 
   return (
-    <Card className="flex h-full flex-col">
+    <Card id="coach-chat" className="flex h-full min-w-0 flex-col scroll-mt-6">
       <div className="flex items-center justify-between border-b border-line px-6 py-4">
         <div>
           <Eyebrow>{t(messages, "prep.coachEyebrow")}</Eyebrow>
@@ -180,7 +189,7 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
           >
             <div
               className={cn(
-                "max-w-[88%] rounded-card px-4 py-3 text-[14px] leading-relaxed",
+                "min-w-0 max-w-[88%] break-words rounded-card px-4 py-3 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
                 turn.role === "user"
                   ? "bg-ink text-white"
                   : "border border-line bg-paper text-ink-soft",
@@ -197,7 +206,7 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
                     {turn.citations.map((c, i) => (
                       <a
                         key={`${turn.id}-cite-${i}`}
-                        href={c.url}
+                        href={safeExternalUrl(c.url) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="group inline-flex items-start gap-1.5 rounded-md border border-line bg-panel px-2.5 py-1.5 text-[12.5px] text-ink-soft no-underline transition-colors hover:border-accent hover:text-accent"
@@ -220,6 +229,21 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
                   </div>
                 </div>
               )}
+              {turn.followUps && turns.at(-1)?.id === turn.id && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {turn.followUps.map((question, index) => (
+                    <button
+                      key={`${turn.id}-follow-${index}`}
+                      type="button"
+                      disabled={loading}
+                      onClick={() => void ask(question)}
+                      className="rounded-md border border-line px-2.5 py-1.5 text-left text-[12px] text-accent hover:border-accent disabled:opacity-50"
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -239,6 +263,21 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
       </div>
 
       <CardContent className="border-t border-line py-4">
+        {failedQuestion && (
+          <div
+            role="alert"
+            className="mb-3 flex flex-wrap items-center gap-2 text-[13px] text-accent"
+          >
+            <span>{t(messages, "prep.chatFailed")}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void ask(failedQuestion)}
+            >
+              {t(messages, "report.retry")}
+            </Button>
+          </div>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -250,6 +289,7 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            maxLength={8000}
             placeholder={t(messages, "prep.askWeakArea")}
             aria-label={t(messages, "prep.askCoachLabel")}
             disabled={loading}

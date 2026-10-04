@@ -31,7 +31,11 @@ export default async function SetupPage() {
   const user = isSupabaseConfigured() ? await getUser() : null;
 
   return (
-    <main className="mx-auto max-w-[720px] px-6 py-12">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto max-w-[720px] px-6 py-12"
+    >
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">
           <Eyebrow>Intervyn</Eyebrow>

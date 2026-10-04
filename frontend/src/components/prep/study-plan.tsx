@@ -22,10 +22,12 @@ import {
 export function StudyPlan({
   modules = SAMPLE_STUDY_PLAN,
   weakAreas,
+  sessionId,
 }: {
   modules?: StudyModule[];
   /** Weak competencies from the last interview, for the header tie-in. */
   weakAreas?: string[];
+  sessionId?: string | null;
 }) {
   const messages = useMessages();
   const totalMin = modules.reduce((sum, m) => sum + m.est_min, 0);
@@ -87,7 +89,10 @@ export function StudyPlan({
 
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <Link
-                    href={`/prep?module=${m.id}`}
+                    href={`/prep?${new URLSearchParams({
+                      ...(sessionId ? { session: sessionId } : {}),
+                      module: m.competency,
+                    })}#coach-chat`}
                     className={buttonClasses({ size: "sm" })}
                     aria-label={`${t(messages, "prep.start")}: ${m.title}`}
                   >

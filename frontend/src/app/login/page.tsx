@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -51,27 +51,36 @@ export default function LoginPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabase) return;
+    if (!supabase || busy) return;
     setBusy(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) {
-      setError(error.message);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        setError(error.message);
+        setBusy(false);
+        return;
+      }
+      // Read ?next= at submit time (client event) — avoids useSearchParams,
+      // which would force the prerendered page into a blank Suspense shell.
+      router.push(
+        safeNext(new URLSearchParams(window.location.search).get("next")),
+      );
+    } catch {
+      setError(t(messages, "auth.requestFailed"));
       setBusy(false);
-      return;
     }
-    // Read ?next= at submit time (client event) — avoids useSearchParams,
-    // which would force the prerendered page into a blank Suspense shell.
-    router.push(
-      safeNext(new URLSearchParams(window.location.search).get("next")),
-    );
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-[440px] flex-col justify-center px-6 py-16">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto flex min-h-screen max-w-[440px] flex-col justify-center px-6 py-16"
+    >
       <div className="mb-3 flex items-center justify-between">
         <Eyebrow>{t(messages, "common.appName")}</Eyebrow>
         <LanguageToggle />
@@ -145,10 +154,11 @@ function DevModeNotice({ notice, cta }: { notice: string; cta: string }) {
       <p className="rounded-[10px] border border-line bg-accent-soft px-3.5 py-3 text-[13px] text-ink-soft">
         {notice}
       </p>
-      <Link href="/setup">
-        <Button size="lg" className="w-full">
-          {cta}
-        </Button>
+      <Link
+        href="/setup"
+        className={buttonClasses({ size: "lg", className: "w-full" })}
+      >
+        {cta}
       </Link>
     </div>
   );

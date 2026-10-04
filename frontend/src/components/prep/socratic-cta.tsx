@@ -3,16 +3,12 @@
 import Link from "next/link";
 import { Mic, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { buttonClasses } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
-/**
- * Voice Socratic mode entry point. Reuses the live interview voice loop
- * (LiveKit STT→LLM→TTS) but in a teaching posture: the coach asks leading
- * questions instead of grading. Links to the coach room (placeholder target).
- */
+/** Return to the supported voice mock flow after studying with the coach. */
 export function SocraticCta() {
   const messages = useMessages();
   return (
@@ -39,16 +35,15 @@ export function SocraticCta() {
         </div>
 
         <Link
-          href="/interview/coach?mode=socratic"
-          className="no-underline md:shrink-0"
+          href="/setup"
+          className={buttonClasses({
+            variant: "out",
+            className:
+              "no-underline md:shrink-0 border-white/30 bg-white/0 text-white hover:border-white hover:bg-white/10",
+          })}
         >
-          <Button
-            variant="out"
-            className="border-white/30 bg-white/0 text-white hover:border-white hover:bg-white/10"
-          >
-            {t(messages, "prep.socraticStart")}
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Button>
+          {t(messages, "prep.socraticStart")}
+          <ArrowRight className="h-4 w-4" aria-hidden />
         </Link>
       </CardContent>
     </Card>

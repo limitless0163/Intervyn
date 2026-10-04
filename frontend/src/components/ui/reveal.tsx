@@ -20,7 +20,10 @@ export function Reveal({ children, className, delay }: RevealProps) {
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    if (
+      !window.IntersectionObserver ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ) {
       setShown(true);
       return;
     }

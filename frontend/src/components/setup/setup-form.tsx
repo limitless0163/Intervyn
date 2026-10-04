@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UploadCloud, FileText, X } from "lucide-react";
 import { LANGUAGES, type Language, type LanguageMode } from "@intervyn/shared";
 import { startSession } from "@/app/setup/actions";
@@ -22,6 +22,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { DeviceCheck } from "@/components/setup/device-check";
+import { cvFileError, MIN_CV_CHARS, MIN_JD_CHARS } from "@/lib/cv-upload";
+import { CvUploadError, fileToDataUrl, uploadCv } from "@/services/cv";
 
 // A small, friendly subset for the picker; full set still lives in LANGUAGES.
 const LANGUAGE_LABELS: Partial<Record<Language, string>> = {
@@ -38,14 +40,6 @@ const OFFERED: Language[] = (
 ).filter((l) => (LANGUAGES as readonly string[]).includes(l));
 
 type Step = { key: string; label: string };
-
-// Friendly client-side minimums. The backend is the real guard — these just
-// block obviously-empty / garbage-short submits with a helpful nudge.
-const MIN_JD_CHARS = 40;
-const MIN_CV_CHARS = 30;
-// Max CV file size. Matches the /api/upload ceiling; also keeps the no-R2
-// data-URL fallback (base64 is ~+33%) under the Next server-action body limit.
-const MAX_CV_BYTES = 10 * 1024 * 1024;
 
 // One-click sample inputs for fast testing / demos. Each is a matched CV + JD +
 // company so the prep pipeline gets a coherent pair. Pure UX sugar — clicking a
@@ -78,6 +72,8 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
   const router = useRouter();
   const messages = useMessages();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const requestRef = useRef<AbortController | null>(null);
+  useEffect(() => () => requestRef.current?.abort(), []);
 
   const [file, setFile] = useState<File | null>(null);
   const [cvText, setCvText] = useState("");
@@ -103,20 +99,21 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
   // Company is optional.
   const cvLen = cvText.trim().length;
   const jdLen = jdText.trim().length;
+  const fileError = file ? cvFileError(file) : null;
   const cvError = !file
     ? cvLen === 0
       ? t(messages, "setup.needCv")
       : cvLen < MIN_CV_CHARS
-        ? `Add a bit more — your CV text looks too short (at least ${MIN_CV_CHARS} characters).`
+        ? t(messages, "setup.cvTooShort").replace("{min}", String(MIN_CV_CHARS))
         : null
-    : file.size > MAX_CV_BYTES
-      ? `That file is too large (max ${Math.floor(MAX_CV_BYTES / (1024 * 1024))} MB). Upload a smaller CV or paste the text.`
+    : fileError
+      ? t(messages, `setup.${fileError}`)
       : null;
   const jdError =
     jdLen === 0
       ? t(messages, "setup.needJd")
       : jdLen < MIN_JD_CHARS
-        ? `Paste the full posting — this looks too short (at least ${MIN_JD_CHARS} characters).`
+        ? t(messages, "setup.jdTooShort").replace("{min}", String(MIN_JD_CHARS))
         : null;
   const canSubmit = !cvError && !jdError && !submitting;
 
@@ -133,55 +130,22 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
     setError(null);
   }
 
-  const onDrop = useCallback((e: React.DragEvent) => {
+  function selectFile(selected: File | null) {
+    setFile(selected);
+    setCvTouched(true);
+    setError(null);
+  }
+
+  function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragging(false);
     const dropped = e.dataTransfer.files?.[0];
-    if (dropped) setFile(dropped);
-  }, []);
-
-  /**
-   * Read a file as a base64 `data:` URL of its RAW bytes (no R2 configured).
-   * The agent base64-decodes this and parses the real document (PDF/DOCX) —
-   * unlike `file.text()`, which mangles binary formats into garbage.
-   */
-  function fileToDataUrl(f: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () =>
-        reject(reader.error ?? new Error(t(messages, "setup.fileReadError")));
-      reader.readAsDataURL(f);
-    });
-  }
-
-  /** Upload the chosen file to R2 (presign → PUT) and return its public URL. */
-  async function uploadToR2(f: File): Promise<string> {
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        filename: f.name,
-        content_type: f.type || "application/octet-stream",
-        size: f.size,
-      }),
-    });
-    if (!res.ok) throw new Error(t(messages, "setup.uploadPrepareError"));
-    const { uploadUrl, publicUrl } = (await res.json()) as {
-      uploadUrl: string;
-      publicUrl: string;
-    };
-    const put = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "content-type": f.type || "application/octet-stream" },
-      body: f,
-    });
-    if (!put.ok) throw new Error(t(messages, "setup.uploadError"));
-    return publicUrl;
+    if (dropped) selectFile(dropped);
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (requestRef.current) return;
     setError(null);
 
     // Client-side validation. CV can be a file OR pasted text; JD required +
@@ -194,24 +158,21 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
 
     setSubmitting(true);
     setActiveStep(0);
+    const controller = new AbortController();
+    requestRef.current = controller;
 
     try {
-      // CV resolution: upload only when a file is chosen AND R2 is configured.
-      // Otherwise pass the pasted text directly as cv_url — the prep pipeline
-      // treats a non-URL cv_url as the document itself (offline-friendly).
+      // A selected file takes precedence in both storage and storage-free mode.
+      // Pasted text remains available after removing the file.
       let cv_url: string;
-      if (file && r2Configured) {
-        cv_url = await uploadToR2(file);
-      } else if (cvText.trim()) {
-        cv_url = cvText.trim();
-      } else if (file) {
-        // File chosen but no storage — send the RAW bytes as a base64 data URL
-        // so the agent can parse the real document (NOT file.text(), which
-        // turns a PDF/DOCX into binary garbage).
-        cv_url = await fileToDataUrl(file);
+      if (file) {
+        cv_url = r2Configured
+          ? await uploadCv(file, controller.signal)
+          : await fileToDataUrl(file, controller.signal);
       } else {
-        cv_url = "";
+        cv_url = cvText.trim();
       }
+      if (controller.signal.aborted) return;
 
       setActiveStep(1);
       const language_mode: LanguageMode = { primary, mixed };
@@ -221,6 +182,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
         company: company.trim(),
         language_mode,
       });
+      if (controller.signal.aborted) return;
 
       if (!result.ok) {
         // Required-auth distribution and the session expired mid-form →
@@ -229,7 +191,14 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
           router.push("/login?next=/setup");
           return;
         }
-        setError(result.error);
+        setError(
+          t(
+            messages,
+            result.reason === "invalid_input"
+              ? "setup.invalidInput"
+              : "setup.startFailed",
+          ),
+        );
         setSubmitting(false);
         return;
       }
@@ -240,15 +209,20 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
       // Route to the prep screen — it polls the agent, shows the agents
       // working, then the "what we found" bento, then hands off to /interview.
       router.push(
-        `/session/${result.session_id}${
+        `/session/${encodeURIComponent(result.session_id)}${
           personaId ? `?persona=${encodeURIComponent(personaId)}` : ""
         }`,
       );
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(
-        err instanceof Error ? err.message : t(messages, "common.error"),
+        err instanceof CvUploadError
+          ? t(messages, `setup.${err.key}`)
+          : t(messages, "setup.startFailed"),
       );
       setSubmitting(false);
+    } finally {
+      if (requestRef.current === controller) requestRef.current = null;
     }
   }
 
@@ -261,7 +235,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
   if (submitting) {
     const researching = t(messages, "setup.researching").replace(
       "{company}",
-      company.trim() || "the company",
+      company.trim() || t(messages, "setup.companyFallback"),
     );
     return (
       <Card className="mt-8">
@@ -322,7 +296,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
               {t(messages, "setup.quickDemo")}
             </p>
             <p className="text-[12px] text-muted">
-              Load a matched sample CV + job description to try it fast.
+              {t(messages, "setup.quickDemoHint")}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -348,63 +322,71 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
         </CardHeader>
         <CardContent className="flex flex-col gap-4 pb-6">
           <div
-            role="button"
-            tabIndex={0}
-            aria-label={t(messages, "setup.cvDrop")}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
             onDragOver={(e) => {
               e.preventDefault();
               setDragging(true);
             }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
-            onClick={() => fileInputRef.current?.click()}
             className={cn(
-              "flex cursor-pointer flex-col items-center gap-2 rounded-[10px] border border-dashed px-4 py-8 text-center transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+              "relative rounded-[10px] border border-dashed text-center transition-colors",
               dragging
                 ? "border-accent bg-accent-soft"
                 : "border-line hover:border-ink",
             )}
           >
-            {file ? (
-              <span className="flex items-center gap-2 text-[14px] text-ink">
-                <FileText className="h-4 w-4 text-accent" aria-hidden />
-                {file.name}
-                <button
-                  type="button"
-                  aria-label={t(messages, "setup.removeFile")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFile(null);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                  className="text-muted hover:text-ink"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </span>
-            ) : (
-              <>
-                <UploadCloud className="h-5 w-5 text-muted" aria-hidden />
-                <span className="text-[13px] text-muted">
-                  {t(messages, "setup.cvDrop")}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label={t(messages, "setup.cvDrop")}
+              aria-invalid={cvTouched && Boolean(cvError)}
+              aria-describedby={cvTouched && cvError ? "cv-error" : undefined}
+              className="flex w-full flex-col items-center gap-2 rounded-[10px] px-10 py-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            >
+              {file ? (
+                <span className="flex min-w-0 max-w-full items-center gap-2 text-[14px] text-ink">
+                  <FileText
+                    className="h-4 w-4 shrink-0 text-accent"
+                    aria-hidden
+                  />
+                  <span className="break-all">{file.name}</span>
                 </span>
-              </>
+              ) : (
+                <>
+                  <UploadCloud className="h-5 w-5 text-muted" aria-hidden />
+                  <span className="text-[13px] text-muted">
+                    {t(messages, "setup.cvDrop")}
+                  </span>
+                </>
+              )}
+            </button>
+            {file && (
+              <button
+                type="button"
+                aria-label={t(messages, "setup.removeFile")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+                className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-md text-muted hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
               className="hidden"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => selectFile(e.target.files?.[0] ?? null)}
             />
           </div>
+          {file && (
+            <p className="text-[12px] text-muted">
+              {t(messages, "setup.fileSelectedHint")}
+            </p>
+          )}
 
           <div>
             <Label htmlFor="cvText">{t(messages, "setup.cvPasteLabel")}</Label>
@@ -416,10 +398,11 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
               onChange={(e) => setCvText(e.target.value)}
               onBlur={() => setCvTouched(true)}
               aria-invalid={cvTouched && Boolean(cvError)}
+              aria-describedby={cvTouched && cvError ? "cv-error" : undefined}
             />
           </div>
           {cvTouched && cvError && (
-            <p className="text-[13px] text-accent" role="alert">
+            <p id="cv-error" className="text-[13px] text-accent" role="alert">
               {cvError}
             </p>
           )}
@@ -440,9 +423,10 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
             onBlur={() => setJdTouched(true)}
             aria-label={t(messages, "setup.jdLabel")}
             aria-invalid={jdTouched && Boolean(jdError)}
+            aria-describedby={jdTouched && jdError ? "jd-error" : undefined}
           />
           {jdTouched && jdError && (
-            <p className="text-[13px] text-accent" role="alert">
+            <p id="jd-error" className="text-[13px] text-accent" role="alert">
               {jdError}
             </p>
           )}

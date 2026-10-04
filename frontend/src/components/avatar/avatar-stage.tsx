@@ -93,10 +93,43 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
   const messages = useMessages();
   const [idleStatus, setIdleStatus] = React.useState<LayerStatus>("loading");
   const [speakStatus, setSpeakStatus] = React.useState<LayerStatus>("loading");
+  const idleRef = React.useRef<HTMLVideoElement>(null);
+  const speakRef = React.useRef<HTMLVideoElement>(null);
 
   const speaking = state === "speaking";
   // Everything that isn't `speaking` (idle / listening / thinking) shows idle.
   const showSpeakingLayer = speaking;
+
+  React.useEffect(() => {
+    setIdleStatus("loading");
+    setSpeakStatus("loading");
+  }, [persona.idle_url, persona.speaking_url]);
+
+  React.useEffect(() => {
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncPlayback = () => {
+      for (const [video, active] of [
+        [idleRef.current, !speaking],
+        [speakRef.current, speaking],
+      ] as const) {
+        if (!video) continue;
+        if (active && !document.hidden && !motion.matches) {
+          void video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      }
+    };
+    syncPlayback();
+    document.addEventListener("visibilitychange", syncPlayback);
+    motion.addEventListener("change", syncPlayback);
+    return () => {
+      document.removeEventListener("visibilitychange", syncPlayback);
+      motion.removeEventListener("change", syncPlayback);
+      idleRef.current?.pause();
+      speakRef.current?.pause();
+    };
+  }, [speaking, persona.idle_url, persona.speaking_url]);
 
   const idleReady = idleStatus === "ready";
   const speakReady = speakStatus === "ready";
@@ -150,6 +183,8 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
 
       {/* Idle layer — visible for idle/listening/thinking. */}
       <video
+        ref={idleRef}
+        aria-hidden
         className={cn(
           "absolute inset-0 h-full w-full object-cover",
           "transition-opacity duration-300 ease-out",
@@ -160,14 +195,15 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
         loop
         muted
         playsInline
-        preload="auto"
-        autoPlay
+        preload="metadata"
         onLoadedData={() => setIdleStatus("ready")}
         onError={() => setIdleStatus("error")}
       />
 
       {/* Speaking layer — visible only for `speaking`. */}
       <video
+        ref={speakRef}
+        aria-hidden
         className={cn(
           "absolute inset-0 h-full w-full object-cover",
           "transition-opacity duration-300 ease-out",
@@ -177,8 +213,7 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
         loop
         muted
         playsInline
-        preload="auto"
-        autoPlay
+        preload="metadata"
         onLoadedData={() => setSpeakStatus("ready")}
         onError={() => setSpeakStatus("error")}
       />

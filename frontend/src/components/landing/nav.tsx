@@ -20,7 +20,7 @@ export function Nav() {
   ];
   return (
     <nav className="sticky top-0 z-50 border-b border-line bg-paper/80 backdrop-blur-md">
-      <Container className="flex h-[66px] items-center justify-between">
+      <Container className="flex h-[66px] items-center justify-between gap-2 px-4 sm:px-7">
         <a href="#top" className="flex items-center gap-[9px]">
           <BrandMark size={22} />
           <span className="text-[17px] font-semibold tracking-[-0.01em]">
@@ -36,7 +36,7 @@ export function Nav() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3.5">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3.5">
           <LanguageToggle className="hidden min-[861px]:inline-flex" />
           {features.auth ? (
             <Link

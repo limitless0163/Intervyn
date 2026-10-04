@@ -5,9 +5,8 @@ import { Eyebrow } from "@/components/ui/eyebrow";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { LanguageToggle } from "@/components/language-toggle";
-import type { ScoreCard, StudyModule } from "@intervyn/shared";
-import { serverEnv } from "@/lib/env";
-import { SessionViewSchema } from "@/types/session";
+import type { StudyModule } from "@intervyn/shared";
+import { loadSession } from "@/services/session";
 import { SAMPLE_SCORECARD } from "@/features/report/sample-scorecard";
 import { requestCoachPlan } from "@/services/api";
 import { StudyPlan } from "@/components/prep/study-plan";
@@ -20,27 +19,6 @@ import { getMessages, t } from "@/lib/i18n";
 // Reads server-only config (`isSupabaseConfigured()`) and the per-request user;
 // must not be statically prerendered.
 export const dynamic = "force-dynamic";
-
-/**
- * Fetch a session's real scorecard from the agent API (same pattern as the
- * report page's `load()`). Returns null on ANY miss — agent down, unknown
- * session, shape drift, or a session that hasn't been scored yet — so the
- * caller can fall back honestly.
- */
-async function loadScorecard(id: string): Promise<ScoreCard | null> {
-  try {
-    const res = await fetch(
-      `${serverEnv.agentApiUrl}/api/session/${encodeURIComponent(id)}`,
-      { cache: "no-store", signal: AbortSignal.timeout(15_000) },
-    );
-    if (!res.ok) return null;
-    const parsed = SessionViewSchema.safeParse(await res.json());
-    if (!parsed.success) return null;
-    return parsed.data.scorecard ?? null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Prep Coach (WP-4). The closed-loop study surface: it turns the last
@@ -57,7 +35,10 @@ async function loadScorecard(id: string): Promise<ScoreCard | null> {
 export default async function PrepPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string | string[] }>;
+  searchParams: Promise<{
+    session?: string | string[];
+    module?: string | string[];
+  }>;
 }) {
   // No auth gate — OSS runs without sign-in.
   const params = await searchParams;
@@ -72,7 +53,9 @@ export default async function PrepPage({
 
   // Weak areas come from the linked interview's real scorecard when present;
   // otherwise fall back to the clearly-labeled sample.
-  const real = sessionId ? await loadScorecard(sessionId) : null;
+  const real = sessionId
+    ? ((await loadSession(sessionId))?.scorecard ?? null)
+    : null;
   const scorecard = real ?? SAMPLE_SCORECARD;
   const isSample = real === null;
   const weakAreas = scorecard.weak_competencies;
@@ -88,7 +71,11 @@ export default async function PrepPage({
   }
 
   return (
-    <main className="mx-auto max-w-[1100px] px-6 py-12">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto max-w-[1100px] px-6 py-12"
+    >
       {/* Header */}
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">
@@ -145,8 +132,15 @@ export default async function PrepPage({
 
       {/* Study plan + grounded chat side by side on wide screens */}
       <section className="mt-10 grid gap-8 lg:grid-cols-[1.15fr_1fr]">
-        <StudyPlan modules={studyModules} weakAreas={weakAreas} />
-        <GroundedChat sessionId={sessionId} />
+        <StudyPlan
+          modules={studyModules}
+          weakAreas={weakAreas}
+          sessionId={sessionId}
+        />
+        <GroundedChat
+          sessionId={sessionId}
+          topic={typeof params.module === "string" ? params.module : null}
+        />
       </section>
 
       {/* Flashcards + mastery graph */}

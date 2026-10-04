@@ -25,6 +25,7 @@ import {
   type ClientSessionView,
 } from "@/types/session";
 import { cn } from "@/utils/cn";
+import { safeExternalUrl } from "@/utils/safe-url";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -118,7 +119,11 @@ export function PrepSummary({
   const warnings = view?.prep_warnings ?? [];
 
   return (
-    <main className="mx-auto max-w-[920px] px-6 py-12">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto max-w-[920px] px-6 py-12"
+    >
       <header className="flex items-center justify-between">
         <Eyebrow>Intervyn</Eyebrow>
         <div className="flex items-center gap-3">
@@ -524,7 +529,7 @@ function CompanyCard({ co }: { co: CompanyIntel }) {
                 {co.citations.slice(0, 6).map((cite, i) => (
                   <a
                     key={i}
-                    href={cite.url}
+                    href={safeExternalUrl(cite.url) ?? undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                     title={cite.snippet ?? cite.title}

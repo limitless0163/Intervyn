@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { RotateCcw, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ const RATINGS: { rating: Rating; key: string; variant: "out" | "ink" }[] = [
  * scheduler in `lib/srs.ts` and advances to the next still-due card.
  *
  * Scheduler state lives in `useState`, seeded inside the initializer so the
- * clock is read on the client only (SSR-safe, no hydration mismatch).
+ * clock values aren't rendered directly (matching initial markup in SSR).
  */
 export function Flashcards({
   cards = SAMPLE_FLASHCARDS,
@@ -42,6 +42,7 @@ export function Flashcards({
   cards?: Flashcard[];
 }) {
   const messages = useMessages();
+  const contentId = useId();
   // Seed per-card SRS state once, on the client, off a single `now`.
   const [states, setStates] = useState<Record<string, SrsState>>(() => {
     const now = Date.now();
@@ -174,13 +175,17 @@ export function Flashcards({
         <>
           {/* Flip card. CSS 3D transform — no animation library. */}
           <div
-            className="[perspective:1600px]"
+            className="rounded-card [perspective:1600px]"
             role="button"
             tabIndex={0}
             aria-label={t(
               messages,
               flipped ? "prep.showQuestion" : "prep.revealAnswer",
             )}
+            aria-describedby={
+              flipped ? `${contentId}-answer` : `${contentId}-question`
+            }
+            aria-pressed={flipped}
             onClick={() => setFlipped((f) => !f)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -190,19 +195,25 @@ export function Flashcards({
             }}
           >
             <div
-              className="relative min-h-[220px] w-full transition-transform duration-500 [transform-style:preserve-3d]"
+              className="relative grid min-h-[220px] w-full transition-transform duration-500 [transform-style:preserve-3d]"
               style={{
                 transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
               }}
             >
               {/* Front */}
-              <div className="absolute inset-0 [backface-visibility:hidden]">
+              <div
+                aria-hidden={flipped}
+                className="[grid-area:1/1] [backface-visibility:hidden]"
+              >
                 <Card className="flex h-full min-h-[220px] flex-col">
                   <CardContent className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
                     <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint">
                       {current.competency}
                     </span>
-                    <p className="max-w-md font-serif text-[20px] leading-snug text-ink">
+                    <p
+                      id={`${contentId}-question`}
+                      className="max-w-md break-words font-serif text-[20px] leading-snug text-ink"
+                    >
                       {current.front}
                     </p>
                     <span className="mt-2 text-[12px] text-faint">
@@ -213,7 +224,8 @@ export function Flashcards({
               </div>
               {/* Back */}
               <div
-                className="absolute inset-0 [backface-visibility:hidden]"
+                aria-hidden={!flipped}
+                className="[grid-area:1/1] [backface-visibility:hidden]"
                 style={{ transform: "rotateY(180deg)" }}
               >
                 <Card className="flex h-full min-h-[220px] flex-col bg-accent-soft">
@@ -221,7 +233,10 @@ export function Flashcards({
                     <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-accent">
                       {t(messages, "prep.answer")}
                     </span>
-                    <p className="max-w-lg text-[15px] leading-relaxed text-ink-soft">
+                    <p
+                      id={`${contentId}-answer`}
+                      className="max-w-lg break-words text-[15px] leading-relaxed text-ink-soft"
+                    >
                       {current.back}
                     </p>
                   </CardContent>

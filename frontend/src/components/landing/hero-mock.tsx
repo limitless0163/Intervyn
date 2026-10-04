@@ -54,8 +54,8 @@ export function HeroMock() {
           localhost:3000/session/8f2a
         </span>
       </div>
-      <div className="grid grid-cols-[150px_1fr]">
-        <div className="flex flex-col gap-3 border-r border-line-2 p-4">
+      <div className="grid grid-cols-[90px_minmax(0,1fr)] sm:grid-cols-[150px_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-3 border-r border-line-2 p-3 sm:p-4">
           <div className="relative aspect-square overflow-hidden rounded-xl bg-[linear-gradient(160deg,#23232A,#3C3A4D)]">
             <div className="absolute inset-0 grid place-items-center font-serif text-3xl text-[#D9D6E8]">
               A
@@ -65,24 +65,24 @@ export function HeroMock() {
             <span className="anim-rec h-[7px] w-[7px] rounded-full bg-[#DC2626]" />{" "}
             04:12
           </div>
-          <div className="self-start rounded-md border border-line px-2 py-[3px] font-mono text-[11px] text-ink-soft">
+          <div className="self-start break-words rounded-md border border-line px-2 py-[3px] font-mono text-[11px] text-ink-soft">
             EN · Recruiter
           </div>
-          <div className="self-start rounded-md border border-line px-2 py-[3px] font-mono text-[11px] text-ink-soft">
+          <div className="self-start break-words rounded-md border border-line px-2 py-[3px] font-mono text-[11px] text-ink-soft">
             Senior Backend
           </div>
         </div>
-        <div className="flex min-h-[268px] flex-col gap-[13px] px-[18px] py-4">
-          <div className="flex gap-2.5">
-            <div className="w-[74px] flex-shrink-0 pt-0.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-faint">
+        <div className="flex min-h-[268px] min-w-0 flex-col gap-[13px] px-3 py-4 sm:px-[18px]">
+          <div className="flex flex-col gap-1 sm:flex-row sm:gap-2.5">
+            <div className="shrink-0 pt-0.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-faint sm:w-[74px]">
               {t(messages, "landing.hero.mockInterviewer")}
             </div>
             <div className="text-[13.5px] font-[450] leading-[1.5] text-ink">
               {t(messages, "landing.hero.mockQuestion")}
             </div>
           </div>
-          <div className="flex gap-2.5">
-            <div className="w-[74px] flex-shrink-0 pt-0.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-faint">
+          <div className="flex flex-col gap-1 sm:flex-row sm:gap-2.5">
+            <div className="shrink-0 pt-0.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-faint sm:w-[74px]">
               {t(messages, "landing.hero.mockYou")}
             </div>
             <div className="text-[13.5px] leading-[1.5] text-ink-soft">

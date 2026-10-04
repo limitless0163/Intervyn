@@ -23,7 +23,11 @@ export default async function AvatarsPage() {
     cookieStore.get("locale")?.value === "zh" ? "zh" : "en",
   );
   return (
-    <main className="mx-auto max-w-[1080px] px-6 py-12">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto max-w-[1080px] px-6 py-12"
+    >
       <header className="flex items-center justify-between">
         <Link href="/" className="no-underline">
           <Eyebrow>Intervyn</Eyebrow>

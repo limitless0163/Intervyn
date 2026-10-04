@@ -14,8 +14,8 @@ export function Hero() {
   const messages = useMessages();
   return (
     <header id="top" className="border-b border-line">
-      <Container className="grid items-center gap-11 pt-[84px] pb-16 min-[920px]:grid-cols-[1.04fr_0.96fr] min-[920px]:gap-14">
-        <div>
+      <Container className="grid grid-cols-[minmax(0,1fr)] items-center gap-11 pt-[84px] pb-16 min-[920px]:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)] min-[920px]:gap-14">
+        <div className="min-w-0">
           <Eyebrow>{t(messages, "landing.hero.eyebrow")}</Eyebrow>
           <h1 className="serif mt-[18px] mb-[22px] text-[44px] text-ink min-[920px]:text-[60px]">
             {t(messages, "landing.hero.title")}{" "}
@@ -49,7 +49,7 @@ export function Hero() {
           </div>
         </div>
 
-        <Reveal>
+        <Reveal className="min-w-0">
           <HeroMock />
         </Reveal>
       </Container>

@@ -7,7 +7,7 @@ import {
 import { getUser } from "@/lib/supabase/server";
 import { createInterviewToken } from "@/lib/livekit";
 import { getPersona } from "@/constants/personas";
-import { SessionViewSchema, type SessionView } from "@/types/session";
+import { loadSession } from "@/services/session";
 import { LiveRoom } from "@/components/interview/live-room";
 
 // Reads server-only config and calls the agent API per request; never prerender.
@@ -32,25 +32,6 @@ export const dynamic = "force-dynamic";
  * unguessable `sess_<uuid4>` capability URL (OSS no-auth design) — knowing it
  * grants access, but we never mint LiveKit tokens for arbitrary room names.
  */
-
-/**
- * Resolve the session from the agent (`GET /api/session/{id}`). Returns null
- * when the session is unknown, the body doesn't parse, or the agent is
- * unreachable — the token guard FAILS CLOSED (no verified session ⇒ no token).
- */
-async function loadSession(id: string): Promise<SessionView | null> {
-  try {
-    const res = await fetch(
-      `${serverEnv.agentApiUrl}/api/session/${encodeURIComponent(id)}`,
-      { cache: "no-store", signal: AbortSignal.timeout(15_000) },
-    );
-    if (!res.ok) return null;
-    const parsed = SessionViewSchema.safeParse(await res.json());
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
 
 export default async function InterviewPage({
   params,
