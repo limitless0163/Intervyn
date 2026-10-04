@@ -19,13 +19,18 @@ type Status = "idle" | "requesting" | "ok" | "denied" | "unsupported";
 export function DeviceCheck() {
   const messages = useMessages();
   const [status, setStatus] = useState<Status>("idle");
-  const [level, setLevel] = useState(0);
+  const [lit, setLit] = useState(0);
+  const bars = 16;
 
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
+  const requestRef = useRef(0);
+  const requestingRef = useRef(false);
 
   const teardown = useCallback(() => {
+    requestRef.current += 1;
+    requestingRef.current = false;
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     streamRef.current?.getTracks().forEach((tr) => tr.stop());
@@ -38,6 +43,7 @@ export function DeviceCheck() {
   useEffect(() => teardown, [teardown]);
 
   const start = useCallback(async () => {
+    if (requestingRef.current || streamRef.current) return;
     // Feature-detect: absent on insecure (non-HTTPS) origins / old browsers.
     if (
       typeof navigator === "undefined" ||
@@ -46,9 +52,16 @@ export function DeviceCheck() {
       setStatus("unsupported");
       return;
     }
+    const request = ++requestRef.current;
+    requestingRef.current = true;
     setStatus("requesting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Permission prompts can resolve after navigation or cleanup.
+      if (request !== requestRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
 
       type WindowWithWebkit = Window & {
@@ -69,34 +82,39 @@ export function DeviceCheck() {
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
 
-      const tick = () => {
-        analyser.getByteTimeDomainData(data);
-        // RMS deviation from the 128 midpoint → 0..1 input level.
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) {
-          const v = ((data[i] ?? 128) - 128) / 128;
-          sum += v * v;
+      let lastSample = -Infinity;
+      const tick = (timestamp: number) => {
+        // The meter has only 16 levels; sample at 10 Hz and render only when
+        // the visible bar count changes, rather than on every animation frame.
+        if (timestamp - lastSample >= 100) {
+          lastSample = timestamp;
+          analyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = ((data[i] ?? 128) - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length);
+          setLit(Math.round(Math.min(1, rms * 2.4) * bars));
         }
-        const rms = Math.sqrt(sum / data.length);
-        setLevel(Math.min(1, rms * 2.4));
         rafRef.current = requestAnimationFrame(tick);
       };
-      tick();
+      rafRef.current = requestAnimationFrame(tick);
       setStatus("ok");
     } catch {
+      if (request !== requestRef.current) return;
       teardown();
       setStatus("denied");
+    } finally {
+      if (request === requestRef.current) requestingRef.current = false;
     }
   }, [teardown]);
-
-  const bars = 16;
-  const lit = Math.round(level * bars);
 
   // Release the mic after a pass (or on demand): without this the browser's
   // recording indicator stays lit while the user fills the rest of the form.
   function stop() {
     teardown();
-    setLevel(0);
+    setLit(0);
     setStatus("idle");
   }
 
@@ -113,7 +131,7 @@ export function DeviceCheck() {
 
   return (
     <div className="rounded-[10px] border border-line bg-panel p-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2" role="status">
           {status === "ok" ? (
             <CheckCircle2 className="h-4 w-4 text-ok" aria-hidden />
@@ -131,18 +149,23 @@ export function DeviceCheck() {
               {t(messages, "setup.micStop")}
             </Button>
           </div>
-        ) : status === "denied" || status === "unsupported" ? (
+        ) : status === "unsupported" ? (
           <Badge variant="outline">{t(messages, "setup.fail")}</Badge>
         ) : (
-          <Button
-            type="button"
-            variant="out"
-            size="sm"
-            onClick={start}
-            disabled={status === "requesting"}
-          >
-            {t(messages, "setup.micTest")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {status === "denied" && (
+              <Badge variant="outline">{t(messages, "setup.fail")}</Badge>
+            )}
+            <Button
+              type="button"
+              variant="out"
+              size="sm"
+              onClick={start}
+              disabled={status === "requesting"}
+            >
+              {t(messages, "setup.micTest")}
+            </Button>
+          </div>
         )}
       </div>
 

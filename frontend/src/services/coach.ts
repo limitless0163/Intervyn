@@ -12,11 +12,15 @@ export async function askCoach(
   query: string,
   lang: Language = "en",
   sessionId = "anonymous",
+  signal?: AbortSignal,
 ): Promise<CoachReply> {
   const res = await fetch("/api/coach/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, query, lang }),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(45_000)])
+      : AbortSignal.timeout(45_000),
   });
 
   if (!res.ok) {

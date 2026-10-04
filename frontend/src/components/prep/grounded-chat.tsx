@@ -8,8 +8,7 @@ import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/utils/cn";
 import { askCoach, type Citation } from "@/services/coach";
-import { useLocale } from "@/hooks/use-i18n";
-import { useMessages } from "@/hooks/use-i18n";
+import { useLocale, useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
 interface ChatTurn {
@@ -36,6 +35,8 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState<"retrieving" | "grounding">("retrieving");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const requestRef = useRef<AbortController | null>(null);
+  const followLatest = useRef(true);
   const messages = useMessages();
   const suggestions = [
     t(messages, "prep.suggestion1"),
@@ -45,25 +46,40 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
   // Answer in the user's chosen language, not always English.
   const locale = useLocale();
 
+  useEffect(() => {
+    setTurns([]);
+    setInput("");
+    setLoading(false);
+    followLatest.current = true;
+    return () => {
+      requestRef.current?.abort();
+      requestRef.current = null;
+    };
+  }, [sessionId]);
+
   // Cycle the thinking label so a slow retrieval reads as progress.
   useEffect(() => {
     if (!loading) return;
-    setPhase("retrieving");
     const t = setTimeout(() => setPhase("grounding"), 900);
     return () => clearTimeout(t);
   }, [loading]);
 
   // Keep the latest turn in view.
   useEffect(() => {
+    if (!followLatest.current) return;
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
+      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
     });
   }, [turns, loading]);
 
   async function ask(question: string) {
     const q = question.trim();
-    if (!q || loading) return;
+    if (!q || requestRef.current) return;
+    const controller = new AbortController();
+    requestRef.current = controller;
 
     const userTurn: ChatTurn = {
       id: `u-${Date.now()}`,
@@ -73,9 +89,17 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
     setTurns((prev) => [...prev, userTurn]);
     setInput("");
     setLoading(true);
+    setPhase("retrieving");
+    followLatest.current = true;
 
     try {
-      const res = await askCoach(q, locale, sessionId ?? "anonymous");
+      const res = await askCoach(
+        q,
+        locale,
+        sessionId ?? "anonymous",
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
       setTurns((prev) => [
         ...prev,
         {
@@ -86,6 +110,7 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
         },
       ]);
     } catch {
+      if (controller.signal.aborted) return;
       setTurns((prev) => [
         ...prev,
         {
@@ -95,7 +120,10 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
         },
       ]);
     } finally {
-      setLoading(false);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setLoading(false);
+      }
     }
   }
 
@@ -113,6 +141,14 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
 
       <div
         ref={scrollRef}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          followLatest.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+        }}
+        role="log"
+        aria-label={t(messages, "prep.askCoach")}
+        tabIndex={0}
         className="flex-1 space-y-4 overflow-y-auto px-6 py-5"
         style={{ minHeight: 280, maxHeight: 460 }}
       >
@@ -217,7 +253,7 @@ export function GroundedChat({ sessionId }: { sessionId?: string | null }) {
             placeholder={t(messages, "prep.askWeakArea")}
             aria-label={t(messages, "prep.askCoachLabel")}
             disabled={loading}
-            className="flex-1 rounded-[10px] border border-line bg-panel px-3.5 py-2.5 text-[14px] text-ink placeholder:text-faint focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-paper disabled:opacity-50"
+            className="min-w-0 flex-1 rounded-[10px] border border-line bg-panel px-3.5 py-2.5 text-[14px] text-ink placeholder:text-faint focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-paper disabled:opacity-50"
           />
           <Button
             type="submit"

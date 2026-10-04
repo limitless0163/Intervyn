@@ -98,7 +98,8 @@ function fallbackView(
 }
 
 /**
- * Fetch the session view from our proxy route. NEVER throws: any non-ok
+ * Fetch the session view from our proxy route. Except for caller cancellation,
+ * never throws: any non-ok
  * response, parse drift, or network error resolves to a tolerant "still
  * preparing" view so the poller keeps showing the calm prep screen instead of
  * crashing (the agent may simply be down or mid-startup).
@@ -109,17 +110,23 @@ function fallbackView(
  * - past `POLL_DEADLINE_MS` of polling, a still-`prep` (or unreadable) view
  *   resolves to `stalled` so the UI can offer a retry instead of a spinner.
  */
-export async function fetchSessionView(id: string): Promise<ClientSessionView> {
+export async function fetchSessionView(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ClientSessionView> {
   let state = pollStates.get(id);
   if (!state) {
     state = { startedAt: Date.now(), consecutive404: 0 };
     pollStates.set(id, state);
   }
-  const pastDeadline = Date.now() - state.startedAt > POLL_DEADLINE_MS;
+  const pastDeadline = () => Date.now() - state.startedAt > POLL_DEADLINE_MS;
 
   try {
     const res = await fetch(`/api/session/${encodeURIComponent(id)}`, {
       cache: "no-store",
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        : AbortSignal.timeout(15_000),
     });
 
     // The proxy passes the agent's 404 through for unknown sessions.
@@ -128,20 +135,27 @@ export async function fetchSessionView(id: string): Promise<ClientSessionView> {
       if (state.consecutive404 >= NOT_FOUND_AFTER) {
         return fallbackView(id, "not_found");
       }
-      return fallbackView(id, pastDeadline ? "stalled" : "prep");
+      return fallbackView(id, pastDeadline() ? "stalled" : "prep");
     }
     state.consecutive404 = 0;
+    if (!res.ok) {
+      return fallbackView(id, pastDeadline() ? "stalled" : "prep");
+    }
 
     const json: unknown = await res.json();
     const parsed = SessionViewSchema.safeParse(json);
     if (parsed.success) {
-      if (parsed.data.status === "prep" && pastDeadline) {
-        return { ...parsed.data, status: "stalled" };
+      const pending =
+        parsed.data.status === "prep" ||
+        (parsed.data.status === "ready" && !parsed.data.context);
+      if (pending) {
+        return { ...parsed.data, status: pastDeadline() ? "stalled" : "prep" };
       }
       return parsed.data;
     }
-    return fallbackView(id, pastDeadline ? "stalled" : "prep");
+    return fallbackView(id, pastDeadline() ? "stalled" : "prep");
   } catch {
-    return fallbackView(id, pastDeadline ? "stalled" : "prep");
+    signal?.throwIfAborted();
+    return fallbackView(id, pastDeadline() ? "stalled" : "prep");
   }
 }
