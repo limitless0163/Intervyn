@@ -19,7 +19,7 @@ Intervyn has a pnpm/Turborepo workspace rooted in `frontend/` for the Next.js we
 - `backend/app/`: API, configuration/adapters, dependencies, repository, Pydantic schemas, and coach/live/post/prep/skilllib services.
 - `backend/skills/`: curated skill packs and generated index; `_review/` is a transient draft queue.
 - `backend/services/lightrag/`: independent knowledge sidecar project; tests live at `backend/tests/lightrag/`.
-- `infra/supabase/migrations/`: ordered SQL migrations. `scripts/`: repository setup and auxiliary scripts. `.github/workflows/ci.yml`: CI contract.
+- `infra/supabase/migrations/`: ordered SQL migrations. `scripts/`: repository setup and auxiliary scripts.
 
 `docs/instructions/ARCHITECTURE_INSTRUCTIONS.md` contains an example target tree that does not match this checkout (including paths such as root `tests/`, `Makefile`, and backend `db/`/`models/`). Use the actual source tree and module guides below when locating code; do not create or move files just to match that example.
 
@@ -42,4 +42,4 @@ Intervyn has a pnpm/Turborepo workspace rooted in `frontend/` for the Next.js we
 
 ## CI and deployment
 
-`.github/workflows/ci.yml` generates/checks schemas, builds, typechecks, lints, runs workspace tests and sidecar tests, validates Compose profiles, and builds Docker images. `.github/workflows/deploy.yml` is manually triggered and still contains placeholder/commented deployment commands; do not treat it as a completed production deploy path.
+GitHub Actions workflows are no longer maintained in this repository; CI and deployment have moved out of source.
