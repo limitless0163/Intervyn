@@ -56,9 +56,9 @@ class Settings(BaseSettings):
     # 本地服务无需鉴权，但 SDK 要求显式传入非空占位密钥。
     local_api_key: str = "local"
     # 入场前探测本地服务，避免候选人开始面试后才遇到连接失败。
-    local_probe_timeout_sec: float = 2.0
+    local_probe_timeout_sec: float = Field(default=2.0, gt=0, allow_inf_nan=False)
     # 本地推理允许更长调用时限，以覆盖冷启动和共享算力下的延迟。
-    local_provider_timeout_sec: float = 30.0
+    local_provider_timeout_sec: float = Field(default=30.0, gt=0, allow_inf_nan=False)
 
     # 可选提供方密钥。
     gemini_api_key: str | None = None
@@ -91,27 +91,28 @@ class Settings(BaseSettings):
     internal_api_secret: str | None = None
 
     # 服务监听及工作进程回连配置。
-    agent_api_port: int = 8000
+    agent_api_port: int = Field(default=8000, ge=1, le=65535)
     # 工作进程访问 API 的地址；容器内应使用服务 DNS，不能用指向自身的 localhost。
     agent_api_url: str | None = None
     default_language: str = "en"
 
     # 提供方调用须有时限，才能在卡住时进入准备或评分的降级分支。
-    llm_call_timeout_sec: float = 90.0
+    llm_call_timeout_sec: float = Field(default=90.0, gt=0, allow_inf_nan=False)
+    search_call_timeout_sec: float = Field(default=20.0, gt=0, allow_inf_nan=False)
 
     # 此开关控制后台难度观测；实时工具通过本地启发式给出建议，不等待模型评估。
     enable_adaptive_difficulty: bool = False
 
     # 对低分或边界分做二次核验；超时或失败时保留原评分。
     enable_score_verifier: bool = False
-    score_verifier_timeout_sec: float = 60.0
+    score_verifier_timeout_sec: float = Field(default=60.0, gt=0, allow_inf_nan=False)
 
     # 仅在确认原生滤镜可加载的主机启用，初始化失败可能阻断输入音频。
     enable_bvc: bool = False
 
     # 端点延迟容纳面试中的思考停顿，衡量静音而非回答总时长。
-    interview_min_endpointing_delay_sec: float = Field(default=5.0, ge=0.5)
-    interview_max_endpointing_delay_sec: float = Field(default=10.0, ge=0.5)
+    interview_min_endpointing_delay_sec: float = Field(default=5.0, ge=0.5, allow_inf_nan=False)
+    interview_max_endpointing_delay_sec: float = Field(default=10.0, ge=0.5, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def validate_endpointing_delays(self) -> Settings:
@@ -120,17 +121,17 @@ class Settings(BaseSettings):
         return self
 
     # 达到时长或轮次上限后停止提新问题，当前回答仍有有限收尾宽限。
-    max_interview_duration_sec: int = 2400  # 停止开始新问题的时长上限。
-    max_interview_turns: int = 80  # 对话轮次上限；当前回答仍可在宽限期内完成。
-    interview_answer_grace_sec: float = 300.0  # 当前回答的收尾宽限，单位为秒。
+    max_interview_duration_sec: int = Field(default=2400, gt=0)
+    max_interview_turns: int = Field(default=80, gt=0)
+    interview_answer_grace_sec: float = Field(default=300.0, ge=0, allow_inf_nan=False)
 
     # 关闭回调需留足回写时间；周期检查点减少硬退出时的数据损失。
     # 检查点间隔设为 0 时关闭，异常退出仍可能丢失尚未回写的内容。
-    shutdown_process_timeout_sec: float = 60.0
-    transcript_flush_interval_sec: float = 20.0
+    shutdown_process_timeout_sec: float = Field(default=60.0, gt=0, allow_inf_nan=False)
+    transcript_flush_interval_sec: float = Field(default=20.0, ge=0, allow_inf_nan=False)
 
     # 评分阶段各自限时，失败时生成有效降级结果，避免整份报告丢失。
-    score_stage_timeout_sec: float = 60.0
+    score_stage_timeout_sec: float = Field(default=60.0, gt=0, allow_inf_nan=False)
     # 启用后只向待审目录写入去标识化草稿，不能自动发布到正式技能库。
     enable_skill_distiller: bool = False
 

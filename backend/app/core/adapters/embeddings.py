@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from ..logging import get_logger
@@ -17,8 +18,9 @@ log = get_logger(__name__)
 class OpenAIEmbeddings:
     """通过延迟导入的 OpenAI SDK 生成嵌入。"""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, timeout_sec: float = 90.0) -> None:
         self._api_key = api_key
+        self._timeout = timeout_sec
 
     def _client(self) -> Any:
         try:
@@ -27,15 +29,20 @@ class OpenAIEmbeddings:
             raise RuntimeError(
                 "openai is not installed; install the 'openai' extra."
             ) from exc
-        return AsyncOpenAI(api_key=self._api_key)
+        return AsyncOpenAI(api_key=self._api_key, timeout=self._timeout)
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
         client = self._client()
-        resp = await client.embeddings.create(
-            model="text-embedding-3-small",
-            input=texts,
-        )
-        return [item.embedding for item in resp.data]
+        try:
+            resp = await asyncio.wait_for(
+                client.embeddings.create(model="text-embedding-3-small", input=texts),
+                timeout=self._timeout,
+            )
+            return [item.embedding for item in sorted(resp.data, key=lambda item: item.index)]
+        finally:
+            await client.close()
 
 
 def get_embeddings(settings: Settings) -> EmbeddingsAdapter:
@@ -45,7 +52,7 @@ def get_embeddings(settings: Settings) -> EmbeddingsAdapter:
         return MockEmbeddings()
     if provider == "openai":
         if settings.openai_api_key:
-            return OpenAIEmbeddings(settings.openai_api_key)
+            return OpenAIEmbeddings(settings.openai_api_key, settings.llm_call_timeout_sec)
         log.warning(
             "embeddings_provider=openai but openai_api_key is missing; using MockEmbeddings."
         )

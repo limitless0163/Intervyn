@@ -17,8 +17,9 @@ log = get_logger(__name__)
 class TavilySearch:
     """通过延迟导入的 tavily-python SDK 搜索网页。"""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, timeout_sec: float = 20.0) -> None:
         self._api_key = api_key
+        self._timeout = timeout_sec
 
     def _client(self) -> Any:
         try:
@@ -34,12 +35,14 @@ class TavilySearch:
     ) -> list[SearchResult]:
         import asyncio
 
-        client = self._client()
-
         def _run() -> dict[str, Any]:
-            return client.search(query=query, max_results=max_results)
+            client = self._client()
+            try:
+                return client.search(query=query, max_results=max_results, timeout=self._timeout)
+            finally:
+                client.close()
 
-        data = await asyncio.to_thread(_run)
+        data = await asyncio.wait_for(asyncio.to_thread(_run), timeout=self._timeout)
         results: list[SearchResult] = []
         for item in data.get("results", []):
             results.append(
@@ -59,7 +62,7 @@ def get_search(settings: Settings) -> SearchAdapter:
         return MockSearch()
     if provider == "tavily":
         if settings.tavily_api_key:
-            return TavilySearch(settings.tavily_api_key)
+            return TavilySearch(settings.tavily_api_key, settings.search_call_timeout_sec)
         log.warning("search_provider=tavily but tavily_api_key is missing; using MockSearch.")
         return MockSearch()
     log.warning("Unknown search_provider=%r; using MockSearch.", provider)

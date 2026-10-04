@@ -190,31 +190,39 @@ class GeminiLLM:
 
     async def complete_text(self, *, system: str, user: str) -> str:
         client = self._client()
-        resp = await asyncio.wait_for(
-            client.aio.models.generate_content(
-                model=self._model,
-                contents=user,
-                config={"system_instruction": system},
-            ),
-            timeout=self._timeout,
-        )
-        return resp.text or ""
+        try:
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=self._model,
+                    contents=user,
+                    config={"system_instruction": system},
+                ),
+                timeout=self._timeout,
+            )
+            return resp.text or ""
+        finally:
+            await client.aio.aclose()
+            client.close()
 
     async def complete_json(self, *, system: str, user: str, schema: type) -> Any:
         # 开放字典采用 JSON 模式加提示词契约，原因见 _schema_prompt。
         client = self._client()
-        resp = await asyncio.wait_for(
-            client.aio.models.generate_content(
-                model=self._model,
-                contents=user,
-                config={
-                    "system_instruction": _schema_prompt(system, schema),
-                    "response_mime_type": "application/json",
-                },
-            ),
-            timeout=self._timeout,
-        )
-        return _loads_json(resp.text or "{}", schema)
+        try:
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=self._model,
+                    contents=user,
+                    config={
+                        "system_instruction": _schema_prompt(system, schema),
+                        "response_mime_type": "application/json",
+                    },
+                ),
+                timeout=self._timeout,
+            )
+            return _loads_json(resp.text or "{}", schema)
+        finally:
+            await client.aio.aclose()
+            client.close()
 
 
 class OpenAILLM:
@@ -240,37 +248,46 @@ class OpenAILLM:
             raise RuntimeError(
                 "openai is not installed; install the 'openai' extra."
             ) from exc
-        return AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
+        return AsyncOpenAI(
+            api_key=self._api_key, base_url=self._base_url,
+            timeout=self._timeout,
+        )
 
     async def complete_text(self, *, system: str, user: str) -> str:
         client = self._client()
-        resp = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            ),
-            timeout=self._timeout,
-        )
-        return resp.choices[0].message.content or ""
+        try:
+            resp = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                ),
+                timeout=self._timeout,
+            )
+            return resp.choices[0].message.content or ""
+        finally:
+            await client.close()
 
     async def complete_json(self, *, system: str, user: str, schema: type) -> Any:
         # 开放字典采用 JSON 模式加提示词契约，最终仍由 Pydantic 校验。
         client = self._client()
-        resp = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": _schema_prompt(system, schema)},
-                    {"role": "user", "content": user},
-                ],
-                response_format={"type": "json_object"},
-            ),
-            timeout=self._timeout,
-        )
-        return _loads_json(resp.choices[0].message.content or "{}", schema)
+        try:
+            resp = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": _schema_prompt(system, schema)},
+                        {"role": "user", "content": user},
+                    ],
+                    response_format={"type": "json_object"},
+                ),
+                timeout=self._timeout,
+            )
+            return _loads_json(resp.choices[0].message.content or "{}", schema)
+        finally:
+            await client.close()
 
 
 class MiniMaxLLM(OpenAILLM):

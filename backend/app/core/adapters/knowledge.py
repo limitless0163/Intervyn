@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from ...schemas.shared_models import Citation
+from ...schemas.shared_models import Citation, KbIngestResponse, KbQueryResponse
 from ..logging import get_logger
 
 if TYPE_CHECKING:
@@ -65,9 +65,8 @@ class HttpKnowledge:
             )
             resp.raise_for_status()
             data = resp.json()
-        answer = data.get("answer", "")
-        citations = [Citation(**c) for c in data.get("citations", [])]
-        return (answer, citations)
+        result = KbQueryResponse.model_validate(data)
+        return (result.answer, result.citations)
 
     async def ingest(self, user_id: str, files: list[str]) -> str:
         import httpx
@@ -79,7 +78,7 @@ class HttpKnowledge:
             )
             resp.raise_for_status()
             data = resp.json()
-        return data.get("track_id", _stub_track_id(user_id, files))
+        return KbIngestResponse.model_validate(data).track_id
 
 
 class MockKnowledge:
