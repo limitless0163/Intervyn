@@ -22,7 +22,7 @@ async def require_internal_secret(
     if not expected:
         return  # 未配置密钥时保持开源版默认行为。
     if not x_internal_secret or not hmac.compare_digest(
-        x_internal_secret, expected
+        x_internal_secret.encode("utf-8"), expected.encode("utf-8")
     ):
         raise HTTPException(
             status_code=401, detail="Invalid or missing internal secret"

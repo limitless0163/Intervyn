@@ -24,7 +24,10 @@ from .state import InterviewUserdata, weak_areas_summary
 
 # 复用面试工作进程的组件与上下文加载逻辑，避免两条语音路径配置漂移。
 from .worker import (
+    _api_base,
+    _internal_headers,
     _load_context_via_api,
+    _require_live_providers,
     _session_id_from_room,
     build_conn_options,
     build_llm,
@@ -45,6 +48,7 @@ async def entrypoint(ctx: JobContext) -> None:
     init_observability(settings)
     deps = build_deps(settings)
 
+    _require_live_providers(settings)
     await ctx.connect()
     session_id = _session_id_from_room(ctx)
 
@@ -65,7 +69,7 @@ async def entrypoint(ctx: JobContext) -> None:
     add_event("coach.start", {})
 
     # 本地 Whisper 转写与会话共用 VAD。
-    vad = build_vad()
+    vad = build_vad(ctx.proc)
     conn_options = build_conn_options(settings)
     session: AgentSession[InterviewUserdata] = AgentSession(
         userdata=userdata,
@@ -87,22 +91,43 @@ async def entrypoint(ctx: JobContext) -> None:
         userdata,
         max_duration_sec=settings.max_interview_duration_sec,
         max_turns=settings.max_interview_turns,
+        answer_grace_sec=settings.interview_answer_grace_sec,
     )
 
     async def _on_shutdown() -> None:
         try:
             add_event("coach.end", {"turns": len(userdata.transcript)})
         finally:
-            _coach_trace.__exit__(None, None, None)
+            try:
+                _coach_trace.__exit__(None, None, None)
+            except Exception:
+                log.exception("worker_coach: trace close failed; continuing persistence")
         await guard.aclose()
         if not userdata.transcript:
             return
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(
+                    f"{_api_base(settings)}/api/session/{session_id}/coach-transcript",
+                    json={"transcript": userdata.transcript},
+                    headers=_internal_headers(settings),
+                )
+                resp.raise_for_status()
+            return
+        except Exception:
+            log.exception("worker_coach: API transcript write failed for %s", session_id)
         try:
             await deps.repo.save_coach_transcript(session_id, userdata.transcript)
         except Exception:
             log.exception("worker_coach: save_coach_transcript failed for %s", session_id)
 
     ctx.add_shutdown_callback(_on_shutdown)
+
+    @session.on("close")
+    def _finish_job(ev) -> None:
+        ctx.shutdown(reason=f"coach session closed: {getattr(ev, 'reason', 'finished')}")
 
     room_options = build_room_options(settings)
     start_kwargs = {"room_options": room_options} if room_options is not None else {}
@@ -125,6 +150,7 @@ def main() -> None:
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
+            shutdown_process_timeout=settings.shutdown_process_timeout_sec,
             ws_url=settings.livekit_url,
             api_key=settings.livekit_api_key,
             api_secret=settings.livekit_api_secret,

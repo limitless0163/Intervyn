@@ -52,7 +52,7 @@ class TranscriptFlusher:
 
     async def _checkpoint(self) -> None:
         """仅在转录条数增长时保存快照，成功后更新已保存水位。"""
-        transcript = list(self._ud.transcript)
+        transcript = copy.deepcopy(self._ud.transcript)
         if len(transcript) <= self._last_len:
             return
         try:

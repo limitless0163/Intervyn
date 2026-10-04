@@ -20,7 +20,8 @@ from ...core.logging import get_logger
 from ...core.observability import init_observability
 from ...core.tracing import add_event, start_trace
 from ...dependencies.container import build_deps
-from ...schemas.shared_models import InterviewContext, RoomMetadata, ScoreRequest
+from ...schemas.shared_models import InterviewContext, RoomMetadata, ScoreCard, ScoreRequest
+from ..session import SessionConflictError, save_live_result
 from . import state
 from .director import Director
 from .flusher import TranscriptFlusher
@@ -604,11 +605,15 @@ async def _load_context_via_api(session_id: str, settings) -> InterviewContext |
     if resp.status_code != 200:
         log.error("worker: GET %s -> %s", url, resp.status_code)
         return None
-    ctx_data = resp.json().get("context")
+    data = resp.json()
+    ctx_data = data.get("context")
     if not ctx_data:
         log.error("worker: session %s has no ready context", session_id)
         return None
-    return InterviewContext.model_validate(ctx_data)
+    context = InterviewContext.model_validate(ctx_data)
+    if data.get("scorecard") is not None:
+        context = context.model_copy(update={"scorecard": ScoreCard.model_validate(data["scorecard"])})
+    return context
 
 
 async def _load_context_with_retry(session_id: str, settings, *, timeout_sec: float = 60.0) -> InterviewContext | None:
@@ -730,7 +735,11 @@ async def entrypoint(ctx: JobContext) -> None:
                     json=payload,
                     headers=_internal_headers(settings),
                 )
+            if resp.status_code == 409:
+                raise SessionConflictError("API rejected live result for a closed session")
             return resp.status_code == 200
+        except SessionConflictError:
+            raise
         except Exception:
             log.exception("worker: live-result POST failed for %s", session_id)
             return False
@@ -764,11 +773,13 @@ async def entrypoint(ctx: JobContext) -> None:
     async def _persist_via_repo(has_answers: bool) -> bool:
         """直接仓库回写的兜底路径；只有两进程共享持久化存储时才更新同一会话。"""
         try:
-            await deps.repo.save_transcript(session_id, userdata.transcript)
-        except Exception:
-            log.exception("worker: save_transcript failed for %s", session_id)
-        try:
-            await deps.repo.save_context(session_id, userdata.ctx)
+            await save_live_result(
+                session_id, userdata.ctx, userdata.transcript,
+                None if has_answers else "no_answers", deps.repo,
+            )
+        except SessionConflictError:
+            log.info("worker: session %s no longer accepts live results", session_id)
+            return False
         except Exception:
             log.exception(
                 "worker: save_context FAILED for %s — answers not persisted; "
@@ -781,11 +792,6 @@ async def entrypoint(ctx: JobContext) -> None:
             except Exception:
                 log.exception("worker: update_status(error) failed for %s", session_id)
             return False
-        if not has_answers:
-            try:
-                await deps.repo.update_status(session_id, "no_answers")
-            except Exception:
-                log.exception("worker: update_status(no_answers) failed for %s", session_id)
         return True
 
     async def _on_shutdown() -> None:
@@ -832,7 +838,11 @@ async def entrypoint(ctx: JobContext) -> None:
         has_answers = any((a.transcript or "").strip() for a in userdata.ctx.answers)
 
         # 先确认上下文回写成功再触发评分，否则评分会读到准备阶段的无回答状态。
-        persisted = await _persist_via_api(has_answers)
+        try:
+            persisted = await _persist_via_api(has_answers)
+        except SessionConflictError:
+            log.info("worker: session %s rejected a late final write", session_id)
+            return
         if not persisted:
             persisted = await _persist_via_repo(has_answers)
         if not persisted or not has_answers:
