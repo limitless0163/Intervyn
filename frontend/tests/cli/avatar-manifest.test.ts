@@ -29,9 +29,7 @@ describe("parseManifest", () => {
       "recruiter-idle.mp4",
     );
     expect(
-      parseManifest(
-        JSON.stringify({ version: 1, packs: [] }),
-      ).packs,
+      parseManifest(JSON.stringify({ version: 1, packs: [] })).packs,
     ).toEqual([]);
   });
 
@@ -47,9 +45,7 @@ describe("parseManifest", () => {
         ),
       ),
     ).toThrow(/https/);
-    expect(() =>
-      parseManifest('{"version":2,"packs":[]}'),
-    ).toThrow(/version/);
+    expect(() => parseManifest('{"version":2,"packs":[]}')).toThrow(/version/);
     expect(() => parseManifest("[]")).toThrow(/object/);
     expect(() => parseManifest("{not json")).toThrow(/valid JSON/);
   });

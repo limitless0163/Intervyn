@@ -66,13 +66,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test (Vitest + pytest)
-        run: pnpm test
-
-      # WP-12: the knowledge sidecar has its own uv project + offline tests
-      # (naive RAG backend); run them here so the full stack is covered in CI.
-      - name: Test lightrag sidecar
-        run: uv --directory backend/services/lightrag run pytest
+      - name: Test (Vitest + pytest + knowledge sidecar)
+        run: pnpm test:all
 
       - name: Validate docker compose
         # Profiled services are skipped unless their profile is named, so the
@@ -81,6 +76,18 @@ jobs:
         run: |
           docker compose config -q
           docker compose --profile local --profile live config -q
+
+  # Exercise SDK-coupled voice tests that the base API install otherwise skips.
+  # All providers and HTTP transports are mocked; no keys or model downloads.
+  voice-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Test voice worker and interview progression
+        run: uv --directory backend run --extra livekit pytest -q
 
   # Actually BUILD the images so Dockerfile breakage (copy paths, --frozen
   # lockfile drift, the worker model-bake step) surfaces in CI, not at deploy.

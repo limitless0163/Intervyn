@@ -1,8 +1,4 @@
-import type {
-  KbQueryResponse,
-  Citation,
-  Language,
-} from "@intervyn/shared";
+import type { KbQueryResponse, Citation, Language } from "@intervyn/shared";
 
 export type { KbQueryResponse, Citation };
 

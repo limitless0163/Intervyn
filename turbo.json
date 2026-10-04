@@ -15,7 +15,8 @@
       "dependsOn": ["gen:schema"]
     },
     "@intervyn/agent#test": {
-      "dependsOn": ["@intervyn/shared#gen:schema"]
+      "dependsOn": ["@intervyn/shared#gen:schema"],
+      "cache": false
     },
     "dev": {
       "cache": false,
