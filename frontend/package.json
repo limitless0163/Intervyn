@@ -52,7 +52,7 @@
     "typescript": "~5.9.3",
     "vitest": "^4.1.10",
     "prettier": "^3.9.6",
-    "turbo": "^2.10.6"
+    "turbo": "^2.11.6"
   },
   "description": "Open-source (MIT), voice-first AI mock-interview platform. English-first, multilingual.",
   "packageManager": "pnpm@11.5.2",
