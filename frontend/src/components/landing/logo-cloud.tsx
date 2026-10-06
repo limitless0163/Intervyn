@@ -19,7 +19,7 @@ export function LogoCloud() {
   return (
     <div className="landing-companies">
       <Container className="landing-container">
-        <p className="mb-5 text-center text-xs text-muted">
+        <p className="mb-5 text-center text-[15px] text-muted sm:text-base">
           {t(messages, "landing.logoCloud")}
         </p>
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">

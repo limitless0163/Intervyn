@@ -247,6 +247,11 @@ html[lang="zh-CN"] .landing-hero-title span {
   text-align: center;
   text-wrap: balance;
 }
+#product .landing-section-title,
+#how .landing-section-title,
+#github .landing-section-title {
+  font-weight: 700;
+}
 .landing-section-heading {
   margin-bottom: 28px;
 }
@@ -662,21 +667,20 @@ html[lang="zh-CN"] .landing-hero-title span {
   font-size: 16px;
   line-height: 28px;
 }
-.landing-oss-copy ul {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  margin-top: 28px;
-}
-.landing-oss-copy li {
+.landing-github-repo {
   display: flex;
   align-items: center;
-  gap: 12px;
-  color: #c9c9ce;
+  gap: 16px;
+  margin-bottom: 24px;
+  color: #f7f8fa;
   font-size: 14px;
+  font-weight: 500;
 }
-.landing-oss-copy svg {
-  color: #93a5ff;
+.landing-github-repo svg {
+  flex-shrink: 0;
+}
+.landing-github-button {
+  margin-top: 28px;
 }
 .landing-terminal {
   overflow: hidden;
@@ -712,31 +716,17 @@ html[lang="zh-CN"] .landing-hero-title span {
   margin-bottom: 12px;
   color: #92929e;
 }
-.landing-terminal-content > code {
+.landing-terminal-content > pre {
   display: block;
-  margin-bottom: 25px;
+  margin: 0 0 28px;
   color: #e4e4e9;
+  font: inherit;
+  line-height: 1.9;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
-.landing-terminal-content > code > span {
-  margin-right: 10px;
-  color: #a5b4ff;
-}
-.landing-terminal-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-block: 10px;
-  border-top: 1px solid #ffffff05;
-  color: #b1b1bc;
-}
-.landing-terminal-status > svg {
-  color: #83c7a2;
-}
-.landing-terminal-status > span {
-  margin-left: auto;
-  color: #8a8a95;
-  font-size: 11px;
+.landing-terminal-content > pre:last-child {
+  margin-bottom: 0;
 }
 .landing-faq-title {
   margin: 0;
@@ -944,9 +934,6 @@ html[lang="zh-CN"] .landing-hero-title span {
   .landing-terminal-content {
     padding: 22px 18px;
     font-size: 11px;
-  }
-  .landing-terminal-status > span {
-    font-size: 10px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

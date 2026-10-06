@@ -10,9 +10,9 @@ import { t } from "@/lib/i18n";
 export function Nav() {
   const messages = useMessages();
   const links = [
-    { href: "#how", label: t(messages, "landing.nav.how") },
     { href: "#product", label: t(messages, "landing.nav.product") },
-    { href: "#oss", label: t(messages, "landing.nav.openSource") },
+    { href: "#how", label: t(messages, "landing.nav.how") },
+    { href: "#github", label: t(messages, "landing.nav.github") },
     { href: "#faq", label: t(messages, "landing.nav.faq") },
   ];
   return (

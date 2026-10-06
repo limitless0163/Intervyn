@@ -9,10 +9,12 @@ import { t } from "@/lib/i18n";
 export function Faq() {
   const messages = useMessages();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const items = [1, 2, 3].map((number) => ({
-    q: t(messages, `landing.faq.q${number}`),
-    a: t(messages, `landing.faq.a${number}`),
-  }));
+  const items = Array.from({ length: 10 }, (_, index) => index + 1).map(
+    (number) => ({
+      q: t(messages, `landing.faq.q${number}`),
+      a: t(messages, `landing.faq.a${number}`),
+    }),
+  );
   return (
     <section id="faq" className="landing-section">
       <Container className="landing-container">

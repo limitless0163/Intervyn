@@ -16,8 +16,8 @@ export default function Home() {
       <main id="main-content" tabIndex={-1}>
         <Hero />
         <LogoCloud />
-        <HowItWorks />
         <Product />
+        <HowItWorks />
         <OpenSource />
         <Faq />
         <CtaBand />
