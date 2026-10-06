@@ -515,7 +515,6 @@ export const zh: Localized<Messages> = {
     companyValues: "公司价值观",
     companyProcess: "面试流程",
     companyNews: "近期动态",
-    companySources: "研究来源",
     companySearchSuggestions: "Google 搜索建议",
     companyLimited:
       "公司联网研究暂不可用，我们会依据职位描述和你的背景准备面试。",

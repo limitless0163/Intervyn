@@ -532,7 +532,6 @@ export const en = {
     companyValues: "Company values",
     companyProcess: "Interview process",
     companyNews: "Recent news",
-    companySources: "Research sources",
     companySearchSuggestions: "Google Search suggestions",
     companyLimited:
       "Company web research is unavailable. We will use the job description and your background to prepare the interview.",

@@ -31,7 +31,6 @@ import {
   type ClientSessionView,
 } from "@/types/session";
 import { cn } from "@/utils/cn";
-import { safeExternalUrl } from "@/utils/safe-url";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -582,28 +581,6 @@ function CompanyCard({ co }: { co: CompanyIntel }) {
                 </ul>
               </div>
             ))}
-          <div className="mt-4">
-            <p className="mb-1.5 text-[11px] font-mono uppercase tracking-[0.1em] text-muted">
-              {t(messages, "session.companySources")}
-            </p>
-            <ul className="space-y-1 text-[12px]">
-              {co.sources.map((source) => {
-                const href = safeExternalUrl(source.url);
-                return href ? (
-                  <li key={source.url}>
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent underline underline-offset-2"
-                    >
-                      {source.title}
-                    </a>
-                  </li>
-                ) : null;
-              })}
-            </ul>
-          </div>
           {co.search_suggestions && (
             <iframe
               title={t(messages, "session.companySearchSuggestions")}
