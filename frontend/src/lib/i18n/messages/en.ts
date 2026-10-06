@@ -20,7 +20,6 @@ export const en = {
     coach: "Prep Coach",
   },
   landing: {
-    announcement: "Open source & self-hostable",
     nav: {
       how: "How it works",
       product: "Product",

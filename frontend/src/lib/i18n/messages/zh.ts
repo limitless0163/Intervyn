@@ -23,7 +23,6 @@ export const zh: Localized<Messages> = {
     coach: "备考教练",
   },
   landing: {
-    announcement: "开源 · 支持自行部署",
     nav: {
       how: "使用方式",
       product: "产品功能",

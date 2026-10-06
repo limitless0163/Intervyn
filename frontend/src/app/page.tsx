@@ -1,4 +1,3 @@
-import { AnnouncementBar } from "@/components/landing/announcement-bar";
 import { Nav } from "@/components/landing/nav";
 import { Hero } from "@/components/landing/hero";
 import { LogoCloud } from "@/components/landing/logo-cloud";
@@ -12,7 +11,6 @@ import { Footer } from "@/components/landing/footer";
 export default function Home() {
   return (
     <>
-      <AnnouncementBar />
       <Nav />
       <main id="main-content" tabIndex={-1}>
         <Hero />
