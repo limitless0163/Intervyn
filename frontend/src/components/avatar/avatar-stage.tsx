@@ -164,9 +164,9 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
           style={{ backgroundColor: look.accent, opacity: 0.25 }}
         />
 
-        {/* Persona identity. Sits above the bottom audio visualizer (h-20 in
-            voice-stage), so pad clear of that 5rem band to avoid overlap. */}
-        <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 px-5 pb-24 text-center">
+        {/* Keep persona text clear of the audio bars, which can reach 100px
+            above the card bottom after the visualizer's bottom padding. */}
+        <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 px-5 pb-28 text-center">
           <span className="font-sans font-semibold tracking-tight text-2xl text-ink">
             {persona.name}
           </span>

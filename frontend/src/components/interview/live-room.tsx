@@ -136,7 +136,7 @@ function ErrorNotice({
       role="alert"
       aria-live="assertive"
       className={cn(
-        "mx-auto mt-6 w-full max-w-xl rounded-card border border-accent/40",
+        "mx-auto w-full max-w-xl rounded-card border border-accent/40",
         "bg-paper/80 px-4 py-3 text-center backdrop-blur-sm",
       )}
     >
@@ -172,9 +172,13 @@ function Scaffold({
 }) {
   const messages = useMessages();
   return (
-    <div className="app-page relative min-h-screen bg-paper">
+    <div className="app-page interview-page relative bg-paper">
       <AppHeader>{timer}</AppHeader>
-      <main id="main-content" tabIndex={-1} className="relative">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="relative flex min-h-0 flex-1"
+      >
         {/* Calm backdrop wash behind the frosted panels. */}
         <div
           aria-hidden
@@ -185,32 +189,23 @@ function Scaffold({
           }}
         />
 
-        <div className="relative mx-auto flex min-h-[calc(100svh-64px)] w-full max-w-5xl flex-col px-6 py-8">
-          {/* Interviewer identity; the clock lives in the shared header. */}
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="font-mono text-[10px] tracking-[0.16em] text-faint">
-                {t(messages, "interview.liveHeader")}
-              </span>
-              {/* Page heading for screen-reader navigation (styled as before). */}
-              <h1 className="font-sans text-[17px] font-semibold tracking-tight text-ink">
-                {persona.name}
-              </h1>
-            </div>
-          </div>
+        <div className="relative mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col gap-4 px-6 py-4">
+          <h1 className="sr-only">
+            {persona.name} — {t(messages, "interview.liveHeader")}
+          </h1>
 
           {/* Centerpiece: avatar + transcript, calm two-column on wide. */}
-          <div className="mt-6 grid flex-1 items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-            <div className="mx-auto w-full max-w-sm lg:max-w-md">{stage}</div>
-            <div className="flex h-full max-h-[60vh] min-h-[280px] flex-col lg:max-h-[68vh]">
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1.2fr)_minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] lg:grid-rows-1 lg:gap-6">
+            <div className="interview-stage-area">{stage}</div>
+            <div className="flex h-full min-h-0 min-w-0 flex-col">
               {transcript}
             </div>
           </div>
 
-          {notice}
+          {notice ? <div className="shrink-0">{notice}</div> : null}
 
           {/* Controls + accessible text fallback. */}
-          <div className="mt-6 flex flex-col items-center gap-4">
+          <div className="flex shrink-0 flex-col items-center gap-3">
             {controls}
             <div className="w-full max-w-xl">{textFallback}</div>
           </div>
@@ -401,7 +396,7 @@ function LiveSession({
         <TranscriptPanel
           turns={turns}
           live
-          className="h-full"
+          className="h-full min-h-0"
           scrollRegionRef={transcriptRef}
         />
       }
@@ -450,7 +445,7 @@ function LiveSession({
           <div
             role="status"
             aria-live="polite"
-            className="mx-auto mt-6 max-w-xl rounded-card border border-line bg-paper/70 px-4 py-3 text-center text-[13px] text-muted backdrop-blur-sm"
+            className="mx-auto max-w-xl rounded-card border border-line bg-paper/70 px-4 py-3 text-center text-[13px] text-muted backdrop-blur-sm"
           >
             {t(messages, "interview.reconnecting")}
           </div>
@@ -478,7 +473,9 @@ function PreviewSession({
     <Scaffold
       persona={persona}
       stage={<StagePreview persona={persona} />}
-      transcript={<TranscriptPanel turns={SAMPLE_TURNS} className="h-full" />}
+      transcript={
+        <TranscriptPanel turns={SAMPLE_TURNS} className="h-full min-h-0" />
+      }
       timer={<SessionTimer running={false} />}
       controls={
         <ControlBar
@@ -506,7 +503,7 @@ function PreviewSession({
         ) : (
           <div
             className={cn(
-              "mx-auto mt-6 max-w-xl rounded-card border border-line",
+              "mx-auto max-w-xl rounded-card border border-line",
               "bg-paper/70 px-4 py-3 text-center text-[13px] text-muted backdrop-blur-sm",
             )}
             role="status"
@@ -529,7 +526,7 @@ function ConnectingShell({ persona }: { persona: Persona }) {
     <Scaffold
       persona={persona}
       stage={<StagePreview persona={persona} />}
-      transcript={<TranscriptPanel turns={[]} className="h-full" />}
+      transcript={<TranscriptPanel turns={[]} className="h-full min-h-0" />}
       timer={<SessionTimer running={false} />}
       controls={
         <ControlBar
@@ -542,7 +539,7 @@ function ConnectingShell({ persona }: { persona: Persona }) {
       textFallback={<TextFallback onSend={() => {}} disabled />}
       notice={
         <div
-          className="mx-auto mt-6 max-w-xl rounded-card border border-line bg-paper/70 px-4 py-3 text-center text-[13px] text-muted backdrop-blur-sm"
+          className="mx-auto max-w-xl rounded-card border border-line bg-paper/70 px-4 py-3 text-center text-[13px] text-muted backdrop-blur-sm"
           role="status"
         >
           {t(messages, "interview.connectingShort")}
@@ -570,7 +567,7 @@ function ConnectionLostShell({
     <Scaffold
       persona={persona}
       stage={<StagePreview persona={persona} />}
-      transcript={<TranscriptPanel turns={[]} className="h-full" />}
+      transcript={<TranscriptPanel turns={[]} className="h-full min-h-0" />}
       timer={<SessionTimer running={false} />}
       controls={
         <ControlBar

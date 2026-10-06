@@ -94,7 +94,7 @@ export function waitingStatusFor(
  */
 function WaitingOverlay({ label }: { label: string }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-20 z-20 flex justify-center px-6">
+    <div className="pointer-events-none absolute inset-x-0 top-[18%] z-20 flex justify-center px-6">
       <div
         role="status"
         aria-live="polite"
@@ -138,14 +138,25 @@ export function VoiceStage({
   }, [state]);
 
   return (
-    <div className={cn("relative", className)}>
-      <AvatarStage persona={persona} state={avatarState} />
-      {audioTrack && <AccentVisualizer state={state} track={audioTrack} />}
-      {!hasSpoken && !startupFailed && (
-        <WaitingOverlay
-          label={waitingStatusFor(state, persona.name, messages)}
-        />
+    <div
+      className={cn(
+        "flex h-full min-h-0 w-full items-center justify-center",
+        className,
       )}
+    >
+      <div className="interview-stage-frame relative">
+        <AvatarStage
+          persona={persona}
+          state={avatarState}
+          className="h-full w-full"
+        />
+        {audioTrack && <AccentVisualizer state={state} track={audioTrack} />}
+        {!hasSpoken && !startupFailed && (
+          <WaitingOverlay
+            label={waitingStatusFor(state, persona.name, messages)}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -153,8 +164,15 @@ export function VoiceStage({
 /** PREVIEW stage — no LiveKit hooks; static idle for the offline screen. */
 export function StagePreview({ persona, className }: VoiceStageProps) {
   return (
-    <div className={cn("relative", className)}>
-      <AvatarStage persona={persona} state="idle" />
+    <div
+      className={cn(
+        "flex h-full min-h-0 w-full items-center justify-center",
+        className,
+      )}
+    >
+      <div className="interview-stage-frame relative">
+        <AvatarStage persona={persona} state="idle" className="h-full w-full" />
+      </div>
     </div>
   );
 }
