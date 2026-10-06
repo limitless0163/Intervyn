@@ -194,6 +194,8 @@ def test_failed_research_marks_progress_warns_and_never_calls_summarizer(monkeyp
     company, view = asyncio.run(exercise())
     assert company.summary == "" and company.sources == []
     assert company.research_status == "unavailable"
+    assert company.research_error == "timeout"
+    assert view.prep_step_statuses["company_research"] == "unavailable"
     assert "company_research" in view.progress
     assert any("web research is unavailable" in w for w in view.prep_warnings)
 
@@ -208,3 +210,78 @@ def test_invalid_company_skips_research(monkeypatch):
     monkeypatch.setattr(deps, "research", Research())
     company = asyncio.run(company_research({"req": _request(), "company_ok": False}, deps))
     assert company["company"].summary == ""
+    assert company["company"].research_error == "invalid_company"
+
+
+def test_search_sources_without_usable_company_facts_are_not_success(monkeypatch):
+    deps = build_deps()
+
+    class Research:
+        async def research(self, **kwargs):
+            return GroundedResearch(text="No confirmed company facts.", sources=[_source()])
+
+    class LLM:
+        async def complete_json(self, **kwargs):
+            return build_mock(CompanyIntel).model_copy(update={"summary": " "})
+
+    monkeypatch.setattr(deps, "research", Research())
+    monkeypatch.setattr(deps, "llm", LLM())
+    company = asyncio.run(company_research({"req": _request()}, deps))["company"]
+    assert company.research_status == "unavailable"
+    assert company.research_error == "no_sources"
+
+
+def test_research_only_completes_after_search_and_structuring(monkeypatch):
+    deps = build_deps()
+
+    async def exercise():
+        req = _request()
+        sid = await deps.repo.create_session(req)
+        searching, searched, structuring, structured = (asyncio.Event() for _ in range(4))
+
+        class Research:
+            async def research(self, **kwargs):
+                searching.set()
+                await searched.wait()
+                return GroundedResearch(text="Payment APIs", sources=[_source()])
+
+        class LLM:
+            async def complete_json(self, **kwargs):
+                structuring.set()
+                await structured.wait()
+                return build_mock(CompanyIntel)
+
+        monkeypatch.setattr(deps, "research", Research())
+        monkeypatch.setattr(deps, "llm", LLM())
+        task = asyncio.create_task(company_research({"req": req, "session_id": sid}, deps))
+        await searching.wait()
+        view = await deps.repo.get_session_view(sid)
+        assert view.prep_step_statuses["company_research"] == "running"
+        assert "company_research" not in view.progress
+        searched.set()
+        await structuring.wait()
+        view = await deps.repo.get_session_view(sid)
+        assert view.prep_step_statuses["company_research"] == "running"
+        assert "company_research" not in view.progress
+        structured.set()
+        await task
+        view = await deps.repo.get_session_view(sid)
+        assert view.prep_step_statuses["company_research"] == "complete"
+        assert "company_research" in view.progress
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("reason", ["not_configured", "no_sources", "request_failed"])
+def test_unavailable_reason_reaches_company_card(monkeypatch, reason):
+    deps = build_deps()
+
+    class Research:
+        async def research(self, **kwargs):
+            raise ResearchUnavailable("Unavailable", reason)
+
+    monkeypatch.setattr(deps, "research", Research())
+    company = asyncio.run(company_research({"req": _request()}, deps))["company"]
+    assert company.research_error == reason
+    assert company.research_status == "unavailable"
+    assert not company.sources

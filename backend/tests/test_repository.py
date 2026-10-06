@@ -308,6 +308,7 @@ def test_supabase_get_session_view_selects_migration_columns_and_maps_row() -> N
     _run(repo.save_scorecard(sid, sc))
     _run(repo.mark_progress(sid, "cv_analysis"))
     _run(repo.mark_progress(sid, "cv_analysis"))
+    _run(repo.set_prep_step_status(sid, "company_research", "unavailable"))
     _run(repo.add_warnings(sid, ["JD text is very short."]))
     _run(repo.update_status(sid, "complete"))
 
@@ -315,6 +316,7 @@ def test_supabase_get_session_view_selects_migration_columns_and_maps_row() -> N
     assert view is not None
     assert (view.session_id, view.status) == (sid, "complete")
     assert view.progress == ["cv_analysis"]
+    assert view.prep_step_statuses == {"company_research": "unavailable"}
     assert view.prep_warnings == ["JD text is very short."]
     assert view.context is not None
     assert view.context.model_dump() == ctx.model_dump()
@@ -323,7 +325,7 @@ def test_supabase_get_session_view_selects_migration_columns_and_maps_row() -> N
 
     # 用实际迁移定义约束读取列名，避免部署后才发现缺列。
     select_cols = [cols for op, cols, row_id in fake.log if op == "select" and row_id == sid][-1]
-    assert select_cols == "id,status,progress,prep_warnings,context,scorecard"
+    assert select_cols == "id,status,progress,prep_step_statuses,prep_warnings,context,scorecard"
     migration_files = sorted(_MIGRATIONS_DIR.glob("*.sql"))
     assert migration_files, f"no migrations found under {_MIGRATIONS_DIR}"
     migrations_sql = "".join(p.read_text() for p in migration_files)
@@ -361,6 +363,7 @@ def test_supabase_concurrent_mutations_preserve_all_updates(monkeypatch) -> None
             *(repo.mark_progress(sid, f"step{i}") for i in range(12)),
             *(repo.mark_progress(sid, f"step{i}") for i in range(12)),
             *(repo.add_warnings(sid, [f"warning{i}", "shared"]) for i in range(12)),
+            *(repo.set_prep_step_status(sid, f"step{i}", "running") for i in range(12)),
             *(repo.append_answer(sid, answer) for answer in answers),
         )
         assert set(fake.rows[sid]["progress"]) == {f"step{i}" for i in range(12)}
@@ -369,6 +372,9 @@ def test_supabase_concurrent_mutations_preserve_all_updates(monkeypatch) -> None
             "shared", *(f"warning{i}" for i in range(12)),
         }
         assert len(fake.rows[sid]["prep_warnings"]) == 13
+        assert fake.rows[sid]["prep_step_statuses"] == {
+            f"step{i}": "running" for i in range(12)
+        }
         loaded = await repo.load_context(sid)
         assert loaded is not None
         assert loaded.answers == answers

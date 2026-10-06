@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 class ResearchUnavailable(RuntimeError):
     """当前配置无法进行可验证的联网研究。"""
 
+    def __init__(self, message: str, reason: str = "no_sources") -> None:
+        super().__init__(message)
+        self.reason = reason
+
 
 def _sources(items: list[dict[str, Any]]) -> list[Citation]:
     """只保留工具元数据中的 HTTP(S) 来源，去重并限制载荷。"""
@@ -49,8 +53,13 @@ def _grounded(text: str, items: list[dict[str, Any]], *, searched: bool,
 
 
 class UnavailableResearch:
+    def __init__(self, reason: str = "unsupported_provider") -> None:
+        self.reason = reason
+
     async def research(self, *, system: str, user: str) -> GroundedResearch:
-        raise ResearchUnavailable("The configured model provider has no web research capability")
+        raise ResearchUnavailable(
+            "The configured model provider has no web research capability", self.reason,
+        )
 
 
 class GeminiResearch(GeminiLLM):
@@ -126,9 +135,9 @@ class MiniMaxResearch:
             response.raise_for_status()
             data = response.json()
         if data.get("base_resp", {}).get("status_code", 0) != 0:
-            raise ResearchUnavailable("MiniMax web research request failed")
+            raise ResearchUnavailable("MiniMax web research request failed", "request_failed")
         if data.get("stop_reason") == "max_tokens":
-            raise ResearchUnavailable("MiniMax web research was truncated")
+            raise ResearchUnavailable("MiniMax web research was truncated", "invalid_response")
         text, items, searched = [], [], False
         for block in data.get("content", []):
             if block.get("type") == "text":
@@ -153,4 +162,7 @@ def get_research(settings: Settings) -> ResearchAdapter:
         return MiniMaxResearch(
             settings.minimax_api_key, settings.minimax_model, settings.minimax_base_url, timeout,
         )
-    return UnavailableResearch()
+    return UnavailableResearch(
+        "not_configured" if provider in {"gemini", "openai", "minimax"}
+        else "unsupported_provider",
+    )

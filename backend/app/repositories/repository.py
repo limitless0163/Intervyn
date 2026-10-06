@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from ..core.logging import get_logger
 from ..schemas.shared_models import AnswerRecord, InterviewContext, PrepRequest, ScoreCard
-from ..schemas.views import SessionView
+from ..schemas.views import PrepStepStatus, SessionView
 from ..utils.locks import KeyedLocks
 
 if TYPE_CHECKING:
@@ -46,6 +46,10 @@ class SessionRepository(Protocol):
 
     async def mark_progress(self, session_id: str, step: str) -> None: ...
 
+    async def set_prep_step_status(
+        self, session_id: str, step: str, status: PrepStepStatus,
+    ) -> None: ...
+
     async def add_warnings(self, session_id: str, warnings: list[str]) -> None: ...
 
     async def get_session_view(self, session_id: str) -> SessionView | None: ...
@@ -68,6 +72,7 @@ class _SessionRow:
     coach_transcript: list[dict] | None = None
     answers: list[dict] = field(default_factory=list)
     progress: list[str] = field(default_factory=list)
+    prep_step_statuses: dict[str, PrepStepStatus] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -137,6 +142,11 @@ class MemoryRepository:
             if w not in row.warnings:
                 row.warnings.append(w)
 
+    async def set_prep_step_status(
+        self, session_id: str, step: str, status: PrepStepStatus,
+    ) -> None:
+        self._require(session_id).prep_step_statuses[step] = status
+
     async def get_session_view(self, session_id: str) -> SessionView | None:
         row = self._rows.get(session_id)
         if row is None:
@@ -151,6 +161,7 @@ class MemoryRepository:
             session_id=row.id,
             status=row.status,
             progress=list(row.progress),
+            prep_step_statuses=dict(row.prep_step_statuses),
             prep_warnings=list(row.warnings),
             context=context,
             scorecard=scorecard,
@@ -290,11 +301,25 @@ class SupabaseRepository:
             if changed:
                 await self._update(session_id, {"prep_warnings": existing})
 
+    async def set_prep_step_status(
+        self, session_id: str, step: str, status: PrepStepStatus,
+    ) -> None:
+        def _build() -> Any:
+            return (self._table().select("prep_step_statuses")
+                    .eq("id", session_id).limit(1).execute())
+
+        async with self._mutation_locks.get(session_id):
+            resp = await self._exec(_build)
+            rows = getattr(resp, "data", None) or []
+            statuses = dict(rows[0].get("prep_step_statuses") or {}) if rows else {}
+            statuses[step] = status
+            await self._update(session_id, {"prep_step_statuses": statuses})
+
     async def get_session_view(self, session_id: str) -> SessionView | None:
         def _build() -> Any:
             return (
                 self._table()
-                .select("id,status,progress,prep_warnings,context,scorecard")
+                .select("id,status,progress,prep_step_statuses,prep_warnings,context,scorecard")
                 .eq("id", session_id)
                 .limit(1)
                 .execute()
@@ -313,6 +338,7 @@ class SupabaseRepository:
             session_id=row["id"],
             status=row.get("status", "prep"),
             progress=list(row.get("progress") or []),
+            prep_step_statuses=dict(row.get("prep_step_statuses") or {}),
             prep_warnings=list(row.get("prep_warnings") or []),
             context=context,
             scorecard=scorecard,

@@ -21,6 +21,7 @@ from ...schemas.shared_models import (
     JobSpec,
     QuestionPlan,
 )
+from ...schemas.views import PrepStepStatus
 from .cv_extract import extract_cv_text
 from .gap import basic_gap_analysis, with_gap_narrative
 from .prompts import (
@@ -39,11 +40,25 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 
-async def _mark(state: PrepState, deps: Deps, step: str) -> None:
+async def _step_status(
+    state: PrepState, deps: Deps, step: str, status: PrepStepStatus,
+) -> None:
+    session_id = state.get("session_id")
+    if session_id:
+        try:
+            await deps.repo.set_prep_step_status(session_id, step, status)
+        except Exception as exc:  # noqa: BLE001 - 进度故障不阻断准备
+            log.warning("step_status(%s) failed (%s)", step, type(exc).__name__)
+
+
+async def _mark(
+    state: PrepState, deps: Deps, step: str, status: PrepStepStatus = "complete",
+) -> None:
     """尽力记录已知会话的完成步骤，进度写入失败不能中断准备流程。"""
     session_id = state.get("session_id")
     if not session_id:
         return
+    await _step_status(state, deps, step, status)
     try:
         await deps.repo.mark_progress(session_id, step)
     except Exception as exc:  # noqa: BLE001 - 进度写入失败不能中断准备
@@ -69,6 +84,7 @@ async def fetch_cv(state: PrepState, deps: Deps) -> PrepState:
     """
     if "cv_text" in state:
         return {}
+    await _step_status(state, deps, "cv_analysis", "running")
     req = state["req"]
     try:
         cv_text, warnings = await extract_cv_text(req.cv_url, deps)
@@ -83,6 +99,7 @@ async def fetch_cv(state: PrepState, deps: Deps) -> PrepState:
 @traced("prep.cv_analysis")
 async def cv_analysis(state: PrepState, deps: Deps) -> PrepState:
     """从简历正文提取候选人资料，调用失败时使用最小有效资料并记录警告。"""
+    await _step_status(state, deps, "cv_analysis", "running")
     system, user = cv_analysis_prompts(state["cv_text"])
     try:
         candidate = await asyncio.wait_for(
@@ -100,6 +117,7 @@ async def cv_analysis(state: PrepState, deps: Deps) -> PrepState:
 @traced("prep.jd_analysis")
 async def jd_analysis(state: PrepState, deps: Deps) -> PrepState:
     """从职位正文提取岗位要求，调用失败时使用最小有效要求并记录警告。"""
+    await _step_status(state, deps, "jd_analysis", "running")
     req = state["req"]
     system, user = jd_analysis_prompts(req.jd_text, req.company)
     try:
@@ -135,11 +153,14 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
     """检索公司资料并由模型整理；公司名无效时跳过搜索及模型调用。"""
     req = state["req"]
     company = req.company
+    await _step_status(state, deps, "company_research", "running")
 
     if not state.get("company_ok", True):
         log.info("company_research: skipping for junk company %r", company)
-        await _mark(state, deps, "company_research")
-        return {"company": _empty_company_intel(company)}
+        await _mark(state, deps, "company_research", "skipped")
+        return {"company": _empty_company_intel(company).model_copy(update={
+            "research_error": "invalid_company",
+        })}
 
     primary = req.language_mode.primary
     research_system = (
@@ -171,9 +192,12 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
             deps.llm.complete_json(system=system, user=user, schema=CompanyIntel),
             timeout=deps.settings.llm_call_timeout_sec,
         )
+        if not intel.summary.strip():
+            raise ResearchUnavailable("No usable company-specific facts in research results")
         # 来源和状态由工具响应决定，忽略整理模型生成的来源及研究状态。
         intel = intel.model_copy(update={
             "name": company, "sources": research.sources, "research_status": "complete",
+            "research_error": None,
             "search_suggestions": research.search_suggestions,
             "tech_stack": intel.tech_stack[:6], "values": intel.values[:5],
             "interview_process": intel.interview_process[:6],
@@ -182,17 +206,26 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
     except Exception as exc:  # noqa: BLE001 - 公司研究失败不阻断简历及职位准备
         log.warning("company_research unavailable (%s)", type(exc).__name__)
         intel = _empty_company_intel(company)
+        reason = (
+            exc.reason if isinstance(exc, ResearchUnavailable)
+            else "timeout" if isinstance(exc, TimeoutError)
+            or type(exc).__name__ in {"ReadTimeout", "ConnectTimeout", "APITimeoutError"}
+            else "invalid_response" if isinstance(exc, (ValidationError, ValueError))
+            else "request_failed"
+        )
+        intel = intel.model_copy(update={"research_error": reason})
         await _warn(state, deps, [
             "Company web research is unavailable; proceeding without company intel."
         ])
 
-    await _mark(state, deps, "company_research")
+    await _mark(state, deps, "company_research", intel.research_status)
     return {"company": intel}
 
 
 @traced("prep.gap_matching")
 async def gap_matching(state: PrepState, deps: Deps) -> PrepState:
     """先计算确定性差距字段，模型仅补充摘要，失败时保留原分析。"""
+    await _step_status(state, deps, "gap_matching", "running")
     gap = basic_gap_analysis(state["candidate"], state["job"])
     system, user = gap_narrative_prompts(state["candidate"], state["job"], gap)
     try:
@@ -275,6 +308,7 @@ def _skill_library_hint(
 @traced("prep.question_planner")
 async def question_planner(state: PrepState, deps: Deps) -> PrepState:
     """汇合上游结果生成问题计划；失败时返回有效通用计划并强制保留请求的语言设置。"""
+    await _step_status(state, deps, "question_planner", "running")
     req = state["req"]
     system, user = question_planner_prompts(
         candidate=state["candidate"],

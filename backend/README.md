@@ -61,6 +61,8 @@ It listens on port `9621` by default. See [the sidecar guide](services/lightrag/
 
 When `INTERNAL_API_SECRET` is set, guarded prep, score, coach, knowledge, and live-result operations require the matching `X-Internal-Secret` header. `LIGHTRAG_API_SECRET` is a separate sidecar secret.
 
+The session view's `progress` lists settled prep steps; `prep_step_statuses` distinguishes `running`, `complete`, `unavailable`, and `skipped`. Company research succeeds only with search sources and usable company facts. Its `research_error` explains unavailable results without claiming that the company has little public information. Supabase deployments must apply `infra/supabase/migrations/0007_prep_step_statuses.sql` before updating the API; memory storage needs no migration.
+
 ## Configuration
 
 The root [`.env.example`](../.env.example) is the variable template. Common settings:
