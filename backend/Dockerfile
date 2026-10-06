@@ -33,20 +33,20 @@ WORKDIR /app
 # one-line src change re-downloaded the turn-detector weights (minutes).
 COPY backend/pyproject.toml backend/uv.lock ./
 
-# Base deps + the lightweight provider SDKs (gemini/openai/supabase/tavily).
+# Base deps + the lightweight provider SDKs (gemini/openai/supabase).
 # Without them, setting e.g. SUPABASE_URL or LLM_PROVIDER=gemini in .env makes
 # the API 500 (ModuleNotFoundError) instead of using the configured provider —
 # the image must honor whatever providers the env selects. Still excluded:
 # `livekit` (heavy; worker stages below) and `observability` (opt-in tracing).
-RUN uv sync --frozen --no-dev --no-install-project --extra gemini --extra openai --extra supabase --extra tavily \
- || uv sync --no-dev --no-install-project --extra gemini --extra openai --extra supabase --extra tavily
+RUN uv sync --frozen --no-dev --no-install-project --extra gemini --extra openai --extra supabase \
+ || uv sync --no-dev --no-install-project --extra gemini --extra openai --extra supabase
 
 # ---- worker-deps: + the `livekit` extra and baked model weights (no src) ----
 # Branches BEFORE the source copy so the heavy plugin install and the
 # turn-detector/Silero model downloads are cache-stable across code changes.
 FROM base AS worker-deps
-RUN uv sync --frozen --no-dev --no-install-project --extra livekit --extra gemini --extra openai --extra supabase --extra tavily \
- || uv sync --no-dev --no-install-project --extra livekit --extra gemini --extra openai --extra supabase --extra tavily
+RUN uv sync --frozen --no-dev --no-install-project --extra livekit --extra gemini --extra openai --extra supabase \
+ || uv sync --no-dev --no-install-project --extra livekit --extra gemini --extra openai --extra supabase
 # Bake the semantic turn-detector model weights (and Silero VAD) into the
 # image: importing each plugin registers it, download_files() fetches its
 # model. Without this the FIRST live session stalls on a runtime download.
@@ -57,8 +57,8 @@ from livekit.agents.plugin import Plugin; \
 # ---- api: deps + source (compose `agent-api` builds target: api) ------------
 FROM base AS api
 COPY backend/app ./app
-RUN uv sync --frozen --no-dev --extra gemini --extra openai --extra supabase --extra tavily \
- || uv sync --no-dev --extra gemini --extra openai --extra supabase --extra tavily
+RUN uv sync --frozen --no-dev --extra gemini --extra openai --extra supabase \
+ || uv sync --no-dev --extra gemini --extra openai --extra supabase
 
 EXPOSE 8000
 
@@ -71,7 +71,7 @@ CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "800
 # ModuleNotFoundError.
 FROM worker-deps AS worker
 COPY backend/app ./app
-RUN uv sync --frozen --no-dev --extra livekit --extra gemini --extra openai --extra supabase --extra tavily \
- || uv sync --no-dev --extra livekit --extra gemini --extra openai --extra supabase --extra tavily
+RUN uv sync --frozen --no-dev --extra livekit --extra gemini --extra openai --extra supabase \
+ || uv sync --no-dev --extra livekit --extra gemini --extra openai --extra supabase
 # `start` connects to LiveKit and waits for jobs (needs LIVEKIT_*/STT/TTS keys).
 CMD ["uv", "run", "python", "-m", "app.services.live.worker", "start"]

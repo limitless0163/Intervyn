@@ -47,7 +47,7 @@ def _wait_if_followup_pending(context: RunContext[InterviewUserdata]) -> None:
 
 
 def build_instructions(ud: InterviewUserdata) -> str:
-    """构造每题的紧凑系统指令，只注入候选人摘要与当前问题。"""
+    """构造每题的紧凑系统指令，注入候选人及公司研究摘要与当前问题。"""
     primary = ud.ctx.plan.language_mode.primary
     summary = state.compact_summary(ud)
     q = state.current_question(ud)

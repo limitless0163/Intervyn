@@ -42,6 +42,14 @@ async def _ingest_prep_materials(
     intel_parts: list[str] = []
     if company.summary:
         intel_parts.append(company.summary)
+    if company.tech_stack:
+        intel_parts.append("Technology: " + ", ".join(company.tech_stack))
+    if company.values:
+        intel_parts.append("Values: " + ", ".join(company.values))
+    if company.sources:
+        intel_parts.append("Sources:\n" + "\n".join(
+            f"- {source.title}: {source.url}" for source in company.sources
+        ))
     if company.interview_process:
         intel_parts.append(
             "Interview process:\n- " + "\n- ".join(company.interview_process)

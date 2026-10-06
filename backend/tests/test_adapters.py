@@ -7,7 +7,6 @@ from app.core.adapters.llm import OllamaLLM, get_llm
 from app.core.adapters.mock import (
     MockEmbeddings,
     MockLLM,
-    MockSearch,
     build_mock,
 )
 from app.schemas.shared_models import (
@@ -56,13 +55,6 @@ def test_mock_llm_complete_json_deterministic() -> None:
 def test_mock_llm_complete_text_is_str() -> None:
     text = _run(MockLLM().complete_text(system="s", user="u"))
     assert isinstance(text, str) and text
-
-
-def test_mock_search_deterministic() -> None:
-    a = _run(MockSearch().search("acme payments"))
-    b = _run(MockSearch().search("acme payments"))
-    assert [r.model_dump() for r in a] == [r.model_dump() for r in b]
-    assert len(a) >= 1
 
 
 def test_mock_embeddings_deterministic_and_dim() -> None:

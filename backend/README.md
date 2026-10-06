@@ -67,8 +67,8 @@ The root [`.env.example`](../.env.example) is the variable template. Common sett
 
 | Variables | Purpose |
 | --- | --- |
-| `LLM_PROVIDER`, `STT_PROVIDER`, `TTS_PROVIDER`, `SEARCH_PROVIDER`, `EMBEDDINGS_PROVIDER` | Select provider adapters; the settings defaults are mock, while the root env template selects providers for some stages |
-| Provider API keys such as `GEMINI_API_KEY`, `OPENAI_API_KEY`, `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, `TAVILY_API_KEY` | Credentials for selected external providers |
+| `LLM_PROVIDER`, `STT_PROVIDER`, `TTS_PROVIDER`, `EMBEDDINGS_PROVIDER` | Select provider adapters; the settings defaults are mock, while the root env template selects providers for some stages |
+| Provider API keys such as `GEMINI_API_KEY`, `OPENAI_API_KEY`, `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY` | Credentials for selected external providers |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_AGENT_NAME` | Voice transport and worker dispatch |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Enable Supabase session persistence when both are set |
 | `LIGHTRAG_URL`, `LIGHTRAG_API_SECRET` | Connect the API to the knowledge sidecar |
@@ -109,3 +109,12 @@ services/lightrag/    Standalone knowledge-sidecar project
 skills/               Curated interview skill packs
 tests/                Agent API, service, and parity tests
 ```
+
+Company research uses the selected preparation model's native web search tool
+(MiniMax server tools, Gemini Google Search grounding, or OpenAI Responses web search).
+It reuses `LLM_PROVIDER`, its model, and its API key; no separate search provider is required.
+`COMPANY_RESEARCH_TIMEOUT_SEC` bounds the research call (default 120 seconds).
+Results must contain actual search sources before they are shown as company intel.
+Local/offline providers and failed or unsupported searches return empty, unavailable intel
+rather than fabricated company facts. Sources and research details are displayed in the
+Company intel card and included in interview planning and the live interviewer context.

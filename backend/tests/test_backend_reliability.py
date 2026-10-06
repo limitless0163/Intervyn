@@ -27,7 +27,7 @@ from .test_score import _prepare_session
 
 @pytest.mark.parametrize("field", [
     "local_probe_timeout_sec", "local_provider_timeout_sec", "llm_call_timeout_sec",
-    "search_call_timeout_sec", "score_stage_timeout_sec", "score_verifier_timeout_sec",
+    "company_research_timeout_sec", "score_stage_timeout_sec", "score_verifier_timeout_sec",
     "shutdown_process_timeout_sec", "max_interview_duration_sec", "max_interview_turns",
 ])
 def test_non_positive_runtime_limits_are_rejected(field):

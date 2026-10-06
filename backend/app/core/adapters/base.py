@@ -1,4 +1,4 @@
-"""模型、搜索和嵌入的可替换接口；默认模拟实现无需网络或提供方 SDK。"""
+"""模型、联网研究和嵌入的可替换接口。"""
 
 from __future__ import annotations
 
@@ -6,13 +6,15 @@ from typing import Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
 
+from ...schemas.shared_models import Citation
+
 T = TypeVar("T", bound=BaseModel)
 
 
-class SearchResult(BaseModel):
-    title: str
-    url: str
-    snippet: str
+class GroundedResearch(BaseModel):
+    text: str
+    sources: list[Citation]
+    search_suggestions: str | None = None
 
 
 @runtime_checkable
@@ -25,12 +27,10 @@ class LLMAdapter(Protocol):
 
 
 @runtime_checkable
-class SearchAdapter(Protocol):
-    """为公司研究提供网页搜索结果。"""
+class ResearchAdapter(Protocol):
+    """由模型执行联网研究，返回正文和实际搜索来源。"""
 
-    async def search(
-        self, query: str, *, lang: str = "en", max_results: int = 6
-    ) -> list[SearchResult]: ...
+    async def research(self, *, system: str, user: str) -> GroundedResearch: ...
 
 
 @runtime_checkable

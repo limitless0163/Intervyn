@@ -12,8 +12,6 @@ from typing import Any, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
-from .base import SearchResult
-
 _NoneType = type(None)
 
 
@@ -82,23 +80,6 @@ class MockLLM:
 
     async def complete_json(self, *, system: str, user: str, schema: type) -> Any:
         return build_mock(schema)
-
-
-class MockSearch:
-    """根据查询生成稳定的模拟搜索结果。"""
-
-    async def search(
-        self, query: str, *, lang: str = "en", max_results: int = 6
-    ) -> list[SearchResult]:
-        n = max(1, min(max_results, 3))
-        return [
-            SearchResult(
-                title=f"Mock result {i + 1} for {query}",
-                url=f"https://example.com/mock/{i + 1}",
-                snippet=f"Deterministic mock snippet {i + 1} about {query} ({lang}).",
-            )
-            for i in range(n)
-        ]
 
 
 class MockEmbeddings:

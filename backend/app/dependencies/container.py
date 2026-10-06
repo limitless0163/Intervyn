@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..core.adapters.base import EmbeddingsAdapter, LLMAdapter, SearchAdapter
+from ..core.adapters.base import EmbeddingsAdapter, LLMAdapter, ResearchAdapter
 from ..core.adapters.embeddings import get_embeddings
 from ..core.adapters.knowledge import KnowledgeClient, get_knowledge
 from ..core.adapters.llm import get_llm
-from ..core.adapters.search import get_search
+from ..core.adapters.research import get_research
 from ..core.config import Settings, get_settings
 from ..core.tracing import TracedLLM
 from ..repositories.repository import SessionRepository, get_repository
@@ -19,7 +19,7 @@ class Deps:
     """供业务流程注入的配置、适配器与仓库集合，便于测试替换。"""
     settings: Settings
     llm: LLMAdapter
-    search: SearchAdapter
+    research: ResearchAdapter
     embeddings: EmbeddingsAdapter
     knowledge: KnowledgeClient
     repo: SessionRepository
@@ -32,7 +32,7 @@ def _assemble(settings: Settings) -> Deps:
         settings=settings,
         # 统一记录模型调用，包括离线模拟；关闭追踪时仍保留原适配器接口。
         llm=TracedLLM(raw_llm, provider=provider),
-        search=get_search(settings),
+        research=get_research(settings),
         embeddings=get_embeddings(settings),
         knowledge=get_knowledge(settings),
         repo=get_repository(settings),

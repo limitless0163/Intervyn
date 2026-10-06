@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     llm_provider: str = "mock"
     stt_provider: str = "mock"
     tts_provider: str = "mock"
-    search_provider: str = "mock"
     embeddings_provider: str = "mock"
 
     # 准备和评分采用后台模型；语音面试单独选择低延迟模型。
@@ -67,8 +66,6 @@ class Settings(BaseSettings):
     deepgram_api_key: str | None = None
     cartesia_api_key: str | None = None
     elevenlabs_api_key: str | None = None
-    tavily_api_key: str | None = None
-    exa_api_key: str | None = None
 
     # 可选 Supabase 持久化配置，地址和服务端密钥须同时设置。
     supabase_url: str | None = None
@@ -98,7 +95,7 @@ class Settings(BaseSettings):
 
     # 提供方调用须有时限，才能在卡住时进入准备或评分的降级分支。
     llm_call_timeout_sec: float = Field(default=90.0, gt=0, allow_inf_nan=False)
-    search_call_timeout_sec: float = Field(default=20.0, gt=0, allow_inf_nan=False)
+    company_research_timeout_sec: float = Field(default=120.0, gt=0, allow_inf_nan=False)
 
     # 此开关控制后台难度观测；实时工具通过本地启发式给出建议，不等待模型评估。
     enable_adaptive_difficulty: bool = False

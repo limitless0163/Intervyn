@@ -14,7 +14,6 @@ if os.environ.get("INTERVYN_TEST_USE_ENV") != "1":
         "LLM_PROVIDER",
         "STT_PROVIDER",
         "TTS_PROVIDER",
-        "SEARCH_PROVIDER",
         "EMBEDDINGS_PROVIDER",
     ):
         os.environ[_var] = "mock"

@@ -21,7 +21,6 @@ dependencies = [
 gemini = ["google-genai>=2.14"]
 openai = ["openai>=2.48"]
 supabase = ["supabase>=2.31"]
-tavily = ["tavily-python>=0.7"]
 # Live voice loop (WP-5) — heavy; install with: uv sync --extra livekit.
 # livekit-agents 1.8.x + the cascaded STT->LLM->TTS plugin set the worker needs:
 #   silero (VAD) · deepgram (STT) · cartesia + elevenlabs + minimax (TTS) ·

@@ -133,7 +133,6 @@ def test_prep_run_emits_trace(tracedir) -> None:
 
     settings = Settings(
         llm_provider="mock",
-        search_provider="mock",
         trace_enabled=True,
         trace_dir=str(tracedir),
     )
@@ -157,7 +156,7 @@ def test_score_run_emits_trace(tracedir) -> None:
     from app.services.post.pipeline import run_score
     from app.services.prep.pipeline import run_prep
 
-    settings = Settings(llm_provider="mock", search_provider="mock")
+    settings = Settings(llm_provider="mock")
     deps = build_deps(settings)
     session_id = asyncio.run(run_prep(_request(), deps))
     ctx = asyncio.run(deps.repo.load_context(session_id))
