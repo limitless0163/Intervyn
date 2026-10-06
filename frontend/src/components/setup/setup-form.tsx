@@ -2,14 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import {
-  UploadCloud,
-  FileText,
-  X,
-  ArrowRight,
-  Check,
-  Sparkles,
-} from "lucide-react";
+import { UploadCloud, FileText, X, ArrowRight, Check } from "lucide-react";
 import { LANGUAGES, type Language, type LanguageMode } from "@intervyn/shared";
 import { startSession } from "@/app/setup/actions";
 import { PERSONAS, DEFAULT_PERSONA_ID } from "@/constants/personas";
@@ -43,7 +36,7 @@ const LANGUAGE_LABELS: Partial<Record<Language, string>> = {
   ja: "日本語",
 };
 const OFFERED: Language[] = (
-  ["en", "vi", "es", "zh", "fr", "de", "ja"] as Language[]
+  ["en", "zh", "ja", "vi", "es", "fr", "de"] as Language[]
 ).filter((l) => (LANGUAGES as readonly string[]).includes(l));
 
 type Step = { key: string; label: string };
@@ -109,7 +102,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
   const fileError = file ? cvFileError(file) : null;
   const cvError = !file
     ? cvLen === 0
-      ? t(messages, "setup.needCv")
+      ? null
       : cvLen < MIN_CV_CHARS
         ? t(messages, "setup.cvTooShort").replace("{min}", String(MIN_CV_CHARS))
         : null
@@ -118,11 +111,13 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
       : null;
   const jdError =
     jdLen === 0
-      ? t(messages, "setup.needJd")
+      ? null
       : jdLen < MIN_JD_CHARS
         ? t(messages, "setup.jdTooShort").replace("{min}", String(MIN_JD_CHARS))
         : null;
-  const canSubmit = !cvError && !jdError && !submitting;
+  const materialsValid =
+    Boolean(file || cvLen > 0) && jdLen > 0 && !cvError && !jdError;
+  const canSubmit = materialsValid && !submitting;
 
   // Fill the form with a matched sample (testing / demo). Clears any chosen file
   // so the pasted sample CV text is what gets submitted.
@@ -157,7 +152,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
 
     // Client-side validation. CV can be a file OR pasted text; JD required +
     // min length; company is optional. Surface inline field errors and bail.
-    if (cvError || jdError) {
+    if (!materialsValid) {
       setCvTouched(true);
       setJdTouched(true);
       return;
@@ -182,7 +177,10 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
       if (controller.signal.aborted) return;
 
       setActiveStep(1);
-      const language_mode: LanguageMode = { primary, mixed };
+      const language_mode: LanguageMode = {
+        primary,
+        mixed: primary !== "en" && mixed,
+      };
       const result = await startSession({
         cv_url,
         jd_text: jdText.trim(),
@@ -289,23 +287,13 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
   return (
     <form onSubmit={onSubmit} className="setup-form">
       <div className="setup-intro">
-        <p className="setup-eyebrow">{t(messages, "setup.eyebrow")}</p>
         <h1 className="setup-title">{t(messages, "setup.title")}</h1>
-        <p className="setup-subtitle">{t(messages, "setup.subtitle")}</p>
       </div>
 
       {/* Quick demo: one-click sample CV + JD + company for fast testing */}
       <Card className="setup-card setup-demo">
         <CardContent className="setup-demo-content">
-          <div>
-            <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
-              <Sparkles size={14} className="text-accent" aria-hidden />
-              {t(messages, "setup.quickDemo")}
-            </p>
-            <p className="text-[12px] text-muted">
-              {t(messages, "setup.quickDemoHint")}
-            </p>
-          </div>
+          <p className="setup-demo-title">{t(messages, "setup.quickDemo")}</p>
           <div className="flex flex-wrap gap-2">
             {SAMPLES.map((s) => (
               <button
@@ -434,14 +422,14 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
           </Card>
 
           {/* JD */}
-          <Card className="setup-card">
+          <Card className="setup-card setup-jd-card">
             <CardHeader>
               <CardTitle className="setup-card-title">
                 {t(messages, "setup.jdLabel")}
               </CardTitle>
               <CardDescription>{t(messages, "setup.jdHint")}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2 pb-6">
+            <CardContent className="setup-jd-content flex flex-col gap-2 pb-6">
               <Textarea
                 rows={6}
                 value={jdText}
@@ -464,8 +452,11 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
 
             {/* Company */}
             <CardHeader className="setup-company-header">
-              <CardTitle className="setup-card-title">
+              <CardTitle className="setup-card-title setup-company-title">
                 {t(messages, "setup.companyLabel")}
+                <span className="setup-company-optional">
+                  {t(messages, "setup.companyOptional")}
+                </span>
               </CardTitle>
               <CardDescription>
                 {t(messages, "setup.companyHint")}
@@ -498,7 +489,10 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                   <button
                     key={lang}
                     type="button"
-                    onClick={() => setPrimary(lang)}
+                    onClick={() => {
+                      setPrimary(lang);
+                      if (lang === "en") setMixed(false);
+                    }}
                     aria-pressed={primary === lang}
                     className={cn(
                       "rounded-[10px] border px-3.5 py-2 text-[13px] transition-colors",
@@ -511,12 +505,18 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                   </button>
                 ))}
               </div>
-              <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+              <label
+                className={cn(
+                  "flex items-center gap-2 text-[13px] text-ink-soft",
+                  primary === "en" && "cursor-not-allowed opacity-50",
+                )}
+              >
                 <input
                   type="checkbox"
                   checked={mixed}
+                  disabled={primary === "en"}
                   onChange={(e) => setMixed(e.target.checked)}
-                  className="h-4 w-4 accent-[var(--color-accent)]"
+                  className="h-4 w-4 accent-[var(--color-accent)] disabled:cursor-not-allowed"
                 />
                 {t(messages, "setup.languageMixed")}
               </label>
@@ -595,7 +595,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
           </Card>
 
           {/* Device check */}
-          <Card className="setup-card">
+          <Card className="setup-card setup-device-card">
             <CardHeader>
               <CardTitle className="setup-card-title">
                 {t(messages, "setup.deviceLabel")}

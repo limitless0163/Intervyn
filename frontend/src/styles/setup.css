@@ -30,24 +30,12 @@
 .setup-intro {
   padding-bottom: 4px;
 }
-.setup-eyebrow {
-  margin-bottom: 12px;
-  color: var(--color-accent);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-}
 .setup-title {
   font-size: clamp(30px, 4vw, 44px);
   line-height: 1.18;
   font-weight: 600;
   letter-spacing: -0.045em;
   text-wrap: balance;
-}
-.setup-subtitle {
-  margin-top: 12px;
-  color: var(--color-muted);
-  font-size: 15px;
 }
 .setup-page .setup-card {
   border-radius: 14px;
@@ -64,11 +52,12 @@
   gap: 16px 24px;
   padding: 18px 24px;
 }
-.setup-demo-content > div:first-child {
-  max-width: 310px;
-}
-.setup-demo-content > div:first-child > p + p {
-  margin-top: 4px;
+.setup-demo-title {
+  flex-shrink: 0;
+  color: var(--color-ink);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 .setup-sample {
   padding: 8px 12px;
@@ -89,7 +78,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   gap: 24px;
-  align-items: start;
+  align-items: stretch;
 }
 .setup-column {
   display: flex;
@@ -157,6 +146,30 @@
   margin-inline: 24px;
   padding: 20px 0 4px;
   border-top: 1px solid var(--color-line);
+}
+.setup-company-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.setup-company-optional {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+/* Both columns share the grid height, including live mic and validation states. */
+.setup-jd-card,
+.setup-device-card {
+  flex: 1;
+}
+.setup-jd-card {
+  display: flex;
+  flex-direction: column;
+}
+.setup-jd-content,
+.setup-jd-content textarea {
+  flex: 1;
 }
 .setup-page .setup-personas {
   display: grid;

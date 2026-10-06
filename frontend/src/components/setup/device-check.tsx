@@ -144,8 +144,10 @@ export function DeviceCheck() {
         </div>
         {status === "ok" ? (
           <div className="flex items-center gap-2">
-            <Badge variant="ok">{t(messages, "setup.pass")}</Badge>
-            <Button type="button" variant="ghost" size="sm" onClick={stop}>
+            <Badge variant="ok" className="border-ok/20 bg-ok/10">
+              {t(messages, "setup.pass")}
+            </Badge>
+            <Button type="button" variant="out" size="sm" onClick={stop}>
               {t(messages, "setup.micStop")}
             </Button>
           </div>
@@ -169,24 +171,25 @@ export function DeviceCheck() {
         )}
       </div>
 
-      {status === "ok" && (
-        <div
-          className="mt-3 flex h-6 items-end gap-1"
-          aria-hidden
-          role="presentation"
-        >
-          {Array.from({ length: bars }).map((_, i) => (
-            <span
-              key={i}
-              className={cn(
-                "w-1.5 flex-1 rounded-sm transition-colors",
-                i < lit ? "bg-accent" : "bg-line",
-              )}
-              style={{ height: `${20 + (i / bars) * 80}%` }}
-            />
-          ))}
-        </div>
-      )}
+      <div
+        className={cn(
+          "mt-3 flex h-6 items-end gap-1",
+          status !== "ok" && "invisible",
+        )}
+        aria-hidden
+        role="presentation"
+      >
+        {Array.from({ length: bars }).map((_, i) => (
+          <span
+            key={i}
+            className={cn(
+              "w-1.5 flex-1 rounded-sm transition-colors",
+              i < lit ? "bg-accent" : "bg-line",
+            )}
+            style={{ height: `${20 + (i / bars) * 80}%` }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
