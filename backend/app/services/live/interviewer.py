@@ -6,14 +6,47 @@
 
 from __future__ import annotations
 
+import asyncio
+import re
+
 from livekit.agents import Agent, RunContext, StopResponse, function_tool, llm
 
 from ...core.logging import get_logger
 from . import state
+from .guard import wrap_up_line
 from .reasoning import ReasoningFilter
 from .state import InterviewUserdata
 
 log = get_logger(__name__)
+
+# 只修复空回复或纯确认语；陈述式提问（如“请介绍你的项目。”）仍须等待回答。
+_ACKNOWLEDGEMENT = re.compile(
+    r"(?:[\s,，。.!！;；:：]*"
+    r"(?:谢谢(?:你|您)?(?:的(?:介绍|回答|分享))?|感谢(?:你|您)(?:的(?:介绍|回答|分享))?"
+    r"|(?:你的)?(?:介绍|回答)(?:得)?(?:很全面|很清楚|很详细|很完整|很好)"
+    r"|好的?|明白了?|了解了?|收到"
+    r"|thank you(?: for (?:your |the )?(?:answer|introduction|sharing|explanation))?"
+    r"|thanks(?: for (?:your |the )?(?:answer|introduction|sharing|explanation))?"
+    r"|okay|ok|got it|understood|i see|great|that(?:'s| is) (?:clear|helpful)))+"
+    r"[\s,，。.!！;；:：]*",
+    re.IGNORECASE,
+)
+_REQUESTS_TIME = re.compile(
+    r"让我(?:想想|思考)|(?:请)?稍等|等一下|我还(?:没说完|没回答完|在思考|想补充)"
+    r"|\b(?:let me think|give me (?:a moment|a minute|some time)|"
+    r"i(?:'m| am) still thinking|i(?:'m| am) not (?:done|finished)|"
+    r"i have more to (?:add|say)|please wait)\b",
+    re.IGNORECASE,
+)
+_COMPLETE_LINES = {
+    "zh": "本次面试到这里结束。感谢你的回答，面试反馈报告稍后就会准备好。",
+    "en": "That concludes our interview. Thank you; your feedback report will be ready shortly.",
+    "vi": "Buổi phỏng vấn đã kết thúc. Cảm ơn bạn; báo cáo phản hồi sẽ sẵn sàng trong giây lát.",
+    "es": "La entrevista ha terminado. Gracias; tu informe estará listo en breve.",
+    "fr": "Notre entretien est terminé. Merci ; votre rapport sera bientôt prêt.",
+    "de": "Damit endet unser Interview. Vielen Dank; dein Feedbackbericht ist bald fertig.",
+    "ja": "これで面接は終了です。ありがとうございました。フィードバックはまもなく完成します。",
+}
 
 
 def _localized(text: dict[str, str], primary: str) -> str:
@@ -77,6 +110,8 @@ def build_instructions(ud: InterviewUserdata) -> str:
         "to a different round, and request_clarification only if "
         "the candidate seems confused. Never read the rubric aloud. "
         "After asking a question, STOP and wait for a new candidate answer. "
+        "After a completed answer, never end a turn with only an acknowledgement: "
+        "ask a follow-up and wait, or save the answer, advance, and ask the next question. "
         "The wrap section contains a real final question: wait for its answer too. "
         "Never invent answers or call progression tools before the candidate responds. "
         "A brief pause or an unfinished thought is not a completed answer. "
@@ -111,8 +146,13 @@ class Interviewer(Agent):
         # 首个问号后停止正文，防止一次响应同时追问并提出下一题。
         reasoning = ReasoningFilter()
         question_finished = False
+        public_parts: list[str] = []
+        has_tool_calls = False
         # 没有会话状态时只截断问题，兼容直接调用流式节点的测试桩。
         ud = getattr(getattr(self, "session", None), "userdata", None)
+        if ud is not None and isinstance(chat_ctx, llm.ChatContext):
+            # SDK 可以先启动推理，再提交排队中的文字回答；状态工具及兜底只能用已提交原话。
+            await self._wait_for_user_commit(chat_ctx)
         if ud is not None:
             active_question = state.current_question(ud)
             answered_followup_question_id = (
@@ -123,6 +163,11 @@ class Interviewer(Agent):
         else:
             active_question = None
             answered_followup_question_id = ""
+        initial_cursor = ud.ctx.cursor if ud is not None else None
+        initial_user_turns = (
+            [turn for turn in ud.transcript if turn.get("role") == "user"]
+            if ud is not None else []
+        )
 
         def public_text(text: str) -> str:
             nonlocal question_finished
@@ -155,12 +200,16 @@ class Interviewer(Agent):
             return text[: boundary + 1]
 
         async for chunk in Agent.default.llm_node(self, chat_ctx, tools, model_settings):
+            if isinstance(chunk, llm.ChatChunk) and chunk.delta and chunk.delta.tool_calls:
+                has_tool_calls = True
             if isinstance(chunk, str):
                 text = public_text(reasoning.feed(chunk))
                 if text:
+                    public_parts.append(text)
                     yield text
             elif isinstance(chunk, llm.ChatChunk) and chunk.delta and chunk.delta.content:
                 text = public_text(reasoning.feed(chunk.delta.content))
+                public_parts.append(text)
                 delta = chunk.delta.model_copy(
                     update={"content": text or None}
                 )
@@ -169,6 +218,86 @@ class Interviewer(Agent):
             else:
                 yield chunk
         reasoning.finish()
+
+        # 工具调用由 SDK 执行并继续生成；此处不能与其抢先保存或推进。
+        visible = "".join(public_parts).strip()
+        if (
+            ud is not None
+            and not has_tool_calls
+            and not question_finished
+            and (not visible or _ACKNOWLEDGEMENT.fullmatch(visible))
+            and ud.ctx.cursor == initial_cursor
+            and [turn for turn in ud.transcript if turn.get("role") == "user"]
+            == initial_user_turns
+        ):
+            continuation = await self._complete_acknowledgement(ud, initial_user_turns)
+            if continuation:
+                yield continuation
+
+    async def _wait_for_user_commit(self, chat_ctx: llm.ChatContext) -> None:
+        """等待本轮真实输入进入会话历史；打断或关闭会取消等待，且移除临时监听。"""
+        latest_user = next(
+            (item for item in reversed(chat_ctx.items)
+             if isinstance(item, llm.ChatMessage) and item.role == "user"),
+            None,
+        )
+        if latest_user is None or any(item.id == latest_user.id for item in self.chat_ctx.items):
+            return
+        session = self.session
+        committed = asyncio.get_running_loop().create_future()
+
+        def on_item(ev) -> None:
+            if ev.item.id == latest_user.id and not committed.done():
+                committed.set_result(None)
+
+        def on_close(ev) -> None:
+            committed.cancel()
+
+        session.on("conversation_item_added", on_item)
+        session.on("close", on_close)
+        try:
+            await committed
+        finally:
+            session.off("conversation_item_added", on_item)
+            session.off("close", on_close)
+
+    async def _complete_acknowledgement(
+        self, ud: InterviewUserdata, user_turns: list[dict]
+    ) -> str:
+        """补齐无工具的纯确认回复，沿用真实回答、追问、打断和时限保护。"""
+        session = self.session
+        if (
+            ud.closing
+            or session.user_state == "speaking"
+            or getattr(getattr(session, "current_speech", None), "interrupted", False)
+            or state.followup_is_pending(ud)
+            or (user_turns and _REQUESTS_TIME.search(user_turns[-1].get("text") or ""))
+        ):
+            return ""
+
+        spoken = state.spoken_answer(ud)
+        if spoken:
+            # 已保存的同一回答无需重复写入；追问补答则保存最新完整原话。
+            q = state.current_question(ud)
+            assert q is not None
+            saved = next((a for a in reversed(ud.ctx.answers) if a.question_id == q.id), None)
+            if saved is None or saved.transcript != spoken:
+                state.save_answer(ud, transcript=spoken, started_at="", ended_at="")
+            await self._advance_question(ud)
+
+        log.info("interview: completed acknowledgement cursor=%d", ud.ctx.cursor)
+        primary = ud.ctx.plan.language_mode.primary
+        q = state.current_question(ud)
+        if q is not None:
+            # 直接补入同一流，使语音、字幕和聊天历史都包含下一题。
+            return " " + _localized(q.text, primary)
+
+        ud.closing = True
+        session.shutdown(drain=True)
+        return " " + (
+            wrap_up_line(primary) if ud.time_limit_reached
+            else _COMPLETE_LINES.get(primary, _COMPLETE_LINES["en"])
+        )
 
     async def on_enter(self) -> None:
         """主动问候并提出首题；中文使用预生成开场，其他语言禁用工具生成开场。
@@ -250,6 +379,10 @@ class Interviewer(Agent):
         if not state.current_answer_saved(ud):
             log.warning("interview: advance rejected for unanswered question cursor=%d", ud.ctx.cursor)
             return "Save the actual answer to the current question first. If unanswered, WAIT."
+        return await self._advance_question(ud)
+
+    async def _advance_question(self, ud: InterviewUserdata) -> str:
+        """工具和轮次兜底共用推进路径，统一时限检查与系统指令刷新。"""
         if ud.time_limit_reached:
             ud.ctx.cursor = len(ud.ctx.plan.questions)
             return _wrap_signal()
