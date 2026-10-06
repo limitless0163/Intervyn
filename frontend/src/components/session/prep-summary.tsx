@@ -30,6 +30,7 @@ import {
   type ClientSessionView,
 } from "@/types/session";
 import { cn } from "@/utils/cn";
+import { safeExternalUrl } from "@/utils/safe-url";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -52,34 +53,14 @@ function isTerminal(status: ClientSessionView["status"]): boolean {
   return status !== "prep";
 }
 
-/** Header badge label per status (exhaustive, incl. client-side terminals). */
-const STATUS_MESSAGE: Record<ClientSessionView["status"], string> = {
-  prep: "session.preparing",
-  ready: "session.ready",
-  scoring: "session.scoring",
-  rejected: "session.needsInput",
-  error: "session.error",
-  complete: "session.complete",
-  no_answers: "session.complete",
-  not_found: "session.notFound",
-  stalled: "session.stalled",
-};
-
 /**
  * Route transition fallback for /session/[id]. Keep it on the same prep
  * surface so navigation doesn't flash the unrelated app-wide skeleton before
  * the session poller mounts.
  */
 export function PrepLoading() {
-  const messages = useMessages();
-
   return (
-    <AppShell
-      className="app-session"
-      headerContent={
-        <Badge variant="outline">{t(messages, STATUS_MESSAGE.prep)}</Badge>
-      }
-    >
+    <AppShell className="app-session">
       <PrepView progress={[]} warnings={[]} />
     </AppShell>
   );
@@ -143,14 +124,7 @@ export function PrepSummary({
   const warnings = view?.prep_warnings ?? [];
 
   return (
-    <AppShell
-      className="app-session"
-      headerContent={
-        status === "ready" ? undefined : (
-          <Badge variant="outline">{t(messages, STATUS_MESSAGE[status])}</Badge>
-        )
-      }
-    >
+    <AppShell className="app-session">
       {status === "prep" && (
         <PrepView progress={view?.progress ?? []} warnings={warnings} />
       )}
@@ -531,7 +505,16 @@ function RoleCard({ j }: { j: JobSpec }) {
 
 function CompanyCard({ co }: { co: CompanyIntel }) {
   const messages = useMessages();
-  const hasIntel = Boolean(co.summary) || Boolean(co.industry);
+  const hasIntel = co.research_status === "complete" && co.sources.length > 0;
+  const sections = [
+    { label: t(messages, "session.techStack"), items: co.tech_stack },
+    { label: t(messages, "session.companyValues"), items: co.values },
+    {
+      label: t(messages, "session.companyProcess"),
+      items: co.interview_process,
+    },
+    { label: t(messages, "session.companyNews"), items: co.recent_news },
+  ];
   return (
     <BentoCard
       eyebrow={t(messages, "session.companyIntel")}
@@ -548,6 +531,51 @@ function CompanyCard({ co }: { co: CompanyIntel }) {
           )}
           {co.industry && (
             <p className="text-[12px] text-muted">{co.industry}</p>
+          )}
+          {sections
+            .filter((section) => section.items.length > 0)
+            .map((section) => (
+              <div key={section.label} className="mt-4">
+                <p className="mb-1.5 text-[11px] font-mono uppercase tracking-[0.1em] text-muted">
+                  {section.label}
+                </p>
+                <ul className="list-disc pl-4 text-[13px] leading-relaxed text-ink-soft">
+                  {section.items.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          <div className="mt-4">
+            <p className="mb-1.5 text-[11px] font-mono uppercase tracking-[0.1em] text-muted">
+              {t(messages, "session.companySources")}
+            </p>
+            <ul className="space-y-1 text-[12px]">
+              {co.sources.map((source) => {
+                const href = safeExternalUrl(source.url);
+                return href ? (
+                  <li key={source.url}>
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent underline underline-offset-2"
+                    >
+                      {source.title}
+                    </a>
+                  </li>
+                ) : null;
+              })}
+            </ul>
+          </div>
+          {co.search_suggestions && (
+            <iframe
+              title={t(messages, "session.companySearchSuggestions")}
+              srcDoc={co.search_suggestions}
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer"
+              className="mt-3 h-40 w-full border-0"
+            />
           )}
         </>
       ) : (
