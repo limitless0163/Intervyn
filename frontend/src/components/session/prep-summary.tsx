@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import {
   Check,
   AlertTriangle,
-  ExternalLink,
   RotateCw,
   ArrowRight,
   UserRound,
@@ -31,7 +30,6 @@ import {
   type ClientSessionView,
 } from "@/types/session";
 import { cn } from "@/utils/cn";
-import { safeExternalUrl } from "@/utils/safe-url";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -128,7 +126,9 @@ export function PrepSummary({
     <AppShell
       className="app-session"
       headerContent={
-        <Badge variant="outline">{t(messages, STATUS_MESSAGE[status])}</Badge>
+        status === "ready" ? undefined : (
+          <Badge variant="outline">{t(messages, STATUS_MESSAGE[status])}</Badge>
+        )
       }
     >
       {status === "prep" && (
@@ -514,7 +514,7 @@ function RoleCard({ j }: { j: JobSpec }) {
 
 function CompanyCard({ co }: { co: CompanyIntel }) {
   const messages = useMessages();
-  const hasIntel = Boolean(co.summary) || co.citations.length > 0;
+  const hasIntel = Boolean(co.summary) || Boolean(co.industry);
   return (
     <BentoCard
       eyebrow={t(messages, "session.companyIntel")}
@@ -531,31 +531,6 @@ function CompanyCard({ co }: { co: CompanyIntel }) {
           )}
           {co.industry && (
             <p className="text-[12px] text-muted">{co.industry}</p>
-          )}
-          {co.citations.length > 0 && (
-            <div className="mt-1">
-              <p className="mb-1.5 text-[11px] font-mono uppercase tracking-[0.1em] text-faint">
-                {t(messages, "session.sources")}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {co.citations.slice(0, 6).map((cite, i) => (
-                  <a
-                    key={i}
-                    href={safeExternalUrl(cite.url) ?? undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={cite.snippet ?? cite.title}
-                    className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-line bg-paper px-2 py-1 text-[12px] text-ink-soft no-underline transition-colors hover:border-ink hover:no-underline"
-                  >
-                    <ExternalLink
-                      className="h-3 w-3 shrink-0 text-faint"
-                      aria-hidden
-                    />
-                    <span className="truncate">{cite.title}</span>
-                  </a>
-                ))}
-              </div>
-            </div>
           )}
         </>
       ) : (
@@ -734,17 +709,6 @@ function ReadyView({
       <h1 className="font-sans font-semibold tracking-tight text-3xl text-ink sm:text-4xl">
         {t(messages, "session.whatFound")}
       </h1>
-      <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-muted">
-        {t(messages, "session.tailoredIntro")
-          .replace(
-            "{role}",
-            context.job.title || t(messages, "session.roleFallback"),
-          )
-          .replace(
-            "{company}",
-            context.job.company_name || t(messages, "session.company"),
-          )}
-      </p>
 
       <WarningBanner warnings={warnings} />
 

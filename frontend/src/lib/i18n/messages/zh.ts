@@ -512,7 +512,6 @@ export const zh: Localized<Messages> = {
     mustHave: "必备条件",
     niceToHave: "加分条件",
     techStack: "技术栈",
-    sources: "参考来源",
     companyLimited:
       "这家公司的公开信息较少，我们会重点依据职位要求和你的背景来设计面试。",
     strengths: "优势",
@@ -520,8 +519,6 @@ export const zh: Localized<Messages> = {
     matchedSkills: "匹配技能",
     flow: "面试流程",
     difficultySpread: "难度分布",
-    tailoredIntro:
-      "以下是我们为你定制的面试内容，目标职位为 {role}（公司：{company}）。",
     startInterview: "开始面试",
     couldntRead: "无法读取足够的信息来准备面试",
     rejectedDescription:

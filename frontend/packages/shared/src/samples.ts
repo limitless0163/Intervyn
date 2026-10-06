@@ -83,14 +83,6 @@ export const SAMPLE_INTERVIEW_CONTEXT: InterviewContext = {
       "Raised a $60M Series C in early 2026",
       "Launched real-time settlement product in the EU",
     ],
-    citations: [
-      {
-        title: "Acme Payments raises Series C",
-        url: "https://example.com/acme-series-c",
-        snippet:
-          "Acme Payments announced a $60M Series C to expand its ledger platform.",
-      },
-    ],
   },
   gap: {
     strengths: [

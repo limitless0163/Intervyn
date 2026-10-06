@@ -68,8 +68,7 @@ def company_research_prompts(company: str, snippets: str) -> tuple[str, str]:
         "short company summary, industry, likely technology stack, stated values, "
         "the typical interview process and stages, and any recent news. If a field "
         "is not supported by the snippets, leave its list empty rather than "
-        "guessing. Leave citations empty; the pipeline fills them. Respond ONLY "
-        "with the requested schema."
+        "guessing. Respond ONLY with the requested schema."
     )
     user = f"COMPANY: {company}\n\nWEB SEARCH SNIPPETS:\n{snippets}"
     return system, user

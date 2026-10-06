@@ -530,7 +530,6 @@ export const en = {
     mustHave: "Must have",
     niceToHave: "Nice to have",
     techStack: "Tech stack",
-    sources: "Sources",
     companyLimited:
       "Limited public info on this company — we'll keep the interview grounded in the role and your background instead.",
     strengths: "Strengths",
@@ -538,8 +537,6 @@ export const en = {
     matchedSkills: "Matched skills",
     flow: "Flow",
     difficultySpread: "Difficulty spread",
-    tailoredIntro:
-      "Here's how we'll tailor your interview for {role} at {company}.",
     startInterview: "Start interview",
     couldntRead: "We couldn't read enough to build your interview",
     rejectedDescription:

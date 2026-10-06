@@ -15,7 +15,6 @@ from ...core.logging import get_logger
 from ...core.tracing import traced
 from ...schemas.shared_models import (
     CandidateProfile,
-    Citation,
     CompanyIntel,
     JobSpec,
     QuestionPlan,
@@ -126,7 +125,6 @@ def _empty_company_intel(name: str) -> CompanyIntel:
         values=[],
         interview_process=[],
         recent_news=[],
-        citations=[],
     )
 
 
@@ -175,10 +173,6 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
             state, deps, ["Could not research the company; proceeding without intel."]
         )
 
-    citations = [
-        Citation(title=r.title, url=r.url, snippet=r.snippet) for r in results
-    ]
-    intel = intel.model_copy(update={"citations": citations})
     await _mark(state, deps, "company_research")
     return {"company": intel}
 

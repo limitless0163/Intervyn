@@ -42,35 +42,6 @@
       "items": {
         "type": "string"
       }
-    },
-    "citations": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "title": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "snippet": {
-            "default": null,
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "title",
-          "url"
-        ]
-      }
     }
   },
   "required": [
@@ -79,7 +50,6 @@
     "tech_stack",
     "values",
     "interview_process",
-    "recent_news",
-    "citations"
+    "recent_news"
   ]
 }

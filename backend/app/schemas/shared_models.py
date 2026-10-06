@@ -98,7 +98,6 @@ class CompanyIntel(BaseModel):
     values: list[str]
     interview_process: list[str]
     recent_news: list[str]
-    citations: list[Citation]
 
 
 # 能力差距。

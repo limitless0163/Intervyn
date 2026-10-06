@@ -58,16 +58,13 @@ def test_run_prep_pins_language_mode_for_non_english() -> None:
     assert ctx.plan.language_mode.mixed is True
 
 
-def test_run_prep_maps_search_results_into_company_citations() -> None:
+def test_run_prep_company_intel_has_no_citations() -> None:
     deps = build_deps()
     session_id = asyncio.run(run_prep(_request(), deps))
 
     ctx = asyncio.run(deps.repo.load_context(session_id))
     assert ctx is not None
-    assert ctx.company.citations, "expected company citations from search results"
-    for c in ctx.company.citations:
-        assert c.title
-        assert c.url
+    assert "citations" not in ctx.company.model_dump()
 
 
 class _RecordingKnowledge:
