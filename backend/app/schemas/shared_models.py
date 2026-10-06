@@ -98,6 +98,9 @@ class CompanyIntel(BaseModel):
     values: list[str]
     interview_process: list[str]
     recent_news: list[str]
+    sources: list[Citation] = Field(default_factory=list)
+    research_status: Literal["complete", "unavailable"] = "unavailable"
+    search_suggestions: str | None = None
 
 
 # 能力差距。

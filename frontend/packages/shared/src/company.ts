@@ -15,5 +15,8 @@ export const CompanyIntelSchema = z.object({
   values: z.array(z.string()),
   interview_process: z.array(z.string()),
   recent_news: z.array(z.string()),
+  sources: z.array(CitationSchema).default([]),
+  research_status: z.enum(["complete", "unavailable"]).default("unavailable"),
+  search_suggestions: z.string().nullable().default(null),
 });
 export type CompanyIntel = z.infer<typeof CompanyIntelSchema>;

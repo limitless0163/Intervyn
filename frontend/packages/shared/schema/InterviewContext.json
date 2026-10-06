@@ -252,6 +252,55 @@
           "items": {
             "type": "string"
           }
+        },
+        "sources": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "snippet": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "title",
+              "url"
+            ]
+          }
+        },
+        "research_status": {
+          "default": "unavailable",
+          "type": "string",
+          "enum": [
+            "complete",
+            "unavailable"
+          ]
+        },
+        "search_suggestions": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

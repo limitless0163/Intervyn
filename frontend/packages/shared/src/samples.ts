@@ -71,6 +71,9 @@ export const SAMPLE_INTERVIEW_CONTEXT: InterviewContext = {
     summary:
       "Acme Payments provides embedded payment and ledger infrastructure for fintech companies across Europe.",
     industry: "Fintech / Payments",
+    sources: [],
+    research_status: "unavailable",
+    search_suggestions: null,
     tech_stack: ["Go", "Kafka", "PostgreSQL", "Kubernetes"],
     values: ["Correctness over speed", "Ownership", "Customer obsession"],
     interview_process: [
