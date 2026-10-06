@@ -197,7 +197,6 @@ export const zh: Localized<Messages> = {
     personaHint: "选择主持面试的虚拟形象。",
     deviceLabel: "麦克风检查",
     start: "开始面试",
-    researching: "正在了解 {company}…",
     stepCv: "正在阅读简历",
     stepJd: "正在分析职位描述",
     stepCompany: "正在研究目标公司",
@@ -223,7 +222,6 @@ export const zh: Localized<Messages> = {
     fileEmpty: "文件为空，请选择另一份简历或粘贴文本。",
     fileUnsupported: "请选择 PDF、DOCX 或文本文件。",
     fileSelectedHint: "将使用已选择的文件。移除文件后可改用粘贴的文本。",
-    companyFallback: "目标公司",
     startFailed: "无法开始面试，请重试。",
     invalidInput: "请添加有效简历并粘贴完整的职位描述。",
     removeFile: "移除文件",
@@ -477,7 +475,6 @@ export const zh: Localized<Messages> = {
     sessionMissingBody:
       "面试可能已过期，或者链接有误。返回设置即可创建新场次。",
     prepTitle: "正在准备你的面试",
-    prepBody: "智能助手正在阅读你的资料并研究职位，请稍候片刻。",
     headsUp: "请注意：",
     candidate: "候选人",
     you: "你",

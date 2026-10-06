@@ -65,6 +65,26 @@ const STATUS_MESSAGE: Record<ClientSessionView["status"], string> = {
   stalled: "session.stalled",
 };
 
+/**
+ * Route transition fallback for /session/[id]. Keep it on the same prep
+ * surface so navigation doesn't flash the unrelated app-wide skeleton before
+ * the session poller mounts.
+ */
+export function PrepLoading() {
+  const messages = useMessages();
+
+  return (
+    <AppShell
+      className="app-session"
+      headerContent={
+        <Badge variant="outline">{t(messages, STATUS_MESSAGE.prep)}</Badge>
+      }
+    >
+      <PrepView progress={[]} warnings={[]} />
+    </AppShell>
+  );
+}
+
 export function PrepSummary({
   sessionId,
   persona,
@@ -252,9 +272,6 @@ function PrepView({
       <h1 className="font-sans font-semibold tracking-tight text-3xl text-ink sm:text-4xl">
         {t(messages, "session.prepTitle")}
       </h1>
-      <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-muted">
-        {t(messages, "session.prepBody")}
-      </p>
 
       <WarningBanner warnings={warnings} />
 

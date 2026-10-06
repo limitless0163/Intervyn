@@ -279,10 +279,6 @@
   color: var(--color-ink);
   font-size: 13px;
 }
-.setup-loading {
-  max-width: 640px;
-  margin: 48px auto;
-}
 @media (max-width: 767px) {
   .setup-container {
     max-width: 640px;

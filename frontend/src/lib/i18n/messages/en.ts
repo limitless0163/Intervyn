@@ -196,7 +196,6 @@ export const en = {
     personaHint: "Pick the avatar who'll run your interview.",
     deviceLabel: "Microphone check",
     start: "Start interview",
-    researching: "Researching {company}…",
     stepCv: "Reading your CV",
     stepJd: "Analyzing the job description",
     stepCompany: "Researching the company",
@@ -225,7 +224,6 @@ export const en = {
     fileUnsupported: "Choose a PDF, DOCX, or text document.",
     fileSelectedHint:
       "The selected file will be used. Remove it to use pasted text instead.",
-    companyFallback: "the company",
     startFailed: "Could not start the interview. Please try again.",
     invalidInput: "Add a valid CV and the full job description.",
     removeFile: "Remove file",
@@ -493,8 +491,6 @@ export const en = {
     sessionMissingBody:
       "It may have expired or the link is wrong. Head back to setup to start a new one.",
     prepTitle: "Preparing your interview",
-    prepBody:
-      "Our agents are reading your materials and researching the role. This takes a moment — hang tight.",
     headsUp: "Heads up:",
     candidate: "Candidate",
     you: "You",

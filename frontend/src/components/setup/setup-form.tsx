@@ -39,8 +39,6 @@ const OFFERED: Language[] = (
   ["en", "zh", "ja", "vi", "es", "fr", "de"] as Language[]
 ).filter((l) => (LANGUAGES as readonly string[]).includes(l));
 
-type Step = { key: string; label: string };
-
 // One-click sample inputs for fast testing / demos. Each is a matched CV + JD +
 // company so the prep pipeline gets a coherent pair. Pure UX sugar — clicking a
 // sample just fills the form fields; nothing is submitted.
@@ -85,7 +83,6 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
 
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [activeStep, setActiveStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   // Surface inline field errors once the user has interacted with a field (or
   // attempted submit) — not on first load. Decoupled from submit because the
@@ -159,7 +156,6 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
     }
 
     setSubmitting(true);
-    setActiveStep(0);
     const controller = new AbortController();
     requestRef.current = controller;
 
@@ -176,7 +172,6 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
       }
       if (controller.signal.aborted) return;
 
-      setActiveStep(1);
       const language_mode: LanguageMode = {
         primary,
         mixed: primary !== "en" && mixed,
@@ -208,7 +203,6 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
         return;
       }
 
-      setActiveStep(2);
       // Carry the chosen persona forward (PrepRequest has no persona field yet;
       // WP-2 will persist it server-side). Query param keeps P1 stateless.
       // Route to the prep screen — it polls the agent, shows the agents
@@ -231,61 +225,8 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
     }
   }
 
-  const steps: Step[] = [
-    { key: "cv", label: t(messages, "setup.stepCv") },
-    { key: "company", label: t(messages, "setup.stepCompany") },
-    { key: "plan", label: t(messages, "setup.stepPlan") },
-  ];
-
-  if (submitting) {
-    const researching = t(messages, "setup.researching").replace(
-      "{company}",
-      company.trim() || t(messages, "setup.companyFallback"),
-    );
-    return (
-      <Card className="setup-card setup-loading">
-        <CardContent className="flex flex-col items-center gap-5 py-12 text-center">
-          <Spinner className="h-6 w-6" label={t(messages, "common.loading")} />
-          <p className="text-xl font-semibold text-ink">{researching}</p>
-          <ol className="flex flex-col gap-2 text-left">
-            {steps.map((s, i) => (
-              <li
-                key={s.key}
-                className={cn(
-                  "flex items-center gap-2 text-[13px]",
-                  i < activeStep
-                    ? "text-ok"
-                    : i === activeStep
-                      ? "text-ink"
-                      : "text-faint",
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    i < activeStep
-                      ? "bg-ok"
-                      : i === activeStep
-                        ? "bg-accent"
-                        : "bg-line",
-                  )}
-                />
-                {s.label}
-              </li>
-            ))}
-          </ol>
-          {error && (
-            <p className="text-[13px] text-ink-soft" role="alert">
-              {error}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
-    <form onSubmit={onSubmit} className="setup-form">
+    <form onSubmit={onSubmit} className="setup-form" aria-busy={submitting}>
       <div className="setup-intro">
         <h1 className="setup-title">{t(messages, "setup.title")}</h1>
       </div>
@@ -621,7 +562,14 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
             aria-hidden
           />
           <p>
-            {t(messages, canSubmit ? "setup.ready" : "setup.completeMaterials")}
+            {t(
+              messages,
+              submitting
+                ? "common.loading"
+                : canSubmit
+                  ? "setup.ready"
+                  : "setup.completeMaterials",
+            )}
           </p>
         </div>
         <Button
@@ -631,8 +579,20 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
           disabled={!canSubmit}
           aria-disabled={!canSubmit}
         >
-          {t(messages, "setup.start")}
-          <ArrowRight size={16} aria-hidden />
+          {submitting ? (
+            <>
+              <Spinner
+                className="h-4 w-4 text-current"
+                label={t(messages, "common.loading")}
+              />
+              {t(messages, "common.loading")}
+            </>
+          ) : (
+            <>
+              {t(messages, "setup.start")}
+              <ArrowRight size={16} aria-hidden />
+            </>
+          )}
         </Button>
       </div>
     </form>
