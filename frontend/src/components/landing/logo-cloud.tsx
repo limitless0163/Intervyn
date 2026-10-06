@@ -1,34 +1,41 @@
 "use client";
 
+import Image from "next/image";
 import { Container } from "@/components/ui/container";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
 const COMPANIES = [
-  "Google",
-  "Amazon",
-  "Stripe",
-  "Grab",
-  "Atlassian",
-  "Datadog",
+  { name: "ByteDance", file: "bytedance" },
+  { name: "Tencent", file: "tencent" },
+  { name: "Alibaba", file: "alibaba" },
+  { name: "Baidu", file: "baidu" },
+  { name: "Meituan", file: "meituan" },
+  { name: "JD", file: "jd" },
 ];
 
 export function LogoCloud() {
   const messages = useMessages();
   return (
-    <div className="border-b border-line py-[34px]">
-      <Container>
-        <p className="mb-[18px] text-center font-mono text-[12.5px] uppercase tracking-[0.06em] text-faint">
+    <div className="landing-companies">
+      <Container className="landing-container">
+        <p className="mb-5 text-center text-xs text-muted">
           {t(messages, "landing.logoCloud")}
         </p>
-        <div className="flex flex-wrap items-center justify-center gap-x-[46px] gap-y-4">
-          {COMPANIES.map((name) => (
-            <span
-              key={name}
-              className="text-lg font-semibold tracking-[-0.01em] text-[#B9B6AE]"
-            >
-              {name}
-            </span>
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+          {COMPANIES.map(({ name, file }) => (
+            <div key={file} className="landing-company">
+              <div className="landing-company-logo">
+                <Image
+                  src={`/logos/companies/${file}.png`}
+                  alt={`${name} logo`}
+                  width={120}
+                  height={40}
+                  className={`landing-company-image landing-company-image-${file}`}
+                />
+              </div>
+              <span>{name}</span>
+            </div>
           ))}
         </div>
       </Container>

@@ -1,185 +1,208 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { FileText, ScanText } from "lucide-react";
+import { HeroMock } from "@/components/landing/hero-mock";
+import { PreviewFrame } from "@/components/landing/preview-frame";
 import { Container } from "@/components/ui/container";
-import { Eyebrow } from "@/components/ui/eyebrow";
-import { Reveal } from "@/components/ui/reveal";
-import { FeatureRow } from "@/components/landing/feature-row";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
-const LANGUAGES = [
-  { label: "English", active: true },
-  { label: "Tiếng Việt" },
-  { label: "Español" },
-  { label: "हिन्दी" },
-  { label: "Bahasa" },
-  { label: "Português" },
-  { label: "Filipino" },
-  { label: "Français" },
-  { label: "+ more" },
-];
+const FEATURE_KEYS = ["voice", "tailored", "loop"] as const;
+const CYCLE_DURATION = 8000;
 
-function LanguagesVisual({
-  messages,
-}: {
-  messages: ReturnType<typeof useMessages>;
-}) {
+function PlanVisual() {
+  const messages = useMessages();
+  const rows = [
+    { label: "Distributed systems", tag: "probe", percent: 88 },
+    { label: "Kafka & event streaming", tag: "gap", percent: 52 },
+    { label: "System design — payments", tag: "core", percent: 76 },
+    { label: "Behavioral — ownership", tag: "core", percent: 82 },
+    { label: "SQL window functions", tag: "warmup", percent: 64 },
+  ];
   return (
-    <div>
-      <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
-        {t(messages, "landing.product.languages")}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {LANGUAGES.map((lang) => (
-          <span
-            key={lang.label}
-            className={
-              lang.active
-                ? "rounded-lg border border-ink px-[11px] py-1.5 text-[13px] font-medium text-ink"
-                : "rounded-lg border border-line bg-[#FCFBF9] px-[11px] py-1.5 text-[13px] text-ink-soft"
-            }
-          >
-            {lang.label}
+    <PreviewFrame title={t(messages, "landing.product.plan")}>
+      <div className="landing-plan-content">
+        <div className="landing-plan-inputs">
+          <span>
+            <FileText aria-hidden />
+            CV
           </span>
+          <span className="landing-plan-connector">↔</span>
+          <span>
+            <ScanText aria-hidden />
+            JD
+          </span>
+        </div>
+        {rows.map((row) => (
+          <div key={row.label} className="landing-plan-row">
+            <span>{row.label}</span>
+            <span
+              className={
+                row.tag === "gap" ? "landing-plan-gap" : "landing-plan-tag"
+              }
+            >
+              {t(messages, `landing.product.${row.tag}`)}
+            </span>
+            <div className="landing-plan-line">
+              <span style={{ width: `${row.percent}%` }} />
+            </div>
+          </div>
         ))}
       </div>
-      <div className="mt-[18px] text-[13.5px] text-muted">
-        {t(messages, "landing.product.languagesBody")}
-      </div>
-    </div>
+    </PreviewFrame>
   );
 }
 
-function PlanVisual({
-  messages,
-}: {
-  messages: ReturnType<typeof useMessages>;
-}) {
-  const planRows = [
-    {
-      label: "Distributed systems",
-      tag: t(messages, "landing.product.probe"),
-      strong: true,
-    },
-    {
-      label: "Kafka & event streaming",
-      tag: t(messages, "landing.product.gap"),
-      strong: true,
-    },
-    {
-      label: "System design — payments",
-      tag: t(messages, "landing.product.core"),
-      strong: false,
-    },
-    {
-      label: "Behavioral — ownership",
-      tag: t(messages, "landing.product.core"),
-      strong: false,
-    },
-    {
-      label: "SQL window functions",
-      tag: t(messages, "landing.product.warmup"),
-      strong: false,
-    },
-  ];
+function LoopVisual() {
+  const messages = useMessages();
   return (
-    <div>
-      <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
-        {t(messages, "landing.product.plan")}
+    <PreviewFrame title={t(messages, "landing.product.loopEyebrow")}>
+      <div className="landing-loop-content">
+        <div className="landing-loop-scores">
+          {[
+            ["mockCommunication", "8.5"],
+            ["mockSystemDesign", "7.0"],
+            ["mockClarity", "9.0"],
+          ].map(([key, value]) => (
+            <div key={key}>
+              <span>{t(messages, `landing.hero.${key}`)}</span>
+              <p>
+                {value}
+                <small>/10</small>
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="landing-loop-steps">
+          {[1, 2, 3, 4, 5].map((number) => (
+            <div key={number}>
+              <span>{number === 5 ? "↻" : number}</span>
+              <p>{t(messages, `landing.product.loop${number}`)}</p>
+            </div>
+          ))}
+        </div>
       </div>
-      {planRows.map((row) => (
-        <div
-          key={row.label}
-          className="flex justify-between border-b border-dashed border-line-2 py-2.5 text-[13.5px] last:border-b-0"
-        >
-          <span>{row.label}</span>
-          <span className={row.strong ? "font-semibold text-ok" : "text-muted"}>
-            {row.tag}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LoopVisual({
-  messages,
-}: {
-  messages: ReturnType<typeof useMessages>;
-}) {
-  const loopSteps = [
-    { badge: "1", label: t(messages, "landing.product.loop1") },
-    { badge: "2", label: t(messages, "landing.product.loop2") },
-    { badge: "3", label: t(messages, "landing.product.loop3") },
-    { badge: "4", label: t(messages, "landing.product.loop4") },
-    { badge: "↻", label: t(messages, "landing.product.loop5") },
-  ];
-  return (
-    <div className="flex flex-col gap-2.5">
-      {loopSteps.map((step) => (
-        <div
-          key={step.badge}
-          className="flex items-center gap-[11px] text-[13.5px] text-ink-soft"
-        >
-          <span className="grid h-[26px] w-[26px] place-items-center rounded-[7px] border border-line font-mono text-[11px] text-accent">
-            {step.badge}
-          </span>
-          {step.label}
-        </div>
-      ))}
-    </div>
+    </PreviewFrame>
   );
 }
 
 export function Product() {
   const messages = useMessages();
+  const [active, setActive] = useState(0);
+  const [cycle, setCycle] = useState(0);
+  const [visible, setVisible] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [documentHidden, setDocumentHidden] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const remaining = useRef(CYCLE_DURATION);
+  const selection = useRef("");
+  const paused = !visible || reducedMotion || documentHidden;
+
+  useEffect(() => {
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncMotion = () => setReducedMotion(motion.matches);
+    const syncVisibility = () => setDocumentHidden(document.hidden);
+    syncMotion();
+    syncVisibility();
+    motion.addEventListener("change", syncMotion);
+    document.addEventListener("visibilitychange", syncVisibility);
+    const observer = new IntersectionObserver(
+      ([entry]) => setVisible(!!entry?.isIntersecting),
+      { threshold: 0.2 },
+    );
+    if (root.current) observer.observe(root.current);
+    return () => {
+      observer.disconnect();
+      motion.removeEventListener("change", syncMotion);
+      document.removeEventListener("visibilitychange", syncVisibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextSelection = `${active}-${cycle}`;
+    if (selection.current !== nextSelection) {
+      selection.current = nextSelection;
+      remaining.current = CYCLE_DURATION;
+    }
+    if (paused) return;
+    const started = performance.now();
+    const timer = setTimeout(
+      () => setActive((previous) => (previous + 1) % FEATURE_KEYS.length),
+      remaining.current,
+    );
+    return () => {
+      clearTimeout(timer);
+      remaining.current = Math.max(
+        0,
+        remaining.current - (performance.now() - started),
+      );
+    };
+  }, [active, cycle, paused]);
+
   return (
-    <section id="product" className="scroll-mt-24 py-[84px] pt-0">
-      <Container>
-        <Reveal className="mb-12 max-w-[680px]">
-          <Eyebrow>{t(messages, "landing.product.eyebrow")}</Eyebrow>
-          <h2 className="serif my-3.5 text-[38px]">
-            {t(messages, "landing.product.title")}
-          </h2>
-        </Reveal>
-
-        <FeatureRow
-          first
-          eyebrow={t(messages, "landing.product.voiceEyebrow")}
-          title={t(messages, "landing.product.voiceTitle")}
-          body={t(messages, "landing.product.voiceBody")}
-          bullets={[
-            t(messages, "landing.product.voiceBullet1"),
-            t(messages, "landing.product.voiceBullet2"),
-            t(messages, "landing.product.voiceBullet3"),
-          ]}
-          visual={<LanguagesVisual messages={messages} />}
-        />
-
-        <FeatureRow
-          flip
-          eyebrow={t(messages, "landing.product.tailoredEyebrow")}
-          title={t(messages, "landing.product.tailoredTitle")}
-          body={t(messages, "landing.product.tailoredBody")}
-          bullets={[
-            t(messages, "landing.product.tailoredBullet1"),
-            t(messages, "landing.product.tailoredBullet2"),
-            t(messages, "landing.product.tailoredBullet3"),
-          ]}
-          visual={<PlanVisual messages={messages} />}
-        />
-
-        <FeatureRow
-          eyebrow={t(messages, "landing.product.loopEyebrow")}
-          title={t(messages, "landing.product.loopTitle")}
-          body={t(messages, "landing.product.loopBody")}
-          bullets={[
-            t(messages, "landing.product.loopBullet1"),
-            t(messages, "landing.product.loopBullet2"),
-            t(messages, "landing.product.loopBullet3"),
-          ]}
-          visual={<LoopVisual messages={messages} />}
-        />
+    <section id="product" className="landing-section">
+      <Container className="landing-container">
+        <h2 className="landing-section-title">
+          {t(messages, "landing.product.title")}
+        </h2>
+        <div ref={root} className="landing-features">
+          <div className="landing-feature-points">
+            {FEATURE_KEYS.map((key, index) => {
+              const open = active === index;
+              return (
+                <div
+                  key={key}
+                  className="landing-feature-item"
+                  data-open={open}
+                >
+                  <h3>
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-controls={`landing-feature-description-${key}`}
+                      onClick={() => {
+                        setActive(index);
+                        setCycle((previous) => previous + 1);
+                      }}
+                    >
+                      {t(messages, `landing.product.${key}Title`)}
+                    </button>
+                  </h3>
+                  <div
+                    id={`landing-feature-description-${key}`}
+                    className="landing-feature-description"
+                    aria-hidden={!open}
+                    inert={!open}
+                  >
+                    <div>
+                      <p>{t(messages, `landing.product.${key}Body`)}</p>
+                    </div>
+                  </div>
+                  {open && (
+                    <span
+                      key={`${active}-${cycle}`}
+                      className="landing-feature-progress"
+                      style={{
+                        animationPlayState: paused ? "paused" : "running",
+                      }}
+                      aria-hidden
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="landing-feature-visual" key={active}>
+            {active === 0 ? (
+              <HeroMock />
+            ) : active === 1 ? (
+              <PlanVisual />
+            ) : (
+              <LoopVisual />
+            )}
+          </div>
+        </div>
       </Container>
     </section>
   );

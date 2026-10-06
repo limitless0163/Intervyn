@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { LanguageToggle } from "@/components/language-toggle";
+import { LandingLanguageMenu } from "@/components/landing/language-menu";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
@@ -27,7 +27,7 @@ export function MobileMenu({
     const closeOutside = (event: PointerEvent) => {
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const desktop = window.matchMedia("(min-width: 861px)");
+    const desktop = window.matchMedia("(min-width: 1024px)");
     const closeOnDesktop = () => {
       if (desktop.matches) setOpen(false);
     };
@@ -42,7 +42,7 @@ export function MobileMenu({
   return (
     <div
       ref={containerRef}
-      className="min-[861px]:hidden"
+      className="min-[1024px]:hidden"
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
           event.preventDefault();
@@ -72,7 +72,7 @@ export function MobileMenu({
       <div
         id={id}
         hidden={!open}
-        className="absolute left-0 right-0 top-[66px] border-b border-line bg-paper/95 backdrop-blur-md"
+        className="absolute left-0 right-0 top-[64px] border-b border-line bg-paper/95 backdrop-blur-md"
       >
         <div className="mx-auto flex max-w-[1140px] flex-col px-7 py-3">
           {links.map((link) => (
@@ -87,7 +87,7 @@ export function MobileMenu({
           ))}
           {showLanguageToggle && (
             <div className="border-t border-line pt-3 pb-2">
-              <LanguageToggle />
+              <LandingLanguageMenu />
             </div>
           )}
         </div>

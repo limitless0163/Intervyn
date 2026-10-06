@@ -24,6 +24,7 @@ export const zh: Localized<Messages> = {
   },
   landing: {
     nav: {
+      startShort: "开始",
       how: "使用方式",
       product: "产品功能",
       openSource: "开源项目",
@@ -32,6 +33,8 @@ export const zh: Localized<Messages> = {
       start: "免费开始",
     },
     hero: {
+      learnMore: "了解使用方式",
+      mockSession: "面试预览",
       eyebrow: "开源 AI 面试官",
       title: "开口练习面试，",
       accent: "从容应对。",
@@ -53,6 +56,9 @@ export const zh: Localized<Messages> = {
     },
     logoCloud: "为加入这些公司做好面试准备",
     how: {
+      step1Label: "充分准备",
+      step2Label: "模拟面试",
+      step3Label: "持续提升",
       eyebrow: "使用方式",
       title: "准备、实战、提升。",
       body: "通话前先做好充分准备，让面试对话保持流畅自然。",
@@ -105,6 +111,7 @@ export const zh: Localized<Messages> = {
       loopBullet3: "跨场次追踪能力进展",
     },
     openSource: {
+      ownData: "掌控自己的数据",
       eyebrow: "开源项目",
       title: "用 Docker 自行部署。",
       body: "完整语音流程、多智能体系统和备考教练均以 MIT 许可开源。你可以配置自己的模型密钥、添加语言支持，或参与项目改进。",
@@ -112,7 +119,7 @@ export const zh: Localized<Messages> = {
     },
     faq: {
       eyebrow: "常见问题",
-      title: "你可能想了解这些。",
+      title: "FAQ",
       q1: "支持哪些语言？",
       a1: "界面默认使用英文，也可以切换为简体中文。创建模拟面试时，还能从支持的面试语言中进行选择。",
       q2: "它真的免费且开源吗？",
@@ -122,9 +129,9 @@ export const zh: Localized<Messages> = {
     },
     cta: {
       eyebrow: "准备好了就开始",
-      title: "从这里开始准备下一场面试。",
+      title: "从容迈向你的下一场面试。",
       body: "上传简历、粘贴职位描述，几分钟内就能开始练习。",
-      start: "免费开始",
+      start: "立即开始",
     },
     footer: {
       body: "开源 AI 语音面试官。使用你选择的面试语言，大声练习。",

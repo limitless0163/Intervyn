@@ -21,6 +21,7 @@ export const en = {
   },
   landing: {
     nav: {
+      startShort: "Start",
       how: "How it works",
       product: "Product",
       openSource: "Open source",
@@ -29,6 +30,8 @@ export const en = {
       start: "Start free",
     },
     hero: {
+      learnMore: "See how it works",
+      mockSession: "Interview preview",
       eyebrow: "Open-source AI interviewer",
       title: "Practice the interview",
       accent: "out loud.",
@@ -51,6 +54,9 @@ export const en = {
     },
     logoCloud: "Prepare for interviews at companies like",
     how: {
+      step1Label: "Prepare",
+      step2Label: "Interview",
+      step3Label: "Improve",
       eyebrow: "How it works",
       title: "Prepare, perform, improve.",
       body: "The heavy thinking happens before the call, so the conversation itself stays fast and natural.",
@@ -103,6 +109,7 @@ export const en = {
       loopBullet3: "Mastery tracking across sessions",
     },
     openSource: {
+      ownData: "Own your data",
       eyebrow: "Open source",
       title: "Run it yourself with Docker.",
       body: "The full voice pipeline, multi-agent brain and study coach are open under the MIT License. Bring your own model keys, add a language pack, or contribute back.",
@@ -110,7 +117,7 @@ export const en = {
     },
     faq: {
       eyebrow: "FAQ",
-      title: "Good questions.",
+      title: "FAQ",
       q1: "Which languages are supported?",
       a1: "English is the default interface. You can switch the interface to Simplified Chinese, and choose from supported interview languages when setting up a practice session.",
       q2: "Is it really free and open source?",
@@ -120,9 +127,9 @@ export const en = {
     },
     cta: {
       eyebrow: "Ready when you are",
-      title: "Your next interview starts here.",
+      title: "Step into your next interview with confidence.",
       body: "Upload a CV, paste a job post, and talk it through — in minutes.",
-      start: "Start free",
+      start: "Start now",
     },
     footer: {
       body: "The open-source AI voice interviewer. Practice out loud, in your chosen interview language.",

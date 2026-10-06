@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { PreviewFrame } from "@/components/landing/preview-frame";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
@@ -42,73 +43,52 @@ export function HeroMock() {
   }, [base, followup, outcome]);
 
   return (
-    <div
-      aria-hidden="true"
-      className="overflow-hidden rounded-2xl border border-line bg-panel shadow-[0_1px_0_rgba(0,0,0,0.02),0_24px_48px_-28px_rgba(20,20,30,0.22)]"
-    >
-      <div className="flex items-center gap-2 border-b border-line-2 bg-[#FCFBF9] px-3.5 py-[11px]">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#E4E0D7]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#E4E0D7]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#E4E0D7]" />
-        <span className="ml-2 rounded-md border border-line-2 bg-[#F4F1EA] px-[9px] py-[3px] font-mono text-[11.5px] text-faint">
-          localhost:3000/session/8f2a
-        </span>
-      </div>
-      <div className="grid grid-cols-[90px_minmax(0,1fr)] sm:grid-cols-[150px_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-3 border-r border-line-2 p-3 sm:p-4">
-          <div className="relative aspect-square overflow-hidden rounded-xl bg-[linear-gradient(160deg,#23232A,#3C3A4D)]">
-            <div className="absolute inset-0 grid place-items-center font-serif text-3xl text-[#D9D6E8]">
-              A
-            </div>
-          </div>
-          <div className="flex items-center gap-[7px] font-mono text-[11.5px] text-muted">
-            <span className="anim-rec h-[7px] w-[7px] rounded-full bg-[#DC2626]" />{" "}
+    <PreviewFrame title={t(messages, "landing.hero.mockSession")}>
+      <div className="landing-preview-content">
+        <div className="landing-preview-sidebar">
+          <div className="landing-preview-avatar">A</div>
+          <div className="landing-preview-recording">
+            <span className="anim-rec" />
             04:12
           </div>
-          <div className="self-start break-words rounded-md border border-line px-2 py-[3px] font-mono text-[11px] text-ink-soft">
-            EN · Recruiter
-          </div>
-          <div className="self-start break-words rounded-md border border-line px-2 py-[3px] font-mono text-[11px] text-ink-soft">
-            Senior Backend
-          </div>
+          <div className="landing-preview-tag">EN · Recruiter</div>
+          <div className="landing-preview-tag">Senior Backend</div>
         </div>
-        <div className="flex min-h-[268px] min-w-0 flex-col gap-[13px] px-3 py-4 sm:px-[18px]">
-          <div className="flex flex-col gap-1 sm:flex-row sm:gap-2.5">
-            <div className="shrink-0 pt-0.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-faint sm:w-[74px]">
+        <div className="landing-preview-conversation">
+          <div className="landing-preview-dialog">
+            <span className="landing-preview-role">
               {t(messages, "landing.hero.mockInterviewer")}
-            </div>
-            <div className="text-[13.5px] font-[450] leading-[1.5] text-ink">
+            </span>
+            <p className="landing-preview-question">
               {t(messages, "landing.hero.mockQuestion")}
-            </div>
+            </p>
           </div>
-          <div className="flex flex-col gap-1 sm:flex-row sm:gap-2.5">
-            <div className="shrink-0 pt-0.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-faint sm:w-[74px]">
+          <div className="landing-preview-dialog">
+            <span className="landing-preview-role">
               {t(messages, "landing.hero.mockYou")}
-            </div>
-            <div className="text-[13.5px] leading-[1.5] text-ink-soft">
+            </span>
+            <p>
               {said}
-              <span className="anim-cursor ml-px inline-block h-3.5 w-[7px] translate-y-[2px] bg-accent" />
-            </div>
+              <span className="landing-preview-cursor anim-cursor" />
+            </p>
           </div>
-          <div className="mt-auto flex flex-wrap gap-[18px] border-t border-line-2 pt-3">
+          <div className="landing-preview-scores">
             {[
               [t(messages, "landing.hero.mockCommunication"), "8.5"],
               [t(messages, "landing.hero.mockSystemDesign"), "7.0"],
               [t(messages, "landing.hero.mockClarity"), "9.0"],
-            ].map(([k, v]) => (
-              <div key={k} className="flex flex-col gap-[3px]">
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-faint">
-                  {k}
-                </span>
-                <span className="font-serif text-[19px] text-ink">
-                  {v}
-                  <small className="text-xs text-faint">/10</small>
-                </span>
+            ].map(([label, score]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <p>
+                  {score}
+                  <small>/10</small>
+                </p>
               </div>
             ))}
           </div>
         </div>
       </div>
-    </div>
+    </PreviewFrame>
   );
 }

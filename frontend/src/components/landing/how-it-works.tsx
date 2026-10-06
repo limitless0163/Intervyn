@@ -1,7 +1,7 @@
 "use client";
 
+import { AudioLines, ChartNoAxesCombined, FileText } from "lucide-react";
 import { Container } from "@/components/ui/container";
-import { Eyebrow } from "@/components/ui/eyebrow";
 import { Reveal } from "@/components/ui/reveal";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
@@ -10,51 +10,65 @@ export function HowItWorks() {
   const messages = useMessages();
   const steps = [
     {
-      num: "01 — PREP",
-      title: t(messages, "landing.how.step1Title"),
-      body: t(messages, "landing.how.step1Body"),
+      num: "01",
+      label: "step1Label",
+      icon: FileText,
+      art: "prep",
+      title: "step1Title",
+      body: "step1Body",
     },
     {
-      num: "02 — INTERVIEW",
-      title: t(messages, "landing.how.step2Title"),
-      body: t(messages, "landing.how.step2Body"),
+      num: "02",
+      label: "step2Label",
+      icon: AudioLines,
+      art: "voice",
+      title: "step2Title",
+      body: "step2Body",
     },
     {
-      num: "03 — IMPROVE",
-      title: t(messages, "landing.how.step3Title"),
-      body: t(messages, "landing.how.step3Body"),
+      num: "03",
+      label: "step3Label",
+      icon: ChartNoAxesCombined,
+      art: "feedback",
+      title: "step3Title",
+      body: "step3Body",
     },
   ];
   return (
-    <section id="how" className="scroll-mt-24 py-[84px]">
-      <Container>
-        <Reveal className="mb-12 max-w-[680px]">
-          <Eyebrow>{t(messages, "landing.how.eyebrow")}</Eyebrow>
-          <h2 className="serif my-3.5 text-[38px]">
+    <section id="how" className="landing-section">
+      <Container className="landing-container">
+        <Reveal className="landing-section-heading">
+          <h2 className="landing-section-title">
             {t(messages, "landing.how.title")}
           </h2>
-          <p className="text-[17px] text-ink-soft">
-            {t(messages, "landing.how.body")}
-          </p>
         </Reveal>
-        <Reveal>
-          <div className="grid overflow-hidden rounded-2xl border border-line bg-panel md:grid-cols-3">
-            {steps.map((step) => (
-              <div
-                key={step.num}
-                className="border-b border-line px-7 py-[30px] last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0"
-              >
-                <div className="mb-[18px] font-mono text-[12px] text-accent">
-                  {step.num}
+        <div className="grid gap-4 md:grid-cols-3">
+          {steps.map((step, index) => (
+            <Reveal key={step.num} delay={index * 70} className="h-full">
+              <article className={`landing-step landing-step-${step.art}`}>
+                <div className="landing-step-art" aria-hidden>
+                  <step.icon size={34} strokeWidth={1.2} />
                 </div>
-                <h3 className="mb-[9px] text-[19px] font-semibold">
-                  {step.title}
-                </h3>
-                <p className="text-[14.5px] text-muted">{step.body}</p>
-              </div>
-            ))}
-          </div>
-        </Reveal>
+                <div className="relative px-6 pt-4 pb-7 sm:px-7">
+                  <div className="mb-5 flex items-center justify-between">
+                    <span className="text-xs text-muted">
+                      {t(messages, `landing.how.${step.label}`)}
+                    </span>
+                    <span className="font-mono text-xs text-faint">
+                      {step.num}
+                    </span>
+                  </div>
+                  <h3 className="mb-3 text-xl font-medium tracking-tight">
+                    {t(messages, `landing.how.${step.title}`)}
+                  </h3>
+                  <p className="text-sm leading-[1.85] text-muted">
+                    {t(messages, `landing.how.${step.body}`)}
+                  </p>
+                </div>
+              </article>
+            </Reveal>
+          ))}
+        </div>
       </Container>
     </section>
   );

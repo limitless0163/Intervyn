@@ -7,10 +7,11 @@ import { OpenSource } from "@/components/landing/open-source";
 import { Faq } from "@/components/landing/faq";
 import { CtaBand } from "@/components/landing/cta-band";
 import { Footer } from "@/components/landing/footer";
+import "@/styles/landing.css";
 
 export default function Home() {
   return (
-    <>
+    <div className="landing-page">
       <Nav />
       <main id="main-content" tabIndex={-1}>
         <Hero />
@@ -22,6 +23,6 @@ export default function Home() {
         <CtaBand />
       </main>
       <Footer />
-    </>
+    </div>
   );
 }

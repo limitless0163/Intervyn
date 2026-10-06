@@ -1,0 +1,26 @@
+{
+  "bytedance": {
+    "page": "https://www.bytedance.com/?lang=en",
+    "asset": "Inline ByteDance header PNG"
+  },
+  "tencent": {
+    "page": "https://www.tencent.com/newsroom/media-resources/logos/",
+    "asset": "https://www.tencent.com/wp-content/uploads/2022/12/03_Tencent_English-logo_Reverse-type.png"
+  },
+  "alibaba": {
+    "page": "https://home.alibabagroup.com/en-US/resource-logos",
+    "asset": "https://data.alibabagroup.com/ecms-files/886024452/ce9a0936-27b7-4f64-ad88-b33fb22bf36f.png"
+  },
+  "baidu": {
+    "page": "https://home.baidu.com/media_resource/show_detail/res_id/2/tab_id/1",
+    "asset": "https://home.baidu.com/Public/img/logo.png?v=15"
+  },
+  "meituan": {
+    "page": "https://www.meituan.com/media",
+    "asset": "https://s3plus.sankuai.com/v1/mss_f5ecef526b384cbaa1117230d53b4bd6/smart/22c45b30-80ba-4aa5-bfad-2bfaed7beb4e.zip"
+  },
+  "jd": {
+    "page": "https://en.wikipedia.org/wiki/JD.com",
+    "asset": "https://upload.wikimedia.org/wikipedia/en/c/c4/JD.com_logo.png?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail_unscaled"
+  }
+}
