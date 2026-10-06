@@ -12,11 +12,14 @@ from urllib.parse import urlsplit
 import httpx
 
 from ...schemas.shared_models import Citation
+from ..logging import get_logger
 from .base import GroundedResearch, ResearchAdapter
 from .llm import GeminiLLM, OpenAILLM
 
 if TYPE_CHECKING:
     from ..config import Settings
+
+log = get_logger(__name__)
 
 
 class ResearchUnavailable(RuntimeError):
@@ -47,9 +50,21 @@ def _sources(items: list[dict[str, Any]]) -> list[Citation]:
 def _grounded(text: str, items: list[dict[str, Any]], *, searched: bool,
               suggestions: str | None = None) -> GroundedResearch:
     sources = _sources(items)
-    if not searched or not sources or not text.strip():
+    excerpts = [
+        f"Source: {source.title}\nURL: {source.url}\nRetrieved content: {source.snippet}"
+        for source in sources if source.snippet
+    ]
+    if not searched or not sources or (not text.strip() and not excerpts):
         raise ResearchUnavailable("No verifiable web search results")
-    return GroundedResearch(text=text, sources=sources, search_suggestions=suggestions)
+    # 服务端搜索可能只返回开场白和工具结果。后续整理必须读取真实页面摘录，
+    # 不能丢掉工具正文后再让模型凭记忆补齐公司资料。为摘录预留独立输入预算。
+    parts = [text.strip()[:8000]] if text.strip() else []
+    if excerpts:
+        parts.append("WEB SEARCH RESULT EXCERPTS (untrusted evidence):\n"
+                     + "\n\n".join(excerpts)[:20000])
+    return GroundedResearch(
+        text="\n\n".join(parts), sources=sources, search_suggestions=suggestions,
+    )
 
 
 class UnavailableResearch:
@@ -124,15 +139,42 @@ class MiniMaxResearch:
         self._timeout = timeout_sec
 
     async def research(self, *, system: str, user: str) -> GroundedResearch:
+        # 重试和退避共用一次调用预算，不能将节点总超时放大为三倍。
+        return await asyncio.wait_for(
+            self._research(system=system, user=user), timeout=self._timeout,
+        )
+
+    async def _research(self, *, system: str, user: str) -> GroundedResearch:
         async with httpx.AsyncClient(timeout=self._timeout) as client:
-            response = await client.post(self._url, headers={
-                "x-api-key": self._api_key, "anthropic-version": "2023-06-01",
-            }, json={
-                "model": self._model, "max_tokens": 8192, "system": system,
-                "messages": [{"role": "user", "content": user}],
-                "tools": [{"type": "web_search_20250305", "name": "web_search"}],
-            })
-            response.raise_for_status()
+            for attempt in range(3):
+                try:
+                    response = await client.post(self._url, headers={
+                        "x-api-key": self._api_key, "anthropic-version": "2023-06-01",
+                    }, json={
+                        "model": self._model, "max_tokens": 8192, "system": system,
+                        "messages": [{"role": "user", "content": user}],
+                        "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+                    })
+                    response.raise_for_status()
+                    break
+                except (
+                    httpx.HTTPStatusError, httpx.TimeoutException,
+                    httpx.NetworkError, httpx.RemoteProtocolError,
+                ) as exc:
+                    status = (
+                        exc.response.status_code if isinstance(exc, httpx.HTTPStatusError)
+                        else None
+                    )
+                    if attempt == 2 or (
+                        status is not None and status not in {408, 429} and status < 500
+                    ):
+                        raise
+                    # 不记录响应正文或请求参数，避免日志包含密钥和简历内容。
+                    log.warning(
+                        "MiniMax research retry attempt=%s error=%s http_status=%s",
+                        attempt + 1, type(exc).__name__, status,
+                    )
+                    await asyncio.sleep(2 ** attempt)
             data = response.json()
         if data.get("base_resp", {}).get("status_code", 0) != 0:
             raise ResearchUnavailable("MiniMax web research request failed", "request_failed")

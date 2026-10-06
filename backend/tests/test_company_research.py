@@ -71,6 +71,132 @@ def test_minimax_refuses_unsearched_model_claims(monkeypatch):
                     .research(system="s", user="u"))
 
 
+@pytest.mark.parametrize("narrative", ["I'll research OpenAI for this candidate.", ""])
+def test_minimax_tool_excerpts_reach_summarizer_without_a_final_report(monkeypatch, narrative):
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real_client(
+        **kw, transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
+            "content": [
+                {"type": "text", "text": narrative},
+                {"type": "web_search_tool_result", "content": [
+                    {"type": "web_search_result", "title": "OpenAI products",
+                     "url": "https://openai.com", "content": "OpenAI develops ChatGPT."},
+                ]},
+            ],
+        })),
+    ))
+    deps = build_deps()
+    deps.research = MiniMaxResearch("test", "MiniMax-M3", "https://api.minimax.io", 10)
+
+    class LLM:
+        async def complete_json(self, **kwargs):
+            assert "OpenAI develops ChatGPT." in kwargs["user"]
+            assert "https://openai.com" in kwargs["user"]
+            return build_mock(CompanyIntel).model_copy(update={
+                "summary": "OpenAI develops ChatGPT.",
+            })
+
+    deps.llm = LLM()
+
+    async def exercise():
+        req = _request().model_copy(update={"company": "OpenAI"})
+        sid = await deps.repo.create_session(req)
+        intel = (await company_research({"req": req, "session_id": sid}, deps))["company"]
+        view = await deps.repo.get_session_view(sid)
+        assert intel.research_status == "complete"
+        assert intel.sources[0].snippet == "OpenAI develops ChatGPT."
+        assert view.prep_step_statuses["company_research"] == "complete"
+        assert not view.prep_warnings
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("failure", [408, 429, 500, 529, "connect", "read_timeout"])
+def test_minimax_recovers_from_transient_failures_with_verified_sources(monkeypatch, failure):
+    attempts, delays = [], []
+    real_client = httpx.AsyncClient
+
+    def respond(request):
+        attempts.append(request)
+        if len(attempts) < 3:
+            if failure == "connect":
+                raise httpx.ConnectError("temporary failure", request=request)
+            if failure == "read_timeout":
+                raise httpx.ReadTimeout("temporary timeout", request=request)
+            return httpx.Response(failure, json={"error": "temporary failure"})
+        return httpx.Response(200, json={"content": [
+            {"type": "text", "text": "Company builds payment APIs."},
+            {"type": "web_search_tool_result", "content": [
+                {"type": "web_search_result", "title": "Company careers",
+                 "url": "https://company.example/careers"},
+            ]},
+        ]})
+
+    async def sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real_client(
+        **kw, transport=httpx.MockTransport(respond),
+    ))
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    result = asyncio.run(MiniMaxResearch("test", "MiniMax-M3", "https://api.minimax.io", 10)
+                         .research(system="s", user="u"))
+    assert result.sources == [_source()]
+    assert len(attempts) == 3
+    assert delays == [1, 2]
+    assert all(request.content == attempts[0].content for request in attempts)
+
+
+@pytest.mark.parametrize("status, expected_attempts", [(400, 1), (401, 1), (403, 1), (529, 3)])
+def test_minimax_does_not_retry_permanent_errors_or_retry_forever(
+    monkeypatch, caplog, status, expected_attempts,
+):
+    attempts = []
+    real_client = httpx.AsyncClient
+
+    def respond(request):
+        attempts.append(request)
+        return httpx.Response(status, json={"error": "private-response-detail"})
+
+    async def sleep(delay):
+        pass
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real_client(
+        **kw, transport=httpx.MockTransport(respond),
+    ))
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        asyncio.run(MiniMaxResearch("private-key", "MiniMax-M3", "https://api.minimax.io", 10)
+                    .research(system="s", user="private-cv-text"))
+    assert caught.value.response.status_code == status
+    assert len(attempts) == expected_attempts
+    assert "private-key" not in caplog.text
+    assert "private-cv-text" not in caplog.text
+    assert "private-response-detail" not in caplog.text
+
+
+def test_minimax_retry_backoff_is_inside_total_timeout_and_closes_client(monkeypatch):
+    attempts, clients = [], []
+    real_client = httpx.AsyncClient
+
+    def respond(request):
+        attempts.append(request)
+        return httpx.Response(529)
+
+    def client(**kwargs):
+        instance = real_client(**kwargs, transport=httpx.MockTransport(respond))
+        clients.append(instance)
+        return instance
+
+    monkeypatch.setattr(httpx, "AsyncClient", client)
+    # 一秒退避必须被总预算中断，不能额外等待或启动下一次尝试。
+    with pytest.raises(TimeoutError):
+        asyncio.run(MiniMaxResearch("test", "MiniMax-M3", "https://api.minimax.io", 0.02)
+                    .research(system="s", user="u"))
+    assert len(attempts) == 1
+    assert clients[0].is_closed
+
+
 def test_openai_requires_search_and_uses_tool_citations(monkeypatch):
     calls = []
     closed = []

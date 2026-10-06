@@ -204,7 +204,6 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
             "recent_news": intel.recent_news[:3],
         })
     except Exception as exc:  # noqa: BLE001 - 公司研究失败不阻断简历及职位准备
-        log.warning("company_research unavailable (%s)", type(exc).__name__)
         intel = _empty_company_intel(company)
         reason = (
             exc.reason if isinstance(exc, ResearchUnavailable)
@@ -212,6 +211,10 @@ async def company_research(state: PrepState, deps: Deps) -> PrepState:
             or type(exc).__name__ in {"ReadTimeout", "ConnectTimeout", "APITimeoutError"}
             else "invalid_response" if isinstance(exc, (ValidationError, ValueError))
             else "request_failed"
+        )
+        log.warning(
+            "company_research unavailable reason=%s error=%s http_status=%s",
+            reason, type(exc).__name__, getattr(getattr(exc, "response", None), "status_code", None),
         )
         intel = intel.model_copy(update={"research_error": reason})
         await _warn(state, deps, [
