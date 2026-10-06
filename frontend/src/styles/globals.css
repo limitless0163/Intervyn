@@ -24,8 +24,9 @@
   --radius-card: 14px;
 }
 
-/* Keep the homepage palette available to route loading fallbacks before any
-   page-specific stylesheet arrives. */
+/* Apply the homepage palette to the document canvas as well, so scroll bounce
+   matches the page. :has() also follows route changes and loading fallbacks. */
+html:has(.landing-page),
 .landing-page {
   --color-paper: #09090a;
   --color-panel: #121214;
