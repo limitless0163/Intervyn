@@ -202,29 +202,6 @@ async function collectLiveKit(existing: Values, values: Values): Promise<void> {
   );
 }
 
-async function collectSearch(existing: Values, values: Values): Promise<void> {
-  const provider = ensure(
-    await select({
-      message: "Company research (web search for interview intel)",
-      initialValue: existing.SEARCH_PROVIDER || "tavily",
-      options: [
-        { value: "tavily", label: "Tavily" },
-        { value: "exa", label: "Exa" },
-        { value: "mock", label: "Mock — offline, no real research" },
-      ],
-    }),
-  );
-  values.SEARCH_PROVIDER = provider;
-  if (provider === "tavily") {
-    values.TAVILY_API_KEY = await secret(
-      "Tavily API key",
-      existing.TAVILY_API_KEY,
-    );
-  } else if (provider === "exa") {
-    values.EXA_API_KEY = await secret("Exa API key", existing.EXA_API_KEY);
-  }
-}
-
 async function collectSupabase(
   existing: Values,
   values: Values,
@@ -289,9 +266,6 @@ async function runWizard(existing: Values): Promise<Values> {
     values.LLM_PROVIDER = "ollama";
     values.STT_PROVIDER = "whisper";
     values.TTS_PROVIDER = "kokoro";
-    // Company research is the one remaining outbound call; keep it offline so
-    // "no data leaves your machine" is actually true in this mode.
-    values.SEARCH_PROVIDER = "mock";
     values.EMBEDDINGS_PROVIDER = "mock";
     // Local models are slower; the cloud defaults (90s/60s) time out and
     // silently degrade prep and scoring to generic results.
@@ -340,7 +314,6 @@ async function runWizard(existing: Values): Promise<Values> {
 
   if (mode === "offline") {
     values.LLM_PROVIDER = "mock";
-    values.SEARCH_PROVIDER = "mock";
     note(
       "The full stack runs on deterministic mock providers — no keys needed.\nThe live voice worker is not used in this mode.",
       "Offline demo",
@@ -354,7 +327,6 @@ async function runWizard(existing: Values): Promise<Values> {
     await collectTts(existing, values);
     await collectLiveKit(existing, values);
   }
-  await collectSearch(existing, values);
   await collectSupabase(existing, values);
   return values;
 }

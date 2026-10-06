@@ -15,7 +15,7 @@ OPENAI_API_KEY=
 
 # A commented example must be left untouched:
 # EXAMPLE_KEY=do-not-edit
-SEARCH_PROVIDER=mock
+COMPANY_RESEARCH_TIMEOUT_SEC=120
 `;
 
 describe("parseEnv", () => {
@@ -64,13 +64,13 @@ describe("renderEnv", () => {
     const out = renderEnv(TEMPLATE, {
       LLM_PROVIDER: "openai",
       OPENAI_API_KEY: "sk-test",
-      SEARCH_PROVIDER: "tavily",
+      COMPANY_RESEARCH_TIMEOUT_SEC: "60",
     });
     expect(out).toContain("# Comment header");
     expect(out).toContain("# ── LLM ──");
     expect(out).toContain("LLM_PROVIDER=openai");
     expect(out).toContain("OPENAI_API_KEY=sk-test");
-    expect(out).toContain("SEARCH_PROVIDER=tavily");
+    expect(out).toContain("COMPANY_RESEARCH_TIMEOUT_SEC=60");
     // Untouched template defaults remain.
     expect(out).toContain("NODE_ENV=development");
     expect(out).toContain("GEMINI_API_KEY=");
