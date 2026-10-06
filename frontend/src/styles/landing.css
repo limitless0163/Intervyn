@@ -1,22 +1,5 @@
 /* Reference measurements at 1280px: content 1200px, display 660x430,
    feature gutter 60px, section headings 50/70, FAQ 32/38.4. */
-.landing-page {
-  --color-paper: #09090a;
-  --color-panel: #121214;
-  --color-ink: #f7f8fa;
-  --color-ink-soft: #c9c9ce;
-  --color-muted: #9999a3;
-  --color-faint: #767680;
-  --color-line: #282930;
-  --color-line-2: #222228;
-  --color-accent: #93a5ff;
-  --color-accent-soft: #25283e;
-  --color-ok: #8acbac;
-  min-height: 100vh;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  color-scheme: dark;
-}
 .landing-page a:hover {
   text-decoration: none;
 }
