@@ -5,15 +5,7 @@ import type { MasteryState } from "@/features/prep/sample-mastery";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
-/**
- * Shared visual language for a competency's mastery state, used by the study
- * plan chips and (via the same palette) the mastery-graph nodes:
- *   unseen   → faint / neutral
- *   learning → accent-soft (indigo, the one accent)
- *   shaky    → amber (the single warm tone in the palette; inline hex since
- *              there is no `amber` token — kept tasteful and low-chroma)
- *   mastered → ok green
- */
+/** Shared mastery states use dark neutral, blue, violet, and green surfaces. */
 export const MASTERY_LABEL: Record<MasteryState, string> = {
   unseen: "Not started",
   learning: "Learning",
@@ -21,15 +13,31 @@ export const MASTERY_LABEL: Record<MasteryState, string> = {
   mastered: "Mastered",
 };
 
-/** Token/hex pairs for the four states, so node + chip stay in sync. */
+/** Theme colors for the four states, so node + chip stay in sync. */
 export const MASTERY_COLORS: Record<
   MasteryState,
   { bg: string; fg: string; border: string }
 > = {
-  unseen: { bg: "#f4f3ef", fg: "#73737b", border: "#e7e3da" },
-  learning: { bg: "#eef0fb", fg: "#4338ca", border: "#d7d9f4" },
-  shaky: { bg: "#fbf2e6", fg: "#9a6212", border: "#efddc2" },
-  mastered: { bg: "#e8f3ec", fg: "#15803d", border: "#cfe6d6" },
+  unseen: {
+    bg: "var(--color-line-2)",
+    fg: "var(--color-muted)",
+    border: "var(--color-line)",
+  },
+  learning: {
+    bg: "var(--color-accent-soft)",
+    fg: "var(--color-accent)",
+    border: "#3c456b",
+  },
+  shaky: {
+    bg: "var(--color-warning-soft)",
+    fg: "var(--color-warning)",
+    border: "#4a3c64",
+  },
+  mastered: {
+    bg: "var(--color-ok-soft)",
+    fg: "var(--color-ok)",
+    border: "#2e5142",
+  },
 };
 
 export function StatusChip({

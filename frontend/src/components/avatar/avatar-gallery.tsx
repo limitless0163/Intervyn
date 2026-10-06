@@ -58,7 +58,7 @@ export function AvatarGallery() {
                   "transition-colors duration-150 cursor-pointer",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper",
                   active
-                    ? "bg-ink text-white"
+                    ? "bg-ink text-paper"
                     : "text-muted hover:text-ink hover:bg-accent-soft",
                 )}
               >
@@ -71,12 +71,14 @@ export function AvatarGallery() {
       </div>
 
       {/* Persona grid. */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {PERSONAS.map((persona) => (
           <figure key={persona.id} className="flex flex-col gap-3">
             <AvatarStage persona={persona} state={state} />
             <figcaption className="flex flex-col gap-0.5 px-1">
-              <span className="serif text-lg text-ink">{persona.name}</span>
+              <span className="font-sans font-semibold tracking-tight text-lg text-ink">
+                {persona.name}
+              </span>
               <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint">
                 {persona.id}
               </span>

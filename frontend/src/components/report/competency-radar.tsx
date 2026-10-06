@@ -14,9 +14,9 @@ import type { CompetencyScore } from "@intervyn/shared";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
-const ACCENT = "#4338ca";
-const LINE = "#e7e3da";
-const MUTED = "#73737b";
+const ACCENT = "var(--color-accent)";
+const LINE = "var(--color-line)";
+const MUTED = "var(--color-muted)";
 
 /**
  * Calm radar of competency scores on a fixed 0-5 domain. Client island —
@@ -68,7 +68,7 @@ export function CompetencyRadar({
           <PolarRadiusAxis
             domain={[0, 5]}
             tickCount={6}
-            tick={{ fill: "#9a9aa1", fontSize: 10 }}
+            tick={{ fill: "var(--color-faint)", fontSize: 10 }}
             axisLine={false}
           />
           <Radar
@@ -86,12 +86,15 @@ export function CompetencyRadar({
               t(messages, "report.scoreLabel"),
             ]}
             contentStyle={{
+              backgroundColor: "var(--color-panel)",
+              color: "var(--color-ink)",
               borderRadius: 10,
               border: `1px solid ${LINE}`,
               fontSize: 12,
-              boxShadow: "0 12px 28px -18px rgba(20,20,30,0.25)",
+              boxShadow: "0 8px 24px #0005",
             }}
-            labelStyle={{ color: "#17171a", fontWeight: 600 }}
+            itemStyle={{ color: "var(--color-accent)" }}
+            labelStyle={{ color: "var(--color-ink)", fontWeight: 600 }}
           />
         </RadarChart>
       </ResponsiveContainer>

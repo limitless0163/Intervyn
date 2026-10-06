@@ -59,7 +59,7 @@ import {
 import { ControlBar } from "@/components/interview/control-bar";
 import { SessionTimer } from "@/components/interview/session-timer";
 import { TextFallback } from "@/components/interview/text-fallback";
-import { LanguageToggle } from "@/components/language-toggle";
+import { AppHeader } from "@/components/ui/app-shell";
 
 // The text-stream topic livekit-agents' RoomIO registers its chat handler on
 // (TOPIC_CHAT in the Python SDK). Typed answers MUST go here to reach the agent.
@@ -172,56 +172,51 @@ function Scaffold({
 }) {
   const messages = useMessages();
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="relative min-h-screen overflow-hidden bg-paper"
-    >
-      {/* Calm backdrop wash behind the frosted panels. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(110% 80% at 50% -10%, rgba(67,56,202,0.06), transparent 60%)",
-        }}
-      />
+    <div className="app-page relative min-h-screen bg-paper">
+      <AppHeader>{timer}</AppHeader>
+      <main id="main-content" tabIndex={-1} className="relative">
+        {/* Calm backdrop wash behind the frosted panels. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(110% 80% at 50% -10%, rgba(147,165,255,0.08), transparent 60%)",
+          }}
+        />
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8">
-        {/* Top row: who + the clock. */}
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col">
-            <span className="font-mono text-[10px] tracking-[0.16em] text-faint">
-              {t(messages, "interview.liveHeader")}
-            </span>
-            {/* Page heading for screen-reader navigation (styled as before). */}
-            <h1 className="font-serif text-[17px] font-normal text-ink">
-              {persona.name}
-            </h1>
+        <div className="relative mx-auto flex min-h-[calc(100svh-64px)] w-full max-w-5xl flex-col px-6 py-8">
+          {/* Interviewer identity; the clock lives in the shared header. */}
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="font-mono text-[10px] tracking-[0.16em] text-faint">
+                {t(messages, "interview.liveHeader")}
+              </span>
+              {/* Page heading for screen-reader navigation (styled as before). */}
+              <h1 className="font-sans text-[17px] font-semibold tracking-tight text-ink">
+                {persona.name}
+              </h1>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {timer}
-            <LanguageToggle />
+
+          {/* Centerpiece: avatar + transcript, calm two-column on wide. */}
+          <div className="mt-6 grid flex-1 items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+            <div className="mx-auto w-full max-w-sm lg:max-w-md">{stage}</div>
+            <div className="flex h-full max-h-[60vh] min-h-[280px] flex-col lg:max-h-[68vh]">
+              {transcript}
+            </div>
+          </div>
+
+          {notice}
+
+          {/* Controls + accessible text fallback. */}
+          <div className="mt-6 flex flex-col items-center gap-4">
+            {controls}
+            <div className="w-full max-w-xl">{textFallback}</div>
           </div>
         </div>
-
-        {/* Centerpiece: avatar + transcript, calm two-column on wide. */}
-        <div className="mt-6 grid flex-1 items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-          <div className="mx-auto w-full max-w-sm lg:max-w-md">{stage}</div>
-          <div className="flex h-full max-h-[60vh] min-h-[280px] flex-col lg:max-h-[68vh]">
-            {transcript}
-          </div>
-        </div>
-
-        {notice}
-
-        {/* Controls + accessible text fallback. */}
-        <div className="mt-6 flex flex-col items-center gap-4">
-          {controls}
-          <div className="w-full max-w-xl">{textFallback}</div>
-        </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
 
@@ -417,7 +412,7 @@ function LiveSession({
               its own `display`, so a sighted user can click to enable audio. */}
           <StartAudio
             label={t(messages, "interview.enableAudio")}
-            className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-[13px] font-medium text-accent transition-colors hover:bg-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-[13px] font-medium text-accent transition-colors hover:bg-accent hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           />
           <ControlBar
             micEnabled={isMicrophoneEnabled}
@@ -502,7 +497,7 @@ function PreviewSession({
             action={
               <Link
                 href={`/report/${encodeURIComponent(sessionId)}`}
-                className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-[13px] font-medium text-accent no-underline transition-colors hover:bg-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-[13px] font-medium text-accent no-underline transition-colors hover:bg-accent hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
               >
                 {t(messages, "interview.viewReport")}
               </Link>
@@ -594,7 +589,7 @@ function ConnectionLostShell({
             <button
               type="button"
               onClick={onRejoin}
-              className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-[13px] font-medium text-accent transition-colors hover:bg-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+              className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-[13px] font-medium text-accent transition-colors hover:bg-accent hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
             >
               {t(messages, "interview.rejoin")}
             </button>

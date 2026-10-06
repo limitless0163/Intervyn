@@ -39,7 +39,7 @@ export function StudyPlan({
         <Eyebrow>{t(messages, "prep.studyPath")}</Eyebrow>
         <h2
           id="study-plan-heading"
-          className="mt-2 font-serif text-2xl text-ink"
+          className="mt-2 font-sans font-semibold tracking-tight text-2xl text-ink"
         >
           {t(messages, "prep.studyPlan")}
         </h2>
@@ -60,7 +60,7 @@ export function StudyPlan({
         {modules.map((m, i) => (
           <li key={m.id}>
             <Card>
-              <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center">
+              <CardContent className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-x-4 gap-y-3 py-5">
                 <span
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft font-mono text-[12px] text-accent"
                   aria-hidden
@@ -68,9 +68,9 @@ export function StudyPlan({
                   {i + 1}
                 </span>
 
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-serif text-[17px] text-ink">
+                    <h3 className="font-sans font-semibold tracking-tight text-[17px] text-ink">
                       {m.title}
                     </h3>
                     <StatusChip state={m.status} />
@@ -78,7 +78,7 @@ export function StudyPlan({
                   <p className="mt-1 text-[13.5px] leading-relaxed text-muted">
                     {m.rationale}
                   </p>
-                  <div className="mt-2 flex items-center gap-3 text-[12px] font-mono text-faint">
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] font-mono text-faint">
                     <span>{m.competency}</span>
                     <span className="inline-flex items-center gap-1">
                       <Clock className="h-3 w-3" aria-hidden />
@@ -87,7 +87,7 @@ export function StudyPlan({
                   </div>
                 </div>
 
-                <div className="flex shrink-0 flex-wrap gap-2">
+                <div className="col-start-2 flex flex-wrap gap-2">
                   <Link
                     href={`/prep?${new URLSearchParams({
                       ...(sessionId ? { session: sessionId } : {}),

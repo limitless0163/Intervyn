@@ -11,7 +11,7 @@ const base =
   "disabled:opacity-50 disabled:pointer-events-none";
 
 const variants: Record<Variant, string> = {
-  ink: "bg-ink text-white border border-transparent hover:bg-ink-soft",
+  ink: "bg-ink text-paper border border-transparent hover:bg-ink-soft",
   out: "bg-transparent text-ink border border-line hover:border-ink hover:bg-panel",
   ghost:
     "bg-transparent text-ink-soft border border-transparent hover:text-ink hover:bg-accent-soft",

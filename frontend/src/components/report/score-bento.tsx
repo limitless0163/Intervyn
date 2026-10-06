@@ -31,7 +31,7 @@ type Metric = {
 };
 
 /**
- * Bento grid: a tall serif "overall /5" hero on the left, a 2x2 of derived
+ * Bento grid: a large numeric "overall /5" hero on the left, a 2x2 of derived
  * top-metric cards on the right (Communication, Technical depth, STAR, Filler
  * words). Server component — pure render off the parsed ScoreCard.
  */
@@ -74,13 +74,15 @@ export function ScoreBento({ scorecard }: { scorecard: ScoreCard }) {
   return (
     <div className="grid gap-4 md:grid-cols-3">
       {/* Hero */}
-      <div className="md:row-span-1 flex flex-col justify-between rounded-card border border-line bg-panel p-6 shadow-[0_1px_0_rgba(0,0,0,0.02),0_24px_48px_-28px_rgba(20,20,30,0.12)]">
+      <div className="md:row-span-1 flex flex-col justify-between rounded-card border border-line bg-panel p-6 shadow-none">
         <Eyebrow>{t(messages, "report.overall")}</Eyebrow>
         <div className="mt-4 flex items-baseline gap-1">
-          <span className="font-serif text-[64px] leading-none text-ink">
+          <span className="font-sans font-semibold tracking-tight tabular-nums text-[64px] leading-none text-ink">
             {scorecard.overall_score.toFixed(1)}
           </span>
-          <span className="font-serif text-2xl text-faint">/5</span>
+          <span className="font-sans font-semibold tracking-tight text-2xl text-faint">
+            /5
+          </span>
         </div>
         <p className="mt-3 text-sm text-muted">
           {verdict(scorecard.overall_score, messages)}
@@ -92,12 +94,14 @@ export function ScoreBento({ scorecard }: { scorecard: ScoreCard }) {
         {metrics.map((m) => (
           <div
             key={m.label}
-            className="flex flex-col rounded-card border border-line bg-panel p-5 shadow-[0_1px_0_rgba(0,0,0,0.02),0_24px_48px_-28px_rgba(20,20,30,0.12)]"
+            className="flex flex-col rounded-card border border-line bg-panel p-5 shadow-none"
           >
             <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint">
               {m.label}
             </p>
-            <p className="mt-2 font-serif text-3xl text-ink">{m.value}</p>
+            <p className="mt-2 font-sans font-semibold tracking-tight tabular-nums text-3xl text-ink">
+              {m.value}
+            </p>
             <p className="mt-0.5 text-xs capitalize text-muted">{m.sub}</p>
             {m.fill !== null && (
               <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-line">

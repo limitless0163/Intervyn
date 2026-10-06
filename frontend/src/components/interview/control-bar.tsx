@@ -112,8 +112,8 @@ export function ControlBar({
           "inline-flex h-10 items-center gap-2 rounded-full px-4",
           "text-[13px] font-medium",
           armed
-            ? "bg-accent text-white hover:bg-accent"
-            : "bg-ink text-white hover:bg-ink-soft",
+            ? "bg-accent text-paper hover:bg-accent"
+            : "bg-ink text-paper hover:bg-ink-soft",
           "transition-colors duration-150",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper",
           "disabled:opacity-40 disabled:pointer-events-none",

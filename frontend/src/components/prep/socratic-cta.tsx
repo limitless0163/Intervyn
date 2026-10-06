@@ -12,23 +12,23 @@ import { t } from "@/lib/i18n";
 export function SocraticCta() {
   const messages = useMessages();
   return (
-    <Card className="bg-ink text-white">
+    <Card className="bg-accent-soft text-ink">
       <CardContent className="flex flex-col gap-5 py-6 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-4">
           <span
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent/10"
             aria-hidden
           >
-            <Mic className="h-5 w-5 text-white" />
+            <Mic className="h-5 w-5 text-ink" />
           </span>
           <div>
-            <Eyebrow className="text-white/60">
+            <Eyebrow className="text-accent">
               {t(messages, "prep.socraticEyebrow")}
             </Eyebrow>
-            <h3 className="mt-1.5 font-serif text-xl text-white">
+            <h3 className="mt-1.5 font-sans font-semibold tracking-tight text-xl text-ink">
               {t(messages, "prep.socraticTitle")}
             </h3>
-            <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-white/70">
+            <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-muted">
               {t(messages, "prep.socraticBody")}
             </p>
           </div>
@@ -37,9 +37,7 @@ export function SocraticCta() {
         <Link
           href="/setup"
           className={buttonClasses({
-            variant: "out",
-            className:
-              "no-underline md:shrink-0 border-white/30 bg-white/0 text-white hover:border-white hover:bg-white/10",
+            className: "no-underline md:shrink-0",
           })}
         >
           {t(messages, "prep.socraticStart")}

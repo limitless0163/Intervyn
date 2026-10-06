@@ -32,37 +32,30 @@ export interface AvatarStageProps {
   className?: string;
 }
 
-/**
- * Per-persona fallback hues — kept inside the editorial palette (light, paper,
- * one indigo accent). Each is a subtle two-stop gradient + a soft accent glow,
- * so the three personas read as distinct without leaving the design language.
- */
+/** Dark persona surfaces follow the setup picker, with distinct cool accents. */
 const FALLBACK_STYLE: Record<
   Persona["id"],
   { gradient: string; glow: string; accent: string }
 > = {
-  // Anime — warm pastel rose/peach, soft and friendly.
   anime: {
-    gradient: "linear-gradient(165deg, #fdf6f3 0%, #f7eef0 55%, #f0ecf6 100%)",
-    glow: "radial-gradient(120% 90% at 50% 18%, rgba(225,150,170,0.22), transparent 60%)",
-    accent: "#b65a78",
+    gradient: "linear-gradient(165deg, #2b2842 0%, #181824 65%, #121214 100%)",
+    glow: "radial-gradient(120% 90% at 50% 18%, rgba(167,155,220,0.12), transparent 60%)",
+    accent: "#c4bded",
   },
-  // Superhero — cool steel/indigo, calm and heroic.
   superhero: {
-    gradient: "linear-gradient(165deg, #f3f5fb 0%, #eceef8 55%, #e8eaf4 100%)",
-    glow: "radial-gradient(120% 90% at 50% 18%, rgba(67,56,202,0.20), transparent 60%)",
-    accent: "#4338ca",
+    gradient: "linear-gradient(165deg, #34303b 0%, #1c1922 65%, #121214 100%)",
+    glow: "radial-gradient(120% 90% at 50% 18%, rgba(175,149,185,0.12), transparent 60%)",
+    accent: "#dec0d8",
   },
-  // Recruiter — neutral office grey-green, professional and warm.
   recruiter: {
-    gradient: "linear-gradient(165deg, #faf9f6 0%, #f2f1ec 55%, #edefee 100%)",
-    glow: "radial-gradient(120% 90% at 50% 18%, rgba(120,140,130,0.20), transparent 60%)",
-    accent: "#4a6b5d",
+    gradient: "linear-gradient(165deg, #253445 0%, #171d29 65%, #121214 100%)",
+    glow: "radial-gradient(120% 90% at 50% 18%, rgba(148,175,218,0.12), transparent 60%)",
+    accent: "#bacce8",
   },
   professor: {
-    gradient: "linear-gradient(165deg, #f9f6f0 0%, #f0ece2 55%, #e8e4da 100%)",
-    glow: "radial-gradient(120% 90% at 50% 18%, rgba(160,140,100,0.20), transparent 60%)",
-    accent: "#7a6b42",
+    gradient: "linear-gradient(165deg, #293933 0%, #18231f 65%, #121214 100%)",
+    glow: "radial-gradient(120% 90% at 50% 18%, rgba(148,190,172,0.12), transparent 60%)",
+    accent: "#c0d9ce",
   },
 };
 
@@ -75,12 +68,12 @@ type LayerStatus = "loading" | "ready" | "error";
  */
 const STAGE_KEYFRAMES = `
 @keyframes di-avatar-breathe {
-  0%, 100% { opacity: 0.55; transform: scale(1); }
-  50%      { opacity: 0.8;  transform: scale(1.03); }
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50%      { opacity: 0.35;  transform: scale(1.03); }
 }
 @keyframes di-avatar-speak {
-  0%, 100% { opacity: 0.6;  transform: scale(1); }
-  50%      { opacity: 1;    transform: scale(1.08); }
+  0%, 100% { opacity: 0.25;  transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(1.08); }
 }
 .di-avatar-pulse { animation: di-avatar-breathe 4.5s ease-in-out infinite; }
 .di-avatar-pulse[data-speaking="true"] { animation: di-avatar-speak 1.6s ease-in-out infinite; }
@@ -168,13 +161,15 @@ export function AvatarStage({ persona, state, className }: AvatarStageProps) {
         <div
           className="di-avatar-pulse absolute left-1/2 top-[34%] h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl"
           data-speaking={speaking}
-          style={{ backgroundColor: look.accent, opacity: 0.5 }}
+          style={{ backgroundColor: look.accent, opacity: 0.25 }}
         />
 
         {/* Persona identity. Sits above the bottom audio visualizer (h-20 in
             voice-stage), so pad clear of that 5rem band to avoid overlap. */}
         <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 px-5 pb-24 text-center">
-          <span className="serif text-2xl text-ink">{persona.name}</span>
+          <span className="font-sans font-semibold tracking-tight text-2xl text-ink">
+            {persona.name}
+          </span>
           <span className="max-w-[26ch] text-xs leading-snug text-muted">
             {persona.style}
           </span>

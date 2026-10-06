@@ -9,6 +9,12 @@ import {
   ExternalLink,
   RotateCw,
   ArrowRight,
+  UserRound,
+  BriefcaseBusiness,
+  Building2,
+  ScanSearch,
+  ListChecks,
+  type LucideIcon,
 } from "lucide-react";
 import type {
   CandidateProfile,
@@ -29,7 +35,7 @@ import { safeExternalUrl } from "@/utils/safe-url";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 import { Eyebrow } from "@/components/ui/eyebrow";
-import { LanguageToggle } from "@/components/language-toggle";
+import { AppShell } from "@/components/ui/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -119,19 +125,12 @@ export function PrepSummary({
   const warnings = view?.prep_warnings ?? [];
 
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="mx-auto max-w-[920px] px-6 py-12"
+    <AppShell
+      className="app-session"
+      headerContent={
+        <Badge variant="outline">{t(messages, STATUS_MESSAGE[status])}</Badge>
+      }
     >
-      <header className="flex items-center justify-between">
-        <Eyebrow>Intervyn</Eyebrow>
-        <div className="flex items-center gap-3">
-          <LanguageToggle />
-          <Badge variant="outline">{t(messages, STATUS_MESSAGE[status])}</Badge>
-        </div>
-      </header>
-
       {status === "prep" && (
         <PrepView progress={view?.progress ?? []} warnings={warnings} />
       )}
@@ -153,9 +152,9 @@ export function PrepSummary({
       {(status === "scoring" ||
         status === "complete" ||
         status === "no_answers") && (
-        <Card className="mt-8">
+        <Card className="mx-auto mt-8 max-w-[760px]">
           <CardContent className="flex flex-col items-start gap-4 py-8">
-            <h1 className="serif text-3xl text-ink">
+            <h1 className="font-sans font-semibold tracking-tight text-3xl text-ink">
               {t(
                 messages,
                 status === "scoring"
@@ -202,7 +201,7 @@ export function PrepSummary({
           onBackToSetup={goSetup}
         />
       )}
-    </main>
+    </AppShell>
   );
 }
 
@@ -249,8 +248,8 @@ function PrepView({
   const active = PREP_STEPS.find((s) => !done.has(s.key));
 
   return (
-    <div className="mt-8">
-      <h1 className="serif text-3xl text-ink sm:text-4xl">
+    <div className="mx-auto mt-8 max-w-[760px]">
+      <h1 className="font-sans font-semibold tracking-tight text-3xl text-ink sm:text-4xl">
         {t(messages, "session.prepTitle")}
       </h1>
       <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-muted">
@@ -305,7 +304,7 @@ function PrepView({
               >
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center">
                   {isDone ? (
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#E8F3EC]">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-ok-soft">
                       <Check className="h-3 w-3 text-ok" aria-hidden />
                     </span>
                   ) : isActive ? (
@@ -381,21 +380,30 @@ function Chips({
 function BentoCard({
   eyebrow,
   title,
+  icon: Icon,
   className,
   children,
 }: {
   eyebrow: string;
   title: string;
+  icon: LucideIcon;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <Card className={cn("flex flex-col", className)}>
-      <CardHeader>
-        <Eyebrow>{eyebrow}</Eyebrow>
-        <CardTitle className="text-[19px]">{title}</CardTitle>
+    <Card className={cn("flex min-w-0 flex-col overflow-hidden", className)}>
+      <CardHeader className="gap-4 pb-5">
+        <div className="flex items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-line bg-accent-soft text-accent">
+            <Icon className="size-[17px]" aria-hidden />
+          </span>
+          <Eyebrow>{eyebrow}</Eyebrow>
+        </div>
+        <CardTitle className="text-[21px] leading-tight break-words">
+          {title}
+        </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-3 pb-6">
+      <CardContent className="flex flex-1 flex-col gap-4 pt-0 pb-6">
         {children}
       </CardContent>
     </Card>
@@ -408,6 +416,8 @@ function CandidateCard({ c }: { c: CandidateProfile }) {
     <BentoCard
       eyebrow={t(messages, "session.candidate")}
       title={c.name || t(messages, "session.candidateFallback")}
+      icon={UserRound}
+      className="lg:col-span-5"
     >
       <p className="text-[14px] leading-relaxed text-ink-soft">{c.headline}</p>
       <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
@@ -439,9 +449,10 @@ function RoleCard({ j }: { j: JobSpec }) {
     <BentoCard
       eyebrow={t(messages, "session.role")}
       title={j.title || t(messages, "session.targetRole")}
-      className="md:col-span-2"
+      icon={BriefcaseBusiness}
+      className="lg:col-span-7"
     >
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <p className="mb-1.5 text-[11px] font-mono uppercase tracking-[0.1em] text-faint">
             {t(messages, "session.mustHave")}
@@ -508,7 +519,8 @@ function CompanyCard({ co }: { co: CompanyIntel }) {
     <BentoCard
       eyebrow={t(messages, "session.companyIntel")}
       title={co.name || t(messages, "session.company")}
-      className="md:col-span-2"
+      icon={Building2}
+      className="lg:col-span-5"
     >
       {hasIntel ? (
         <>
@@ -561,7 +573,8 @@ function FitCard({ g }: { g: GapAnalysis }) {
     <BentoCard
       eyebrow={t(messages, "session.fit")}
       title={t(messages, "session.match")}
-      className="md:col-span-2"
+      icon={ScanSearch}
+      className="lg:col-span-7"
     >
       {g.summary && (
         <p className="text-[14px] leading-relaxed text-ink-soft">{g.summary}</p>
@@ -640,63 +653,66 @@ function PlanCard({ p }: { p: QuestionPlan }) {
     <BentoCard
       eyebrow={t(messages, "session.interviewPlan")}
       title={`${p.questions.length} ${t(messages, "session.questions")} · ${p.time_budget_min} ${t(messages, "session.minutesShort")}`}
-      className="md:col-span-2"
+      icon={ListChecks}
+      className="lg:col-span-12"
     >
-      <div>
-        <p className="mb-1.5 text-[11px] font-mono uppercase tracking-[0.1em] text-faint">
-          {t(messages, "session.flow")}
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          {p.sections_order.map((s, i) => (
-            <span
-              key={`${s}-${i}`}
-              className="inline-flex items-center rounded-full border border-line bg-paper px-2.5 py-1 text-[12px] text-ink-soft"
-            >
-              {t(
-                messages,
-                (
-                  {
-                    intro: "session.stepPrep",
-                    behavioral: "session.stepBehavioral",
-                    technical: "session.stepTechnical",
-                    coding: "session.stepCoding",
-                    wrap: "session.stepWrap",
-                  } as Record<string, string>
-                )[s] ?? "session.interviewPlan",
-              )}
-            </span>
-          ))}
-        </div>
-      </div>
-      {levels.length > 0 && (
-        <div className="mt-1">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div>
           <p className="mb-1.5 text-[11px] font-mono uppercase tracking-[0.1em] text-faint">
-            {t(messages, "session.difficultySpread")}
+            {t(messages, "session.flow")}
           </p>
-          <div className="flex items-end gap-2">
-            {levels.map((lvl) => {
-              const n = counts.get(lvl) ?? 0;
-              return (
-                <div key={lvl} className="flex flex-col items-center gap-1">
-                  <div className="flex h-12 items-end">
-                    <div
-                      className="w-6 rounded-t bg-accent-soft"
-                      style={{
-                        height: `${Math.max(8, (n / maxCount) * 100)}%`,
-                      }}
-                    >
-                      <div className="h-1 w-full rounded-t bg-accent" />
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-mono text-faint">
-                    L{lvl}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="flex flex-wrap gap-1.5">
+            {p.sections_order.map((s, i) => (
+              <span
+                key={`${s}-${i}`}
+                className="inline-flex items-center rounded-full border border-line bg-paper px-2.5 py-1 text-[12px] text-ink-soft"
+              >
+                {t(
+                  messages,
+                  (
+                    {
+                      intro: "session.stepPrep",
+                      behavioral: "session.stepBehavioral",
+                      technical: "session.stepTechnical",
+                      coding: "session.stepCoding",
+                      wrap: "session.stepWrap",
+                    } as Record<string, string>
+                  )[s] ?? "session.interviewPlan",
+                )}
+              </span>
+            ))}
           </div>
         </div>
-      )}
+        {levels.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-mono uppercase tracking-[0.1em] text-faint">
+              {t(messages, "session.difficultySpread")}
+            </p>
+            <div className="flex items-end gap-2">
+              {levels.map((lvl) => {
+                const n = counts.get(lvl) ?? 0;
+                return (
+                  <div key={lvl} className="flex flex-col items-center gap-1">
+                    <div className="flex h-12 items-end">
+                      <div
+                        className="w-6 rounded-t bg-accent-soft"
+                        style={{
+                          height: `${Math.max(8, (n / maxCount) * 100)}%`,
+                        }}
+                      >
+                        <div className="h-1 w-full rounded-t bg-accent" />
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono text-faint">
+                      L{lvl}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </BentoCard>
   );
 }
@@ -715,7 +731,7 @@ function ReadyView({
   const messages = useMessages();
   return (
     <div className="mt-8">
-      <h1 className="serif text-3xl text-ink sm:text-4xl">
+      <h1 className="font-sans font-semibold tracking-tight text-3xl text-ink sm:text-4xl">
         {t(messages, "session.whatFound")}
       </h1>
       <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-muted">
@@ -733,11 +749,11 @@ function ReadyView({
       <WarningBanner warnings={warnings} />
 
       {/* Bento grid */}
-      <div className="mt-8 grid gap-4 md:grid-cols-3">
+      <div className="mt-8 grid gap-5 lg:grid-cols-12">
         <CandidateCard c={context.candidate} />
         <RoleCard j={context.job} />
-        <CompanyCard co={context.company} />
         <FitCard g={context.gap} />
+        <CompanyCard co={context.company} />
         <PlanCard p={context.plan} />
       </div>
 
@@ -772,7 +788,7 @@ function RejectedView({
       <Card>
         <CardHeader>
           <Eyebrow>{t(messages, "session.tryAgain")}</Eyebrow>
-          <CardTitle className="serif text-2xl">
+          <CardTitle className="font-sans font-semibold tracking-tight text-2xl">
             {t(messages, "session.couldntRead")}
           </CardTitle>
           <CardDescription>
@@ -841,7 +857,7 @@ function ErrorView({
       <Card>
         <CardHeader>
           <Eyebrow>{eyebrow ?? t(messages, "session.somethingWrong")}</Eyebrow>
-          <CardTitle className="serif text-2xl">
+          <CardTitle className="font-sans font-semibold tracking-tight text-2xl">
             {title ?? t(messages, "session.prepErrorTitle")}
           </CardTitle>
           <CardDescription>

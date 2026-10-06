@@ -25,7 +25,7 @@ function Stat({
       <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
         {label}
       </p>
-      <p className="mt-1 font-serif text-2xl text-ink">
+      <p className="mt-1 font-sans font-semibold tracking-tight text-2xl text-ink">
         {value}
         {suffix && (
           <span className="ml-0.5 text-base text-faint">{suffix}</span>

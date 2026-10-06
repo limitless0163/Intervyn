@@ -12,14 +12,12 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
-import { LanguageToggle } from "@/components/language-toggle";
+import { AppShell } from "@/components/ui/app-shell";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -63,18 +61,12 @@ export default function SignupPage() {
   }
 
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="mx-auto flex min-h-screen max-w-[440px] flex-col justify-center px-6 py-16"
-    >
-      <div className="mb-3 flex items-center justify-between">
-        <Eyebrow>{t(messages, "common.appName")}</Eyebrow>
-        <LanguageToggle />
-      </div>
-      <Card className="mt-3">
+    <AppShell className="app-auth">
+      <Card>
         <CardHeader>
-          <CardTitle>{t(messages, "auth.signupTitle")}</CardTitle>
+          <h1 className="font-sans font-semibold tracking-tight text-ink">
+            {t(messages, "auth.signupTitle")}
+          </h1>
           <CardDescription>
             {t(messages, "auth.signupSubtitle")}
           </CardDescription>
@@ -124,7 +116,7 @@ export default function SignupPage() {
               <Button type="submit" size="lg" disabled={busy}>
                 {busy && (
                   <Spinner
-                    className="text-white"
+                    className="text-current"
                     label={t(messages, "common.loading")}
                   />
                 )}
@@ -138,7 +130,7 @@ export default function SignupPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </AppShell>
   );
 }
 

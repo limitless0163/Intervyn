@@ -8,7 +8,6 @@ import {
   SAMPLE_SCORECARD,
   SAMPLE_INTERVIEW,
 } from "@/features/report/sample-scorecard";
-import { Eyebrow } from "@/components/ui/eyebrow";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import {
@@ -24,7 +23,7 @@ import { LanguageReportCard } from "@/components/report/language-report-card";
 import { StrengthsGaps } from "@/components/report/strengths-gaps";
 import { ModelAnswers } from "@/components/report/model-answers";
 import { ScoringPoll } from "@/components/report/scoring-poll";
-import { LanguageToggle } from "@/components/language-toggle";
+import { AppShell } from "@/components/ui/app-shell";
 import { getMessages, t } from "@/lib/i18n";
 import {
   TranscriptSection,
@@ -141,19 +140,11 @@ function buildTranscript(loaded: Loaded): {
 /** Shared page chrome for the non-report (status) states. */
 function StatusShell({ children }: { children: React.ReactNode }) {
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="mx-auto max-w-[920px] px-6 py-12"
-    >
-      <header className="flex items-center justify-between">
-        <Link href="/" className="no-underline">
-          <Eyebrow>Intervyn</Eyebrow>
-        </Link>
-        <LanguageToggle />
-      </header>
-      <div className="mt-16 flex justify-center">{children}</div>
-    </main>
+    <AppShell className="app-report">
+      <div className="app-report-state flex min-h-[55vh] items-center justify-center">
+        {children}
+      </div>
+    </AppShell>
   );
 }
 
@@ -185,7 +176,7 @@ export default async function ReportPage({
               className="h-7 w-7 animate-spin rounded-full border-2 border-accent border-t-transparent"
               aria-hidden
             />
-            <h1 className="font-serif text-2xl text-ink">
+            <h1 className="font-sans font-semibold tracking-tight text-2xl text-ink">
               {preparing
                 ? t(messages, "report.reportStatePreparing")
                 : t(messages, "report.reportStateScoring")}
@@ -219,7 +210,7 @@ export default async function ReportPage({
       <StatusShell>
         <Card className="max-w-md text-center">
           <CardContent className="flex flex-col items-center gap-4 py-10">
-            <h1 className="font-serif text-2xl text-ink">
+            <h1 className="font-sans font-semibold tracking-tight text-2xl text-ink">
               {t(messages, "report.notRunTitle")}
             </h1>
             <p className="max-w-sm text-sm leading-relaxed text-muted">
@@ -252,7 +243,7 @@ export default async function ReportPage({
       <StatusShell>
         <Card className="max-w-md text-center">
           <CardContent className="flex flex-col items-center gap-4 py-10">
-            <h1 className="font-serif text-2xl text-ink">
+            <h1 className="font-sans font-semibold tracking-tight text-2xl text-ink">
               {t(messages, "report.noAnswersRecorded")}
             </h1>
             <p className="max-w-sm text-sm leading-relaxed text-muted">
@@ -283,7 +274,7 @@ export default async function ReportPage({
       <StatusShell>
         <Card className="max-w-md text-center">
           <CardContent className="flex flex-col items-center gap-4 py-10">
-            <h1 className="font-serif text-2xl text-ink">
+            <h1 className="font-sans font-semibold tracking-tight text-2xl text-ink">
               {t(messages, "report.scoreCouldNot")}
             </h1>
             <p className="max-w-sm text-sm leading-relaxed text-muted">
@@ -311,28 +302,16 @@ export default async function ReportPage({
   const { questionText, turns } = buildTranscript(loaded);
 
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="mx-auto max-w-[920px] px-6 py-12"
+    <AppShell
+      className="app-report"
+      headerContent={
+        loaded.state === "sample" ? (
+          <Badge variant="outline">{t(messages, "report.samplePreview")}</Badge>
+        ) : undefined
+      }
     >
-      {/* Header */}
-      <header className="flex items-center justify-between">
-        <Link href="/" className="no-underline">
-          <Eyebrow>Intervyn</Eyebrow>
-        </Link>
-        <div className="flex items-center gap-3">
-          {loaded.state === "sample" && (
-            <Badge variant="outline">
-              {t(messages, "report.samplePreview")}
-            </Badge>
-          )}
-          <LanguageToggle />
-        </div>
-      </header>
-
       <div className="mt-6">
-        <h1 className="font-serif text-4xl text-ink">
+        <h1 className="font-sans font-semibold tracking-tight text-4xl text-ink">
           {t(messages, "report.title")}
         </h1>
         <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-muted">
@@ -428,7 +407,7 @@ export default async function ReportPage({
         <Card className="bg-accent-soft">
           <CardContent className="flex flex-col items-start gap-4 py-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="font-serif text-xl text-ink">
+              <h2 className="font-sans font-semibold tracking-tight text-xl text-ink">
                 {t(messages, "report.studyPlan")}
               </h2>
               <p className="mt-1 text-sm text-muted">
@@ -455,6 +434,6 @@ export default async function ReportPage({
           </CardContent>
         </Card>
       </section>
-    </main>
+    </AppShell>
   );
 }

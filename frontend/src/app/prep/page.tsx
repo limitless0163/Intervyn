@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { RefreshCw, ArrowRight } from "lucide-react";
-import { Eyebrow } from "@/components/ui/eyebrow";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
-import { LanguageToggle } from "@/components/language-toggle";
+import { AppShell } from "@/components/ui/app-shell";
 import type { StudyModule } from "@intervyn/shared";
 import { loadSession } from "@/services/session";
 import { SAMPLE_SCORECARD } from "@/features/report/sample-scorecard";
@@ -71,28 +70,15 @@ export default async function PrepPage({
   }
 
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="mx-auto max-w-[1100px] px-6 py-12"
+    <AppShell
+      headerContent={
+        isSample ? (
+          <Badge variant="outline">{t(messages, "prepPage.sampleBadge")}</Badge>
+        ) : undefined
+      }
     >
-      {/* Header */}
-      <header className="flex items-center justify-between">
-        <Link href="/" className="no-underline">
-          <Eyebrow>Intervyn</Eyebrow>
-        </Link>
-        <div className="flex items-center gap-3">
-          {isSample && (
-            <Badge variant="outline">
-              {t(messages, "prepPage.sampleBadge")}
-            </Badge>
-          )}
-          <LanguageToggle />
-        </div>
-      </header>
-
       <div className="mt-6">
-        <h1 className="font-serif text-4xl text-ink">
+        <h1 className="font-sans font-semibold tracking-tight text-4xl text-ink">
           {t(messages, "prepPage.title")}
         </h1>
         <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-muted">
@@ -112,7 +98,7 @@ export default async function PrepPage({
               aria-hidden
             />
             <div>
-              <h2 className="font-serif text-lg text-ink">
+              <h2 className="font-sans font-semibold tracking-tight text-lg text-ink">
                 {t(messages, "prepPage.bannerTitle")}
               </h2>
               <p className="mt-0.5 text-[13.5px] text-muted">
@@ -131,7 +117,7 @@ export default async function PrepPage({
       </section>
 
       {/* Study plan + grounded chat side by side on wide screens */}
-      <section className="mt-10 grid gap-8 lg:grid-cols-[1.15fr_1fr]">
+      <section className="mt-10 grid items-start gap-8 lg:grid-cols-[1.15fr_1fr]">
         <StudyPlan
           modules={studyModules}
           weakAreas={weakAreas}
@@ -153,6 +139,6 @@ export default async function PrepPage({
       <section className="mt-12">
         <SocraticCta />
       </section>
-    </main>
+    </AppShell>
   );
 }

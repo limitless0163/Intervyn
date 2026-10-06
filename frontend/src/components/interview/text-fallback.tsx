@@ -82,7 +82,7 @@ export function TextFallback({
         aria-label={t(messages, "interview.sendAnswer")}
         className={cn(
           "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-          "bg-ink text-white transition-colors duration-150 hover:bg-ink-soft",
+          "bg-ink text-paper transition-colors duration-150 hover:bg-ink-soft",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper",
           "disabled:opacity-40 disabled:pointer-events-none",
         )}

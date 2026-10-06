@@ -118,7 +118,7 @@ export function Flashcards({
           <Eyebrow>{t(messages, "prep.spacedRepetition")}</Eyebrow>
           <h2
             id="flashcards-heading"
-            className="mt-2 font-serif text-2xl text-ink"
+            className="mt-2 font-sans font-semibold tracking-tight text-2xl text-ink"
           >
             {t(messages, "prep.flashcards")}
           </h2>
@@ -151,10 +151,10 @@ export function Flashcards({
       {allDone || !current ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e8f3ec]">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-ok-soft">
               <Check className="h-6 w-6 text-ok" aria-hidden />
             </span>
-            <h3 className="font-serif text-xl text-ink">
+            <h3 className="font-sans font-semibold tracking-tight text-xl text-ink">
               {t(messages, "prep.allCaughtUp")}
             </h3>
             <p className="max-w-sm text-[14px] leading-relaxed text-muted">
@@ -212,7 +212,7 @@ export function Flashcards({
                     </span>
                     <p
                       id={`${contentId}-question`}
-                      className="max-w-md break-words font-serif text-[20px] leading-snug text-ink"
+                      className="max-w-md break-words font-sans font-semibold tracking-tight text-[20px] leading-snug text-ink"
                     >
                       {current.front}
                     </p>

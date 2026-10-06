@@ -225,15 +225,10 @@ html[lang="zh-CN"] .landing-hero-title span {
   color: #f7f8fa;
   font-size: 28px;
   line-height: 40px;
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: normal;
   text-align: center;
   text-wrap: balance;
-}
-#product .landing-section-title,
-#how .landing-section-title,
-#github .landing-section-title {
-  font-weight: 700;
 }
 .landing-section-heading {
   margin-bottom: 28px;

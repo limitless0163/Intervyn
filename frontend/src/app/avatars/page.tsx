@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { AvatarGallery } from "@/components/avatar/avatar-gallery";
-import { LanguageToggle } from "@/components/language-toggle";
+import { AppShell } from "@/components/ui/app-shell";
 import { getMessages, t } from "@/lib/i18n";
 
 export const metadata: Metadata = {
@@ -23,21 +22,10 @@ export default async function AvatarsPage() {
     cookieStore.get("locale")?.value === "zh" ? "zh" : "en",
   );
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="mx-auto max-w-[1080px] px-6 py-12"
-    >
-      <header className="flex items-center justify-between">
-        <Link href="/" className="no-underline">
-          <Eyebrow>Intervyn</Eyebrow>
-        </Link>
-        <LanguageToggle />
-      </header>
-
+    <AppShell>
       <div className="mt-10 flex flex-col gap-3">
         <Eyebrow>{t(messages, "avatars.eyebrow")}</Eyebrow>
-        <h1 className="serif text-4xl text-ink sm:text-5xl">
+        <h1 className="font-sans font-semibold tracking-tight text-4xl text-ink sm:text-5xl">
           {t(messages, "avatars.title")}
         </h1>
         <p className="max-w-[60ch] text-base leading-relaxed text-muted">
@@ -48,6 +36,6 @@ export default async function AvatarsPage() {
       <div className="mt-12">
         <AvatarGallery />
       </div>
-    </main>
+    </AppShell>
   );
 }

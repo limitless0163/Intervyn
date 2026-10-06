@@ -137,11 +137,14 @@ export function GroundedChat({
   }
 
   return (
-    <Card id="coach-chat" className="flex h-full min-w-0 flex-col scroll-mt-6">
+    <Card
+      id="coach-chat"
+      className="flex min-w-0 flex-col scroll-mt-24 lg:sticky lg:top-24"
+    >
       <div className="flex items-center justify-between border-b border-line px-6 py-4">
         <div>
           <Eyebrow>{t(messages, "prep.coachEyebrow")}</Eyebrow>
-          <h3 className="mt-1 font-serif text-lg text-ink">
+          <h3 className="mt-1 font-sans font-semibold tracking-tight text-lg text-ink">
             {t(messages, "prep.askCoach")}
           </h3>
         </div>
@@ -191,7 +194,7 @@ export function GroundedChat({
               className={cn(
                 "min-w-0 max-w-[88%] break-words rounded-card px-4 py-3 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
                 turn.role === "user"
-                  ? "bg-ink text-white"
+                  ? "border border-accent/20 bg-accent-soft text-ink"
                   : "border border-line bg-paper text-ink-soft",
               )}
             >

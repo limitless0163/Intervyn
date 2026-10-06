@@ -1,3 +1,4 @@
+import { AppShell } from "@/components/ui/app-shell";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { buttonClasses } from "@/components/ui/button";
@@ -9,12 +10,8 @@ export default async function NotFound() {
     store.get("locale")?.value === "zh" ? "zh" : "en",
   );
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-5 px-6 py-12"
-    >
-      <h1 className="font-serif text-3xl text-ink">
+    <AppShell className="app-status">
+      <h1 className="font-sans font-semibold tracking-tight text-3xl text-ink">
         {t(messages, "common.pageNotFound")}
       </h1>
       <p className="text-muted">{t(messages, "common.pageNotFoundHint")}</p>
@@ -26,6 +23,6 @@ export default async function NotFound() {
           {t(messages, "report.backHome")}
         </Link>
       </div>
-    </main>
+    </AppShell>
   );
 }

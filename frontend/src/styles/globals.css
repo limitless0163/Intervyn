@@ -1,17 +1,21 @@
 @import "tailwindcss";
 
 @theme {
-  --color-paper: #fbfaf8;
-  --color-panel: #ffffff;
-  --color-ink: #17171a;
-  --color-ink-soft: #3a3a40;
-  --color-muted: #73737b;
-  --color-faint: #9a9aa1;
-  --color-line: #e7e3da;
-  --color-line-2: #efece5;
-  --color-accent: #4338ca;
-  --color-accent-soft: #eef0fb;
-  --color-ok: #15803d;
+  --color-paper: #09090a;
+  --color-panel: #121214;
+  --color-field: #0d0d10;
+  --color-ink: #f7f8fa;
+  --color-ink-soft: #c9c9ce;
+  --color-muted: #9999a3;
+  --color-faint: #85858f;
+  --color-line: #282930;
+  --color-line-2: #222228;
+  --color-accent: #93a5ff;
+  --color-accent-soft: #25283e;
+  --color-ok: #8acbac;
+  --color-ok-soft: #182a23;
+  --color-warning: #c4b5fd;
+  --color-warning-soft: #292239;
 
   --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-serif: var(--font-fraunces), Georgia, serif;
@@ -24,29 +28,15 @@
   --radius-card: 14px;
 }
 
-/* Apply the homepage palette to the document canvas as well, so scroll bounce
-   matches the page. :has() also follows route changes and loading fallbacks. */
-html:has(.landing-page),
-.landing-page {
-  --color-paper: #09090a;
-  --color-panel: #121214;
-  --color-ink: #f7f8fa;
-  --color-ink-soft: #c9c9ce;
-  --color-muted: #9999a3;
-  --color-faint: #767680;
-  --color-line: #282930;
-  --color-line-2: #222228;
-  --color-accent: #93a5ff;
-  --color-accent-soft: #25283e;
-  --color-ok: #8acbac;
-  min-height: 100vh;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  color-scheme: dark;
+html[lang="zh-CN"] {
+  --font-sans: var(--font-chinese);
 }
 
 @layer base {
   html {
+    min-height: 100%;
+    background: var(--color-paper);
+    color-scheme: dark;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
@@ -59,6 +49,7 @@ html:has(.landing-page),
   }
 
   body {
+    min-height: 100vh;
     background-color: var(--color-paper);
     color: var(--color-ink);
     font-family: var(--font-sans);
@@ -67,9 +58,21 @@ html:has(.landing-page),
 
   html[lang="zh-CN"] body,
   html[lang="zh-CN"] .serif,
-  html[lang="zh-CN"] .font-serif {
+  html[lang="zh-CN"] .font-serif,
+  html[lang="zh-CN"] .font-sans {
     font-family: var(--font-chinese);
     letter-spacing: 0;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-ink);
+  }
+
+  input,
+  textarea,
+  select {
+    accent-color: var(--color-accent);
   }
 
   a {

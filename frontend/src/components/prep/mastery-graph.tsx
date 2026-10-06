@@ -47,7 +47,10 @@ export function MasteryGraphView({
     <section className="min-w-0" aria-labelledby="mastery-heading">
       <header className="mb-4">
         <Eyebrow>{t(messages, "prep.knowledgeMap")}</Eyebrow>
-        <h2 id="mastery-heading" className="mt-2 font-serif text-2xl text-ink">
+        <h2
+          id="mastery-heading"
+          className="mt-2 font-sans font-semibold tracking-tight text-2xl text-ink"
+        >
           {t(messages, "prep.masteryGraph")}
         </h2>
         <p className="mt-1 text-[14px] leading-relaxed text-muted">
