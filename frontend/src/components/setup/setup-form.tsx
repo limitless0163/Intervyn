@@ -2,7 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { UploadCloud, FileText, X } from "lucide-react";
+import {
+  UploadCloud,
+  FileText,
+  X,
+  ArrowRight,
+  Check,
+  Sparkles,
+} from "lucide-react";
 import { LANGUAGES, type Language, type LanguageMode } from "@intervyn/shared";
 import { startSession } from "@/app/setup/actions";
 import { PERSONAS, DEFAULT_PERSONA_ID } from "@/constants/personas";
@@ -238,10 +245,10 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
       company.trim() || t(messages, "setup.companyFallback"),
     );
     return (
-      <Card className="mt-8">
+      <Card className="setup-card setup-loading">
         <CardContent className="flex flex-col items-center gap-5 py-12 text-center">
           <Spinner className="h-6 w-6" label={t(messages, "common.loading")} />
-          <p className="serif text-xl text-ink">{researching}</p>
+          <p className="text-xl font-semibold text-ink">{researching}</p>
           <ol className="flex flex-col gap-2 text-left">
             {steps.map((s, i) => (
               <li
@@ -280,19 +287,19 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-6">
-      <div>
-        <h1 className="serif text-3xl text-ink">
-          {t(messages, "setup.title")}
-        </h1>
-        <p className="mt-2 text-ink-soft">{t(messages, "setup.subtitle")}</p>
+    <form onSubmit={onSubmit} className="setup-form">
+      <div className="setup-intro">
+        <p className="setup-eyebrow">{t(messages, "setup.eyebrow")}</p>
+        <h1 className="setup-title">{t(messages, "setup.title")}</h1>
+        <p className="setup-subtitle">{t(messages, "setup.subtitle")}</p>
       </div>
 
       {/* Quick demo: one-click sample CV + JD + company for fast testing */}
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <Card className="setup-card setup-demo">
+        <CardContent className="setup-demo-content">
           <div>
-            <p className="text-[13px] font-medium text-ink">
+            <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
+              <Sparkles size={14} className="text-accent" aria-hidden />
               {t(messages, "setup.quickDemo")}
             </p>
             <p className="text-[12px] text-muted">
@@ -305,7 +312,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                 key={s.id}
                 type="button"
                 onClick={() => loadSample(s)}
-                className="rounded-[10px] border border-line px-3 py-1.5 text-[12px] text-ink-soft transition-colors hover:border-ink"
+                className="setup-sample"
               >
                 {s.label}
               </button>
@@ -314,241 +321,320 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
         </CardContent>
       </Card>
 
-      {/* CV */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(messages, "setup.cvLabel")}</CardTitle>
-          <CardDescription>{t(messages, "setup.cvHint")}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 pb-6">
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={onDrop}
-            className={cn(
-              "relative rounded-[10px] border border-dashed text-center transition-colors",
-              dragging
-                ? "border-accent bg-accent-soft"
-                : "border-line hover:border-ink",
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label={t(messages, "setup.cvDrop")}
-              aria-invalid={cvTouched && Boolean(cvError)}
-              aria-describedby={cvTouched && cvError ? "cv-error" : undefined}
-              className="flex w-full flex-col items-center gap-2 rounded-[10px] px-10 py-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-            >
-              {file ? (
-                <span className="flex min-w-0 max-w-full items-center gap-2 text-[14px] text-ink">
-                  <FileText
-                    className="h-4 w-4 shrink-0 text-accent"
-                    aria-hidden
-                  />
-                  <span className="break-all">{file.name}</span>
-                </span>
-              ) : (
-                <>
-                  <UploadCloud className="h-5 w-5 text-muted" aria-hidden />
-                  <span className="text-[13px] text-muted">
-                    {t(messages, "setup.cvDrop")}
-                  </span>
-                </>
-              )}
-            </button>
-            {file && (
-              <button
-                type="button"
-                aria-label={t(messages, "setup.removeFile")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFile(null);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
+      <div className="setup-columns">
+        <section className="setup-column" aria-labelledby="setup-materials">
+          <h2 id="setup-materials" className="setup-section-label">
+            <span aria-hidden>01</span> {t(messages, "setup.materials")}
+          </h2>
+          {/* CV */}
+          <Card className="setup-card">
+            <CardHeader>
+              <CardTitle className="setup-card-title">
+                {t(messages, "setup.cvLabel")}
+              </CardTitle>
+              <CardDescription>{t(messages, "setup.cvHint")}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 pb-6">
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
                 }}
-                className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-md text-muted hover:text-ink"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
-              className="hidden"
-              onChange={(e) => selectFile(e.target.files?.[0] ?? null)}
-            />
-          </div>
-          {file && (
-            <p className="text-[12px] text-muted">
-              {t(messages, "setup.fileSelectedHint")}
-            </p>
-          )}
-
-          <div>
-            <Label htmlFor="cvText">{t(messages, "setup.cvPasteLabel")}</Label>
-            <Textarea
-              id="cvText"
-              rows={5}
-              placeholder={t(messages, "setup.cvPasteHint")}
-              value={cvText}
-              onChange={(e) => setCvText(e.target.value)}
-              onBlur={() => setCvTouched(true)}
-              aria-invalid={cvTouched && Boolean(cvError)}
-              aria-describedby={cvTouched && cvError ? "cv-error" : undefined}
-            />
-          </div>
-          {cvTouched && cvError && (
-            <p id="cv-error" className="text-[13px] text-accent" role="alert">
-              {cvError}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* JD */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(messages, "setup.jdLabel")}</CardTitle>
-          <CardDescription>{t(messages, "setup.jdHint")}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 pb-6">
-          <Textarea
-            rows={6}
-            value={jdText}
-            onChange={(e) => setJdText(e.target.value)}
-            onBlur={() => setJdTouched(true)}
-            aria-label={t(messages, "setup.jdLabel")}
-            aria-invalid={jdTouched && Boolean(jdError)}
-            aria-describedby={jdTouched && jdError ? "jd-error" : undefined}
-          />
-          {jdTouched && jdError && (
-            <p id="jd-error" className="text-[13px] text-accent" role="alert">
-              {jdError}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Company */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(messages, "setup.companyLabel")}</CardTitle>
-          <CardDescription>{t(messages, "setup.companyHint")}</CardDescription>
-        </CardHeader>
-        <CardContent className="pb-6">
-          <Input
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
-            placeholder={t(messages, "setup.companyPlaceholder")}
-            aria-label={t(messages, "setup.companyLabel")}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Language mode */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(messages, "setup.languageLabel")}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 pb-6">
-          <div className="flex flex-wrap gap-2">
-            {OFFERED.map((lang) => (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => setPrimary(lang)}
-                aria-pressed={primary === lang}
+                onDragLeave={() => setDragging(false)}
+                onDrop={onDrop}
                 className={cn(
-                  "rounded-[10px] border px-3.5 py-2 text-[13px] transition-colors",
-                  primary === lang
-                    ? "border-accent bg-accent-soft text-accent"
-                    : "border-line text-ink-soft hover:border-ink",
+                  "setup-upload relative rounded-[10px] border border-dashed text-center transition-colors",
+                  dragging
+                    ? "border-accent bg-accent-soft"
+                    : "border-line hover:border-ink",
                 )}
               >
-                {LANGUAGE_LABELS[lang] ?? lang}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-2 text-[13px] text-ink-soft">
-            <input
-              type="checkbox"
-              checked={mixed}
-              onChange={(e) => setMixed(e.target.checked)}
-              className="h-4 w-4 accent-[var(--color-accent)]"
-            />
-            {t(messages, "setup.languageMixed")}
-          </label>
-        </CardContent>
-      </Card>
-
-      {/* Persona */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(messages, "setup.personaLabel")}</CardTitle>
-          <CardDescription>{t(messages, "setup.personaHint")}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 pb-6 sm:grid-cols-3">
-          {PERSONAS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPersonaId(p.id)}
-              aria-pressed={personaId === p.id}
-              className={cn(
-                "flex flex-col gap-2 rounded-[10px] border p-3 text-left transition-colors",
-                personaId === p.id
-                  ? "border-accent bg-accent-soft"
-                  : "border-line hover:border-ink",
-              )}
-            >
-              <div
-                className="aspect-[4/3] w-full rounded-md border border-line bg-paper bg-cover bg-center"
-                style={{ backgroundImage: `url(${p.poster_url})` }}
-                aria-hidden
-              />
-              <div>
-                <p className="text-[14px] font-medium text-ink">{p.name}</p>
-                <p className="text-[12px] leading-snug text-muted">
-                  {t(
-                    messages,
-                    `setup.persona${p.id === "anime" ? "Anime" : p.id === "superhero" ? "Superhero" : p.id === "recruiter" ? "Recruiter" : "Professor"}`,
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label={t(messages, "setup.cvDrop")}
+                  aria-invalid={cvTouched && Boolean(cvError)}
+                  aria-describedby={
+                    cvTouched && cvError ? "cv-error" : undefined
+                  }
+                  className="flex w-full flex-col items-center gap-2 rounded-[10px] px-10 py-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                >
+                  {file ? (
+                    <span className="flex min-w-0 max-w-full items-center gap-2 text-[14px] text-ink">
+                      <FileText
+                        className="h-4 w-4 shrink-0 text-accent"
+                        aria-hidden
+                      />
+                      <span className="break-all">{file.name}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-5 w-5 text-muted" aria-hidden />
+                      <span className="text-[13px] text-muted">
+                        {t(messages, "setup.cvDrop")}
+                      </span>
+                    </>
                   )}
-                </p>
+                </button>
+                {file && (
+                  <button
+                    type="button"
+                    aria-label={t(messages, "setup.removeFile")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-md text-muted hover:text-ink"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+                  className="hidden"
+                  onChange={(e) => selectFile(e.target.files?.[0] ?? null)}
+                />
               </div>
-            </button>
-          ))}
-        </CardContent>
-      </Card>
+              {file && (
+                <p className="text-[12px] text-muted">
+                  {t(messages, "setup.fileSelectedHint")}
+                </p>
+              )}
 
-      {/* Device check */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(messages, "setup.deviceLabel")}</CardTitle>
-        </CardHeader>
-        <CardContent className="pb-6">
-          <DeviceCheck />
-        </CardContent>
-      </Card>
+              <div>
+                <Label htmlFor="cvText">
+                  {t(messages, "setup.cvPasteLabel")}
+                </Label>
+                <Textarea
+                  id="cvText"
+                  rows={4}
+                  placeholder={t(messages, "setup.cvPasteHint")}
+                  value={cvText}
+                  onChange={(e) => setCvText(e.target.value)}
+                  onBlur={() => setCvTouched(true)}
+                  aria-invalid={cvTouched && Boolean(cvError)}
+                  aria-describedby={
+                    cvTouched && cvError ? "cv-error" : undefined
+                  }
+                />
+              </div>
+              {cvTouched && cvError && (
+                <p
+                  id="cv-error"
+                  className="text-[13px] text-accent"
+                  role="alert"
+                >
+                  {cvError}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* JD */}
+          <Card className="setup-card">
+            <CardHeader>
+              <CardTitle className="setup-card-title">
+                {t(messages, "setup.jdLabel")}
+              </CardTitle>
+              <CardDescription>{t(messages, "setup.jdHint")}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 pb-6">
+              <Textarea
+                rows={6}
+                value={jdText}
+                onChange={(e) => setJdText(e.target.value)}
+                onBlur={() => setJdTouched(true)}
+                aria-label={t(messages, "setup.jdLabel")}
+                aria-invalid={jdTouched && Boolean(jdError)}
+                aria-describedby={jdTouched && jdError ? "jd-error" : undefined}
+              />
+              {jdTouched && jdError && (
+                <p
+                  id="jd-error"
+                  className="text-[13px] text-accent"
+                  role="alert"
+                >
+                  {jdError}
+                </p>
+              )}
+            </CardContent>
+
+            {/* Company */}
+            <CardHeader className="setup-company-header">
+              <CardTitle className="setup-card-title">
+                {t(messages, "setup.companyLabel")}
+              </CardTitle>
+              <CardDescription>
+                {t(messages, "setup.companyHint")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pb-6">
+              <Input
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                placeholder={t(messages, "setup.companyPlaceholder")}
+                aria-label={t(messages, "setup.companyLabel")}
+              />
+            </CardContent>
+          </Card>
+        </section>
+        <section className="setup-column" aria-labelledby="setup-preferences">
+          <h2 id="setup-preferences" className="setup-section-label">
+            <span aria-hidden>02</span> {t(messages, "setup.preferences")}
+          </h2>
+          {/* Language mode */}
+          <Card className="setup-card">
+            <CardHeader>
+              <CardTitle className="setup-card-title">
+                {t(messages, "setup.languageLabel")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 pb-6">
+              <div className="flex flex-wrap gap-2">
+                {OFFERED.map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setPrimary(lang)}
+                    aria-pressed={primary === lang}
+                    className={cn(
+                      "rounded-[10px] border px-3.5 py-2 text-[13px] transition-colors",
+                      primary === lang
+                        ? "border-accent bg-accent-soft text-accent"
+                        : "border-line text-ink-soft hover:border-ink",
+                    )}
+                  >
+                    {LANGUAGE_LABELS[lang] ?? lang}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={mixed}
+                  onChange={(e) => setMixed(e.target.checked)}
+                  className="h-4 w-4 accent-[var(--color-accent)]"
+                />
+                {t(messages, "setup.languageMixed")}
+              </label>
+            </CardContent>
+          </Card>
+
+          {/* Persona */}
+          <Card className="setup-card">
+            <CardHeader>
+              <CardTitle className="setup-card-title">
+                {t(messages, "setup.personaLabel")}
+              </CardTitle>
+              <CardDescription>
+                {t(messages, "setup.personaHint")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="setup-personas">
+              {PERSONAS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPersonaId(p.id)}
+                  aria-pressed={personaId === p.id}
+                  className={cn(
+                    "setup-persona",
+                    personaId === p.id
+                      ? "border-accent bg-accent-soft"
+                      : "border-line hover:border-ink",
+                  )}
+                >
+                  <div
+                    className="setup-persona-poster"
+                    data-persona={p.id}
+                    aria-hidden
+                  >
+                    <span>
+                      {p.name
+                        .split(" ")
+                        .map((part) => part[0])
+                        .join("")}
+                    </span>
+                    {/* The catalog can ship without posters; keep a designed fallback. */}
+                    <img
+                      src={p.poster_url}
+                      alt=""
+                      ref={(image) => {
+                        if (image?.complete && image.naturalWidth > 0) {
+                          image.style.opacity = "1";
+                        }
+                      }}
+                      onLoad={(event) => {
+                        event.currentTarget.style.opacity = "1";
+                      }}
+                      onError={(event) => {
+                        event.currentTarget.style.opacity = "0";
+                      }}
+                    />
+                    {personaId === p.id && (
+                      <span className="setup-persona-check">
+                        <Check size={12} />
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-medium text-ink">{p.name}</p>
+                    <p className="text-[12px] leading-snug text-muted">
+                      {t(
+                        messages,
+                        `setup.persona${p.id === "anime" ? "Anime" : p.id === "superhero" ? "Superhero" : p.id === "recruiter" ? "Recruiter" : "Professor"}`,
+                      )}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Device check */}
+          <Card className="setup-card">
+            <CardHeader>
+              <CardTitle className="setup-card-title">
+                {t(messages, "setup.deviceLabel")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-6">
+              <DeviceCheck />
+            </CardContent>
+          </Card>
+        </section>
+      </div>
 
       {error && (
-        <p className="text-[13px] text-ink-soft" role="alert">
+        <p className="setup-error" role="alert">
           {error}
         </p>
       )}
 
-      <Button
-        type="submit"
-        size="lg"
-        className="self-start"
-        disabled={!canSubmit}
-        aria-disabled={!canSubmit}
-      >
-        {t(messages, "setup.start")}
-      </Button>
+      <div className="setup-submit-bar">
+        <div className="setup-readiness" role="status" aria-live="polite">
+          <span
+            className={cn("setup-readiness-dot", canSubmit && "is-ready")}
+            aria-hidden
+          />
+          <p>
+            {t(messages, canSubmit ? "setup.ready" : "setup.completeMaterials")}
+          </p>
+        </div>
+        <Button
+          type="submit"
+          size="lg"
+          className="setup-start landing-button"
+          disabled={!canSubmit}
+          aria-disabled={!canSubmit}
+        >
+          {t(messages, "setup.start")}
+          <ArrowRight size={16} aria-hidden />
+        </Button>
+      </div>
     </form>
   );
 }

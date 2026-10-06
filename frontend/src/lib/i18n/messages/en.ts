@@ -172,6 +172,12 @@ export const en = {
     requestFailed: "Could not connect. Please try again.",
   },
   setup: {
+    backHome: "Back to home",
+    eyebrow: "Your next interview starts here",
+    materials: "Interview materials",
+    preferences: "Make it yours",
+    ready: "Your interview materials are ready.",
+    completeMaterials: "Add your CV and job description to get started.",
     title: "Set up your interview",
     subtitle: "Bring your CV and the job you're aiming for.",
     cvLabel: "Your CV",

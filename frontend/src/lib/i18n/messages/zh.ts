@@ -174,6 +174,12 @@ export const zh: Localized<Messages> = {
     requestFailed: "连接失败，请重试。",
   },
   setup: {
+    backHome: "返回首页",
+    eyebrow: "从这里，准备下一场面试",
+    materials: "面试资料",
+    preferences: "面试偏好",
+    ready: "面试资料已就绪，可以开始了。",
+    completeMaterials: "添加简历和职位描述，即可开始面试。",
     title: "设置模拟面试",
     subtitle: "准备好你的简历和目标职位",
     cvLabel: "你的简历",
