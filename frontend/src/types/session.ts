@@ -6,7 +6,7 @@ import { InterviewContextSchema, ScoreCardSchema } from "@intervyn/shared";
  * (`GET /api/session/{id}`) and proxied through our own
  * `GET /api/session/{id}` route.
  *
- * `progress` lists the COMPLETED step keys (order is non-deterministic and is a
+ * `progress` lists the SETTLED step keys (order is non-deterministic and is a
  * subset of `PREP_STEPS`). `context` is only present once `status === "ready"`.
  */
 export const SessionViewSchema = z.object({
@@ -23,6 +23,12 @@ export const SessionViewSchema = z.object({
     "no_answers",
   ]),
   progress: z.array(z.string()),
+  prep_step_statuses: z
+    .record(
+      z.string(),
+      z.enum(["running", "complete", "unavailable", "skipped"]),
+    )
+    .optional(),
   prep_warnings: z.array(z.string()),
   context: InterviewContextSchema.nullable(),
   // Present once post-interview scoring has run; the report reads it from here
@@ -46,7 +52,7 @@ export type ClientSessionView = Omit<SessionView, "status"> & {
 
 /** A prep step the agents run, with the user-facing label to render. */
 export interface PrepStep {
-  /** The key the agent emits into `progress` when this step completes. */
+  /** The key the agent emits into `progress` when this step settles. */
   key: string;
   /** Human label. `company_research` contains a `{company}` placeholder. */
   label: string;
@@ -54,7 +60,7 @@ export interface PrepStep {
 
 /**
  * The five prep steps, in the order we display them. The agent reports
- * completion via `progress` (which may arrive in any order); we render in this
+ * settlement via `progress` and outcomes via `prep_step_statuses`; we render in this
  * fixed order so the checklist reads top-to-bottom regardless.
  */
 export const PREP_STEPS: readonly PrepStep[] = [
@@ -64,6 +70,19 @@ export const PREP_STEPS: readonly PrepStep[] = [
   { key: "gap_matching", label: "Matching your fit" },
   { key: "question_planner", label: "Planning your interview" },
 ] as const;
+
+/** Older agents only report settlement, which cannot prove research succeeded. */
+export function prepStepStatus(
+  key: string,
+  progress: string[],
+  statuses: SessionView["prep_step_statuses"],
+): "pending" | "finished" | "running" | "complete" | "unavailable" | "skipped" {
+  if (statuses?.[key]) return statuses[key];
+  if (progress.includes(key)) {
+    return key === "company_research" ? "finished" : "complete";
+  }
+  return "pending";
+}
 
 /** Consecutive 404s before an unknown session is declared `not_found`. */
 const NOT_FOUND_AFTER = 3;

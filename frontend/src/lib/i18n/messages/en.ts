@@ -517,6 +517,9 @@ export const en = {
     stepCoding: "Coding",
     stepWrap: "Wrap-up",
     done: "done",
+    stepUnavailable: "Unavailable",
+    stepSkipped: "Skipped",
+    stepFinished: "Finished",
     progressOf: "of",
     candidateFallback: "You",
     years: "years",
@@ -533,6 +536,17 @@ export const en = {
     companySearchSuggestions: "Google Search suggestions",
     companyLimited:
       "Company web research is unavailable. We will use the job description and your background to prepare the interview.",
+    companyError: {
+      not_configured: "Company web research is not configured.",
+      unsupported_provider:
+        "The selected model provider has no supported web research integration.",
+      no_sources: "The search returned no verifiable sources for this company.",
+      timeout: "Company web research timed out.",
+      request_failed: "The company web research service request failed.",
+      invalid_company:
+        "Company research was skipped because the company name could not be identified.",
+      invalid_response: "The research response could not be processed.",
+    },
     strengths: "Strengths",
     gapsToProbe: "Gaps to probe",
     matchedSkills: "Matched skills",

@@ -27,6 +27,7 @@ import {
   fetchSessionView,
   resetSessionPolling,
   PREP_STEPS,
+  prepStepStatus,
   type ClientSessionView,
 } from "@/types/session";
 import { cn } from "@/utils/cn";
@@ -126,7 +127,11 @@ export function PrepSummary({
   return (
     <AppShell className="app-session">
       {status === "prep" && (
-        <PrepView progress={view?.progress ?? []} warnings={warnings} />
+        <PrepView
+          progress={view?.progress ?? []}
+          statuses={view?.prep_step_statuses}
+          warnings={warnings}
+        />
       )}
 
       {status === "ready" && view?.context && (
@@ -140,7 +145,11 @@ export function PrepSummary({
 
       {/* Defensive: ready but no context parsed — treat as still preparing. */}
       {status === "ready" && !view?.context && (
-        <PrepView progress={view?.progress ?? []} warnings={warnings} />
+        <PrepView
+          progress={view?.progress ?? []}
+          statuses={view?.prep_step_statuses}
+          warnings={warnings}
+        />
       )}
 
       {(status === "scoring" ||
@@ -229,17 +238,20 @@ function WarningBanner({ warnings }: { warnings: string[] }) {
 
 function PrepView({
   progress,
+  statuses,
   warnings,
 }: {
   progress: string[];
+  statuses?: ClientSessionView["prep_step_statuses"];
   warnings: string[];
 }) {
   const messages = useMessages();
-  const done = new Set(progress);
-  const completed = PREP_STEPS.filter((s) => done.has(s.key)).length;
+  const completed = PREP_STEPS.filter((s) =>
+    ["complete", "unavailable", "skipped", "finished"].includes(
+      prepStepStatus(s.key, progress, statuses),
+    ),
+  ).length;
   const total = PREP_STEPS.length;
-  // First step that isn't done yet — the one actively running.
-  const active = PREP_STEPS.find((s) => !done.has(s.key));
 
   return (
     <div className="mx-auto mt-8 max-w-[760px]">
@@ -269,8 +281,13 @@ function PrepView({
       <Card className="mt-6">
         <CardContent className="flex flex-col gap-1 py-4">
           {PREP_STEPS.map((step) => {
-            const isDone = done.has(step.key);
-            const isActive = !isDone && active?.key === step.key;
+            const stepStatus = prepStepStatus(step.key, progress, statuses);
+            const isDone = stepStatus === "complete";
+            const isActive = stepStatus === "running";
+            const isUnavailable =
+              stepStatus === "unavailable" || stepStatus === "skipped";
+            const isSettled =
+              isDone || isUnavailable || stepStatus === "finished";
             const labelKey =
               step.key === "cv_analysis"
                 ? "setup.stepCv"
@@ -294,7 +311,12 @@ function PrepView({
                 )}
               >
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                  {isDone ? (
+                  {isUnavailable ? (
+                    <AlertTriangle
+                      className="h-4 w-4 text-accent"
+                      aria-hidden
+                    />
+                  ) : isDone ? (
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-ok-soft">
                       <Check className="h-3 w-3 text-ok" aria-hidden />
                     </span>
@@ -310,7 +332,7 @@ function PrepView({
                 <span
                   className={cn(
                     "text-[14px]",
-                    isDone
+                    isSettled
                       ? "text-ink-soft"
                       : isActive
                         ? "font-medium text-ink"
@@ -319,9 +341,23 @@ function PrepView({
                 >
                   {label}
                 </span>
-                {isDone && (
-                  <span className="ml-auto text-[11px] font-mono uppercase tracking-[0.1em] text-ok">
-                    {t(messages, "session.done")}
+                {isSettled && (
+                  <span
+                    className={cn(
+                      "ml-auto text-[11px] font-mono uppercase tracking-[0.1em]",
+                      isDone ? "text-ok" : "text-accent",
+                    )}
+                  >
+                    {t(
+                      messages,
+                      isDone
+                        ? "session.done"
+                        : stepStatus === "skipped"
+                          ? "session.stepSkipped"
+                          : isUnavailable
+                            ? "session.stepUnavailable"
+                            : "session.stepFinished",
+                    )}
                   </span>
                 )}
               </div>
@@ -579,9 +615,20 @@ function CompanyCard({ co }: { co: CompanyIntel }) {
           )}
         </>
       ) : (
-        <p className="text-[13px] leading-relaxed text-muted">
-          {t(messages, "session.companyLimited")}
-        </p>
+        <div className="space-y-2 text-[13px] leading-relaxed text-muted">
+          <Badge variant="accent">
+            {t(
+              messages,
+              co.research_error === "invalid_company"
+                ? "session.stepSkipped"
+                : "session.stepUnavailable",
+            )}
+          </Badge>
+          {co.research_error && (
+            <p>{t(messages, `session.companyError.${co.research_error}`)}</p>
+          )}
+          <p>{t(messages, "session.companyLimited")}</p>
+        </div>
       )}
     </BentoCard>
   );
