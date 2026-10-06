@@ -17,6 +17,18 @@ export const CompanyIntelSchema = z.object({
   recent_news: z.array(z.string()),
   sources: z.array(CitationSchema).default([]),
   research_status: z.enum(["complete", "unavailable"]).default("unavailable"),
+  research_error: z
+    .enum([
+      "not_configured",
+      "unsupported_provider",
+      "no_sources",
+      "timeout",
+      "request_failed",
+      "invalid_company",
+      "invalid_response",
+    ])
+    .nullable()
+    .default(null),
   search_suggestions: z.string().nullable().default(null),
 });
 export type CompanyIntel = z.infer<typeof CompanyIntelSchema>;

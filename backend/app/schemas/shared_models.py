@@ -100,6 +100,10 @@ class CompanyIntel(BaseModel):
     recent_news: list[str]
     sources: list[Citation] = Field(default_factory=list)
     research_status: Literal["complete", "unavailable"] = "unavailable"
+    research_error: Literal[
+        "not_configured", "unsupported_provider", "no_sources", "timeout",
+        "request_failed", "invalid_company", "invalid_response",
+    ] | None = None
     search_suggestions: str | None = None
 
 

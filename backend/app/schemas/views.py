@@ -11,7 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .shared_models import InterviewContext, ScoreCard
 
-__all__ = ["PROGRESS_STEPS", "SessionStatus", "SessionView"]
+__all__ = ["PROGRESS_STEPS", "PrepStepStatus", "SessionStatus", "SessionView"]
+
+PrepStepStatus = Literal["running", "complete", "unavailable", "skipped"]
 
 # complete 表示评分完成；no_answers 表示无回答并跳过评分，避免生成误导性的零分报告。
 SessionStatus = Literal[
@@ -37,6 +39,7 @@ class SessionView(BaseModel):
     session_id: str
     status: SessionStatus
     progress: list[str] = Field(default_factory=list)
+    prep_step_statuses: dict[str, PrepStepStatus] = Field(default_factory=dict)
     prep_warnings: list[str] = Field(default_factory=list)
     context: InterviewContext | None = None
     # 评分完成后供网页通过 API 读取报告，支持没有 Supabase 的部署。

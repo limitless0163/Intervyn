@@ -291,6 +291,26 @@
             "unavailable"
           ]
         },
+        "research_error": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "not_configured",
+                "unsupported_provider",
+                "no_sources",
+                "timeout",
+                "request_failed",
+                "invalid_company",
+                "invalid_response"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "search_suggestions": {
           "default": null,
           "anyOf": [

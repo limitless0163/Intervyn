@@ -73,6 +73,7 @@ export const SAMPLE_INTERVIEW_CONTEXT: InterviewContext = {
     industry: "Fintech / Payments",
     sources: [],
     research_status: "unavailable",
+    research_error: null,
     search_suggestions: null,
     tech_stack: ["Go", "Kafka", "PostgreSQL", "Kubernetes"],
     values: ["Correctness over speed", "Ownership", "Customer obsession"],
