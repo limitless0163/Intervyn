@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./docs/assets/logo.png" alt="Intervyn logo" width="96" height="96">
+
 # Intervyn
 
 <p align="center">
