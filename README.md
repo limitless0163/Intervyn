@@ -87,7 +87,9 @@ In the setup wizard, choose **Offline demo** to select mock LLM and search provi
 
 | Command | Purpose |
 | --- | --- |
-| `make dev` | Start the hot-reload development stack; automatically include the LiveKit voice worker when configured |
+| `make dev` | Reuse existing images, containers, and caches; build missing images on first startup; automatically include the LiveKit voice worker when configured |
+| `make stop` | Stop services while retaining containers and caches for the next startup |
+| `make rebuild` | Rebuild Docker images and start services after dependency or Dockerfile changes; refresh anonymous volumes when containers are recreated |
 | `pnpm --dir frontend build` | Build workspace packages and applications |
 | `pnpm --dir frontend typecheck` | Type-check TypeScript workspace packages |
 | `pnpm --dir frontend test` | Run workspace tests |
@@ -96,6 +98,8 @@ In the setup wizard, choose **Offline demo** to select mock LLM and search provi
 | `pnpm --dir frontend lint` | Check configured frontend files and run agent Ruff checks |
 | `pnpm --dir frontend gen:schema` | Regenerate shared JSON Schemas |
 | `uv --directory backend/services/lightrag run pytest` | Run the separate knowledge-sidecar tests |
+
+For daily development, use `make stop` followed by `make dev`. Mounted source changes use hot reload; dependency or Dockerfile changes require `make rebuild`. `make down` removes containers, so their anonymous dependency and Next.js cache volumes will not be automatically reused on the next startup.
 
 `pnpm --dir frontend dev` starts the web package only; it does not start the Python API or LiveKit worker.
 

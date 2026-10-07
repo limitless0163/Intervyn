@@ -87,13 +87,17 @@ docker compose up --build
 
 | 命令 | 用途 |
 | --- | --- |
-| `make dev` | 启动热更新开发环境；LiveKit 配置齐全时自动启动语音 Worker |
+| `make dev` | 复用已有镜像、容器和缓存；首次启动时构建缺失镜像；LiveKit 配置齐全时自动启动语音 Worker |
+| `make stop` | 停止服务，保留容器和缓存供下次启动复用 |
+| `make rebuild` | 修改依赖或 Dockerfile 后重新构建镜像并启动；重新创建容器时刷新匿名数据卷 |
 | `pnpm --dir frontend build` | 构建工作区包和应用 |
 | `pnpm --dir frontend typecheck` | 对 TypeScript 工作区包进行类型检查 |
 | `pnpm --dir frontend test` | 运行工作区测试 |
 | `pnpm --dir frontend lint` | 检查指定的前端文件并运行 Agent Ruff 检查 |
 | `pnpm --dir frontend gen:schema` | 重新生成共享 JSON Schema |
 | `uv --directory backend/services/lightrag run pytest` | 运行独立的知识 Sidecar 测试 |
+
+日常开发使用 `make stop` 停止、`make dev` 启动。挂载的源码修改会热更新；修改依赖或 Dockerfile 后使用 `make rebuild`。`make down` 会移除容器，下次启动不会自动复用其匿名依赖卷和 Next.js 缓存卷。
 
 `pnpm --dir frontend dev` 只启动 Web 包，不会启动 Python API 或 LiveKit Worker。
 
