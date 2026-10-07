@@ -1,8 +1,9 @@
-.PHONY: help setup install dev up start stop down restart logs logs-web ps shell build typecheck test lint format schema
+.PHONY: help setup install dev rebuild up start stop down restart logs logs-web ps shell build typecheck test lint format schema
 
 LIVEKIT_CONFIGURED := $(shell [ -f .env ] && grep -Eq '^LIVEKIT_URL=.+$$' .env && grep -Eq '^LIVEKIT_API_KEY=.+$$' .env && grep -Eq '^LIVEKIT_API_SECRET=.+$$' .env && echo 1)
 LIVE_PROFILE = $(if $(LIVEKIT_CONFIGURED),--profile live)
 COMPOSE = docker compose $(LIVE_PROFILE)
+COMPOSE_UP_FLAGS ?=
 DOCKER_START_TIMEOUT ?= 120
 WEB_START_TIMEOUT ?= 180
 WORKER_START_TIMEOUT ?= 120
@@ -16,7 +17,7 @@ setup: ## 安装前端和后端开发依赖
 install: ## 根据锁文件安装 pnpm 依赖
 	pnpm --dir frontend install --frozen-lockfile
 
-dev: ## 启动 Docker 开发环境；LiveKit 配置齐全时也启动语音 Worker
+dev: ## 复用已有镜像和容器启动开发环境；首次启动自动构建
 	@set -eu; \
 	if ! command -v docker >/dev/null 2>&1; then \
 		echo "错误：未找到 docker 命令，请先安装 Docker Desktop。" >&2; exit 1; \
@@ -47,11 +48,13 @@ dev: ## 启动 Docker 开发环境；LiveKit 配置齐全时也启动语音 Work
 			sleep 1; \
 		done; \
 	fi; \
-	$(COMPOSE) up --build --renew-anon-volumes -d; \
+	$(COMPOSE) up $(COMPOSE_UP_FLAGS) -d; \
 	if [ "$(LIVEKIT_CONFIGURED)" = "1" ]; then \
 		echo "等待 LiveKit Worker 注册（最多 $(WORKER_START_TIMEOUT) 秒）……"; \
+		worker_id=$$($(COMPOSE) ps --quiet agent-worker); \
+		worker_started_at=$$(docker inspect --format '{{.State.StartedAt}}' "$$worker_id"); \
 		attempt=0; \
-		until $(COMPOSE) logs --no-color --tail=100 agent-worker 2>/dev/null | grep -q "registered worker"; do \
+		until $(COMPOSE) logs --no-color --since "$$worker_started_at" agent-worker 2>/dev/null | grep -q "registered worker"; do \
 			attempt=$$((attempt + 1)); \
 			if [ "$$attempt" -ge "$(WORKER_START_TIMEOUT)" ]; then \
 				echo "错误：LiveKit Worker 未能注册，最近日志如下：" >&2; \
@@ -64,18 +67,24 @@ dev: ## 启动 Docker 开发环境；LiveKit 配置齐全时也启动语音 Work
 		echo "LiveKit 配置不完整，按离线模式启动；语音 Worker 未启动。"; \
 	fi; \
 	echo "等待前端就绪（最多 $(WEB_START_TIMEOUT) 秒）……"; \
-	attempt=0; \
-	until curl --fail --silent http://localhost:3000/api/health >/dev/null; do \
-		attempt=$$((attempt + 1)); \
-		if [ "$$attempt" -ge "$(WEB_START_TIMEOUT)" ]; then \
+	deadline=$$(($$(date +%s) + $(WEB_START_TIMEOUT))); \
+	while :; do \
+		remaining=$$((deadline - $$(date +%s))); \
+		if [ "$$remaining" -le 0 ]; then \
 			echo "错误：前端启动超时，最近日志如下：" >&2; \
 			$(COMPOSE) logs --tail=80 web; exit 1; \
 		fi; \
+		request_timeout=$$remaining; \
+		if [ "$$request_timeout" -gt 5 ]; then request_timeout=5; fi; \
+		if curl --fail --silent --connect-timeout 2 --max-time "$$request_timeout" http://localhost:3000/api/health >/dev/null; then break; fi; \
 		sleep 1; \
 	done; \
 	echo "前端已就绪：http://localhost:3000"; \
 	if command -v open >/dev/null 2>&1; then open http://localhost:3000 >/dev/null 2>&1 || true; \
 	elif command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:3000 >/dev/null 2>&1 || true; fi
+
+rebuild: COMPOSE_UP_FLAGS = --build --renew-anon-volumes
+rebuild: dev ## 重新构建 Docker 镜像并启动；重新创建容器时刷新依赖与缓存卷
 
 up: dev ## 同 make dev
 

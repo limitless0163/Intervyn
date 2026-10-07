@@ -204,7 +204,8 @@ services:
     volumes:
       - .:/repo
       # Keep Linux workspace dependencies separate from host node_modules.
-      # `make dev` renews these anonymous volumes when the image changes.
+      # `make dev` reuses these volumes; `make rebuild` renews them when
+      # containers are recreated so dependencies match the rebuilt image.
       - /repo/frontend/node_modules
       - /repo/frontend/cli/node_modules
       - /repo/frontend/packages/shared/node_modules
