@@ -26,7 +26,10 @@ COPY packages/shared/package.json packages/shared/package.json
 COPY packages/ee/package.json packages/ee/package.json
 COPY packages/agent/package.json packages/agent/package.json
 COPY cli/package.json cli/package.json
-RUN pnpm install --frozen-lockfile
+# Optional native downloads can fail without failing pnpm's install. Verify
+# SWC here so a broken image cannot start Next and hang on its first request.
+RUN pnpm install --frozen-lockfile \
+ && node -e "const { createRequire } = require('node:module'); const requireNext = createRequire(require.resolve('next/package.json')); requireNext('@next/swc-linux-' + process.arch + '-gnu');"
 
 # ---- builder: build @intervyn/shared then the web app ------------------
 FROM node:22-slim AS builder
