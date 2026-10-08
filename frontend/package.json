@@ -9,6 +9,7 @@
     "test": "turbo run test && pnpm test:web",
     "test:sidecar": "uv --directory ../backend/services/lightrag run pytest",
     "test:all": "pnpm test && pnpm test:sidecar",
+    "test:smoke": "python3 ../scripts/test-smoke.py",
     "test:live": "uv --directory ../backend run --extra livekit pytest -q",
     "gen:schema": "turbo run gen:schema",
     "dev": "turbo run build --filter @intervyn/shared --filter @intervyn/ee && next dev",

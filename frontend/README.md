@@ -42,8 +42,12 @@ For a full local stack, use `docker compose up --build` from the repository root
 | `pnpm --dir frontend build` | Build workspace packages and applications |
 | `pnpm --dir frontend typecheck:web` | Generate route types and type-check the app |
 | `pnpm --dir frontend test:web` | Run frontend Vitest tests |
+| `pnpm --dir frontend test:all` | Run workspace tests and the separate knowledge sidecar suite |
+| `pnpm --dir frontend test:smoke` | Build and test web → agent → knowledge over real local HTTP, including upstream outages |
 | `pnpm --dir frontend --filter @intervyn/shared gen:schema` | Regenerate JSON Schemas from the Zod contracts |
 | `pnpm --dir frontend --filter @intervyn/cli build` | Build the CLI used by `pnpm --dir frontend intervyn` |
+
+The smoke command requires both Python environments (`uv --directory backend sync` and `uv --directory backend/services/lightrag sync`) and the installed pnpm workspace. It builds with offline public configuration, uses temporary loopback ports, mock models and in-memory storage, and cleans up its processes automatically. It does not require Docker or cloud credentials. Its web build replaces the local `.next` output; rebuild with your normal configuration before using that output for deployment.
 
 Build the workspace before using `pnpm --dir frontend intervyn`; the frontend workspace command runs `frontend/cli/dist/index.js`.
 
