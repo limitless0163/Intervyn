@@ -65,3 +65,18 @@ def test_coach_transcript_api_writes_only_coach_history(monkeypatch):
         assert repo._rows[sid].coach_transcript == coaching
         assert repo.get_status(sid) == "complete"
         assert client.post("/api/session/missing/coach-transcript", json={"transcript": []}).status_code == 404
+
+
+def test_live_result_rejects_excessive_transcript_before_writing(monkeypatch):
+    def unexpected():
+        raise AssertionError("invalid payload must not access the repository")
+
+    monkeypatch.setattr(session_api, "build_deps", unexpected)
+    app = create_app()
+    app.dependency_overrides[require_internal_secret] = lambda: None
+    with TestClient(app) as client:
+        response = client.post("/api/session/sess_x/live-result", json={
+            "context": build_mock(InterviewContext).model_dump(),
+            "transcript": [{"role": "user", "text": "x"}] * 1001,
+        })
+    assert response.status_code == 422

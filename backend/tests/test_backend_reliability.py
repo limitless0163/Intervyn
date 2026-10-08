@@ -219,3 +219,34 @@ def test_model_clients_close_on_success_and_failure(monkeypatch, provider, failu
     else:
         assert asyncio.run(adapter.complete_text(system="sys", user="user")) == "answer"
     assert "async" in closed
+
+
+@pytest.mark.parametrize("cancel_after_ready", [False, True])
+def test_prep_cancellation_recovers_state_without_revoking_ready_session(monkeypatch, cancel_after_ready):
+    from app.services.prep import pipeline
+
+    from .test_repository import _prep_request
+
+    deps = build_deps()
+    req = _prep_request()
+
+    async def exercise():
+        entered = asyncio.Event()
+
+        async def pending(*args):
+            entered.set()
+            await asyncio.Event().wait()
+
+        target = "_ingest_prep_materials" if cancel_after_ready else "fetch_cv"
+        monkeypatch.setattr(pipeline, target, pending)
+        sid = await deps.repo.create_session(req)
+        task = asyncio.create_task(pipeline.run_prep_for_session(sid, req, deps))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        view = await deps.repo.get_session_view(sid)
+        assert view.status == ("ready" if cancel_after_ready else "error")
+        assert (view.context is not None) == cancel_after_ready
+
+    asyncio.run(exercise())

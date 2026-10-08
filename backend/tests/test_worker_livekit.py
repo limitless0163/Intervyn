@@ -238,6 +238,12 @@ class _RecordingRepo:
             raise RuntimeError("store down")
         await self.inner.save_context(session_id, ctx)
 
+    async def save_live_state(self, session_id, ctx, turns, status) -> None:
+        self.calls.append(("save_live_state", session_id))
+        if self.fail_save_context:
+            raise RuntimeError("store down")
+        await self.inner.save_live_state(session_id, ctx, turns, status)
+
     async def update_status(self, session_id: str, status: str) -> None:
         self.calls.append((f"update_status:{status}", session_id))
         await self.inner.update_status(session_id, status)
@@ -468,7 +474,7 @@ def test_shutdown_blank_saved_answers_still_count_as_no_answers(
 def test_shutdown_falls_back_to_repo_when_api_post_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """API 回写失败后按转录、上下文顺序回写仓库；有答案且回写成功后继续触发评分。"""
+    """API 回写失败后原子回写仓库；有答案且回写成功后继续触发评分。"""
     drive = _drive_entrypoint(monkeypatch, live_result_ok=False)
     ud = drive.userdata
     q1 = state.current_question(ud)
@@ -479,10 +485,9 @@ def test_shutdown_falls_back_to_repo_when_api_post_fails(
 
     # 先尝试 API 回写，再进入仓库兜底。
     assert drive.http.urls()[0].endswith("/live-result")
-    # 兜底须按转录、上下文顺序回写。
+    # 兜底须一次保存完整状态。
     assert drive.repo.calls == [
-        ("save_transcript", drive.session_id),
-        ("save_context", drive.session_id),
+        ("save_live_state", drive.session_id),
     ]
     repo = build_deps().repo
     persisted = asyncio.run(repo.load_context(drive.session_id))

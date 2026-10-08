@@ -87,7 +87,7 @@ def _markitdown_extract(data: bytes, mime: str) -> str:
         result = MarkItDown().convert(tmp_path)
         return (result.text_content or "").strip()
     except Exception as exc:  # noqa: BLE001 - 转换失败时返回空正文
-        log.warning("markitdown conversion failed (%s)", exc)
+        log.warning("markitdown conversion failed (%s)", type(exc).__name__)
         return ""
     finally:
         if tmp_path:
@@ -128,7 +128,7 @@ async def _gemini_extract(data: bytes, mime: str, deps: Deps) -> str:
             await client.aio.aclose()
             client.close()
     except Exception as exc:  # noqa: BLE001 - 模型提取失败时返回空正文
-        log.warning("Gemini CV extraction failed (%s)", exc)
+        log.warning("Gemini CV extraction failed (%s)", type(exc).__name__)
         return ""
 
 
@@ -199,7 +199,7 @@ async def _fetch_url_bytes(cv_url: str) -> tuple[bytes, str] | None:
     手动跟随有限次重定向并逐跳校验目标，避免公网 URL 跳转内网后绕过检查。
     """
     if not _is_fetchable_url(cv_url):
-        log.warning("fetch_cv: refusing non-public URL %r", cv_url)
+        log.warning("fetch_cv: refusing non-public URL")
         return None
     try:
         async with asyncio.timeout(_CV_FETCH_TIMEOUT_SEC):
@@ -230,7 +230,8 @@ async def _fetch_url_bytes(cv_url: str) -> tuple[bytes, str] | None:
                 log.warning("fetch_cv: too many redirects")
                 return None
     except Exception as exc:  # noqa: BLE001 - 读取失败由调用方降级
-        log.warning("fetch_cv: could not GET %r (%s)", cv_url, exc)
+        # 简历地址可能包含签名令牌，异常也可能带出 URL；只记录错误类型。
+        log.warning("fetch_cv: remote read failed (%s)", type(exc).__name__)
         return None
 
 
@@ -303,4 +304,4 @@ async def extract_cv_text(cv_url: str, deps: Deps) -> tuple[str, list[str]]:
         # 文档解析失败时保留 URL，同时返回解析警告。
         return cv_url, warnings
 
-    return cv_url, []
+    return _bounded_text(cv_url)

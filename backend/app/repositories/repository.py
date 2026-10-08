@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import uuid4
 
@@ -29,6 +30,10 @@ class SessionRepository(Protocol):
     async def create_session(self, req: PrepRequest) -> str: ...
 
     async def save_context(self, session_id: str, ctx: InterviewContext) -> None: ...
+
+    async def save_live_state(
+        self, session_id: str, ctx: InterviewContext, turns: list[dict], status: str | None,
+    ) -> None: ...
 
     async def load_context(self, session_id: str) -> InterviewContext | None: ...
 
@@ -98,6 +103,17 @@ class MemoryRepository:
     async def save_context(self, session_id: str, ctx: InterviewContext) -> None:
         row = self._require(session_id)
         row.context = ctx.model_dump()
+
+    async def save_live_state(
+        self, session_id: str, ctx: InterviewContext, turns: list[dict], status: str | None,
+    ) -> None:
+        # 先构建快照，再一次替换；序列化失败也不能留下部分写入。
+        row = self._require(session_id)
+        context = ctx.model_dump()
+        transcript = deepcopy(turns) if turns else row.transcript
+        row.context, row.transcript = context, transcript
+        if status is not None:
+            row.status = status
 
     async def load_context(self, session_id: str) -> InterviewContext | None:
         row = self._rows.get(session_id)
@@ -189,25 +205,44 @@ class SupabaseRepository:
         self._url = url
         self._key = service_role_key
         self._client: Any | None = None
+        self._client_lock = Lock()
         # 准备图并行分支会同时修改进度/警告；串行化本实例的读改写，防止丢失更新。
         self._mutation_locks = KeyedLocks()
 
     def _table(self) -> Any:
-        if self._client is None:
-            try:
-                from supabase import create_client
-            except ImportError as exc:  # pragma: no cover - 依赖可选 SDK
-                raise RuntimeError(
-                    "supabase is not installed; install the 'supabase' extra."
-                ) from exc
-            self._client = create_client(self._url, self._key)
+        # _table 在线程池中调用，首次并发访问也只能创建一个连接池。
+        with self._client_lock:
+            if self._client is None:
+                try:
+                    from supabase import create_client
+                except ImportError as exc:  # pragma: no cover - 依赖可选 SDK
+                    raise RuntimeError(
+                        "supabase is not installed; install the 'supabase' extra."
+                    ) from exc
+                self._client = create_client(self._url, self._key)
         return self._client.table("sessions")
 
     async def _exec(self, build: Any) -> Any:
         """在线程中执行同步 SDK 调用，避免阻塞 API 的异步事件循环。"""
         import asyncio
 
-        return await asyncio.to_thread(build)
+        # 取消协程不能停止同步 SDK 的线程。等待它真正结束才释放外层会话锁，
+        # 否则迟到写入可能覆盖下一次请求的更新。SDK 自身的网络时限仍然生效。
+        task = asyncio.create_task(asyncio.to_thread(build))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:  # noqa: BLE001 - 线程失败也必须保留调用方取消语义
+                    break
+            # 获取线程异常，避免产生无人读取的任务异常；保留原取消语义。
+            if not task.cancelled():
+                task.exception()
+            raise
 
     async def create_session(self, req: PrepRequest) -> str:
         session_id = _new_session_id()
@@ -229,6 +264,17 @@ class SupabaseRepository:
     async def save_context(self, session_id: str, ctx: InterviewContext) -> None:
         async with self._mutation_locks.get(session_id):
             await self._update(session_id, {"context": ctx.model_dump()})
+
+    async def save_live_state(
+        self, session_id: str, ctx: InterviewContext, turns: list[dict], status: str | None,
+    ) -> None:
+        values: dict[str, Any] = {"context": ctx.model_dump()}
+        if turns:
+            values["transcript"] = deepcopy(turns)
+        if status is not None:
+            values["status"] = status
+        async with self._mutation_locks.get(session_id):
+            await self._update(session_id, values)
 
     async def load_context(self, session_id: str) -> InterviewContext | None:
         def _build() -> Any:

@@ -27,7 +27,7 @@ class LiveResultRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     context: InterviewContext
-    transcript: list[dict] = Field(default_factory=list)
+    transcript: list[dict] = Field(default_factory=list, max_length=1000)
     # 仅接受白名单终态，避免工作进程任意改写评分状态。
     status: str | None = None
 

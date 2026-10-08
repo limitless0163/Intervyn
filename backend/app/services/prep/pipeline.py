@@ -70,7 +70,9 @@ async def _ingest_prep_materials(
             track_id,
         )
     except Exception as exc:  # noqa: BLE001 - 知识入库失败不能阻断准备
-        log.warning("prep: knowledge ingest failed for session %s (%s)", session_id, exc)
+        log.warning(
+            "prep: knowledge ingest failed for session %s (%s)", session_id, type(exc).__name__
+        )
 
 
 async def run_prep(req: PrepRequest, deps: Deps) -> str:
@@ -139,9 +141,14 @@ async def run_prep_for_session(
 
             # 为后续教练问答提供依据；入库失败不阻断准备流程。
             await _ingest_prep_materials(session_id, req, cv_text, ctx, deps)
-        except Exception:
-            log.exception("run_prep_for_session(%s) failed", session_id)
+        except (Exception, asyncio.CancelledError) as exc:
+            log.warning("run_prep_for_session(%s) failed (%s)", session_id, type(exc).__name__)
             try:
-                await deps.repo.update_status(session_id, "error")
+                # 知识入库在 ready 之后执行；取消入库不能撤销已完成的准备。
+                view = await deps.repo.get_session_view(session_id)
+                if view is not None and view.status == "prep":
+                    await deps.repo.update_status(session_id, "error")
             except Exception:  # noqa: BLE001 - 尽力记录失败状态
                 log.warning("could not mark session %s as error", session_id)
+            if isinstance(exc, asyncio.CancelledError):
+                raise

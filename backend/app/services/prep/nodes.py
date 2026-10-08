@@ -80,7 +80,7 @@ async def _warn(state: PrepState, deps: Deps, warnings: list[str]) -> None:
 async def fetch_cv(state: PrepState, deps: Deps) -> PrepState:
     """提取简历正文并保存警告；若 cv_text 键已存在，则不重复解析。
 
-    空正文也视为已解析，避免重复警告和多模态费用；意外异常时保留原输入。
+    空正文也视为已解析，避免重复警告和多模态费用；意外异常时使用空正文。
     """
     if "cv_text" in state:
         return {}
@@ -88,9 +88,10 @@ async def fetch_cv(state: PrepState, deps: Deps) -> PrepState:
     req = state["req"]
     try:
         cv_text, warnings = await extract_cv_text(req.cv_url, deps)
-    except Exception as exc:  # noqa: BLE001 - 提取异常时保留原输入
-        log.warning("fetch_cv: extraction failed, using cv_url as text (%s)", exc)
-        return {"cv_text": req.cv_url}
+    except Exception as exc:  # noqa: BLE001 - 不能把文件地址或 base64 当作候选人正文
+        log.warning("fetch_cv: extraction failed (%s)", type(exc).__name__)
+        await _warn(state, deps, ["Could not extract the CV; proceeding without candidate text."])
+        return {"cv_text": ""}
     if warnings:
         await _warn(state, deps, warnings)
     return {"cv_text": cv_text}
@@ -107,7 +108,7 @@ async def cv_analysis(state: PrepState, deps: Deps) -> PrepState:
             timeout=deps.settings.llm_call_timeout_sec,
         )
     except Exception as exc:  # noqa: BLE001 - 分析失败时降级而不中断准备
-        log.warning("cv_analysis failed, using minimal profile (%s)", exc)
+        log.warning("cv_analysis failed, using minimal profile (%s)", type(exc).__name__)
         candidate = build_mock(CandidateProfile)
         await _warn(state, deps, ["Could not analyze the CV; used a minimal profile."])
     await _mark(state, deps, "cv_analysis")
@@ -126,7 +127,7 @@ async def jd_analysis(state: PrepState, deps: Deps) -> PrepState:
             timeout=deps.settings.llm_call_timeout_sec,
         )
     except Exception as exc:  # noqa: BLE001 - 分析失败时降级而不中断准备
-        log.warning("jd_analysis failed, using minimal job spec (%s)", exc)
+        log.warning("jd_analysis failed, using minimal job spec (%s)", type(exc).__name__)
         job = build_mock(JobSpec)
         await _warn(
             state, deps, ["Could not analyze the job description; used a minimal spec."]

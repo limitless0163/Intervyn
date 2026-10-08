@@ -20,7 +20,7 @@ FlushFn = Callable[["InterviewContext", list[dict]], Awaitable[None]]
 
 
 class TranscriptFlusher:
-    """仅在转录增长后保存上下文快照；失败会重试，但不保证固定时间内持久化。"""
+    """转录或上下文变化后保存快照；失败会重试，但不保证固定时间内持久化。"""
 
     def __init__(
         self,
@@ -33,7 +33,8 @@ class TranscriptFlusher:
         self._flush = flush
         self._interval = float(interval_sec)
         self._task: asyncio.Task[None] | None = None
-        self._last_len = 0
+        self._saved_transcript: list[dict] = []
+        self._saved_context = copy.deepcopy(userdata.ctx)
 
     def start(self) -> None:
         """启动后台检查点任务；重复调用不重复启动，非正间隔禁用检查点。"""
@@ -51,15 +52,20 @@ class TranscriptFlusher:
             self._task = None
 
     async def _checkpoint(self) -> None:
-        """仅在转录条数增长时保存快照，成功后更新已保存水位。"""
-        transcript = copy.deepcopy(self._ud.transcript)
-        if len(transcript) <= self._last_len:
+        """检测同条数转录修正与回答/游标更新；失败时保留旧快照供下次重试。"""
+        if (
+            self._ud.transcript == self._saved_transcript
+            and self._ud.ctx == self._saved_context
+        ):
             return
+        transcript = copy.deepcopy(self._ud.transcript)
+        context = copy.deepcopy(self._ud.ctx)
         try:
             # 网络等待期间游标可能前进，先复制上下文以保持它与转录快照一致。
-            await self._flush(copy.deepcopy(self._ud.ctx), transcript)
+            await self._flush(context, transcript)
             # 仅在保存成功后推进水位，使失败的快照仍可在下一轮重试。
-            self._last_len = len(transcript)
+            self._saved_transcript = transcript
+            self._saved_context = context
         except Exception:
             log.exception("transcript_flusher: checkpoint failed; will retry")
 

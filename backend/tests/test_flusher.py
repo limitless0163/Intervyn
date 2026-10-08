@@ -69,6 +69,48 @@ def test_checkpoint_isolated_from_turn_mutations_during_network_wait():
     assert captured[0]["text"] == "snapshot"
 
 
+def test_checkpoint_saves_context_changes_and_same_length_transcript_corrections():
+    ud = _userdata([{"role": "user", "text": "draft"}])
+    snapshots = []
+
+    async def flush(ctx, transcript):
+        snapshots.append((ctx, transcript))
+
+    async def exercise():
+        flusher = TranscriptFlusher(ud, flush)
+        await flusher._checkpoint()
+        ud.ctx.name = "answer recorded after checkpoint"
+        await flusher._checkpoint()
+        ud.transcript[0]["text"] = "corrected"
+        await flusher._checkpoint()
+        await flusher._checkpoint()
+
+    asyncio.run(exercise())
+    assert len(snapshots) == 3
+    assert snapshots[0][0].name == "ctx"
+    assert snapshots[1][0].name == "answer recorded after checkpoint"
+    assert snapshots[1][1][0]["text"] == "draft"
+    assert snapshots[2][1][0]["text"] == "corrected"
+
+
+def test_context_change_during_flush_is_saved_next_tick():
+    ud = _userdata([{"role": "user", "text": "answer"}])
+    snapshots = []
+
+    async def flush(ctx, transcript):
+        snapshots.append(ctx.name)
+        ud.ctx.name = "advanced while saving"
+
+    async def exercise():
+        flusher = TranscriptFlusher(ud, flush)
+        await flusher._checkpoint()
+        await flusher._checkpoint()
+        await flusher._checkpoint()
+
+    asyncio.run(exercise())
+    assert snapshots == ["ctx", "advanced while saving"]
+
+
 def test_start_is_noop_when_interval_non_positive() -> None:
     async def flush(ctx, transcript: list[dict]) -> None: ...
 

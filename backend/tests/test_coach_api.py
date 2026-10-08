@@ -56,3 +56,21 @@ def test_coach_chat_endpoint() -> None:
     # 未配置知识检索时不返回模拟引用。
     assert reply["citations"] == []
     assert len(reply["follow_ups"]) <= 3
+
+
+def test_coach_rejects_large_inputs_before_building_dependencies(monkeypatch):
+    from app.api.routes import coach
+
+    def unexpected():
+        raise AssertionError("large inputs must not trigger external services")
+
+    monkeypatch.setattr(coach, "build_deps", unexpected)
+    with _client() as client:
+        response = client.post("/api/coach/chat", json={
+            "session_id": "sess_x", "query": "x" * 10_001, "lang": "en",
+        })
+        assert response.status_code == 413
+        response = client.post("/api/coach/plan", json={
+            "scorecard": _scorecard_body([f"skill{i}" for i in range(101)]),
+        })
+        assert response.status_code == 413

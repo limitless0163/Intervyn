@@ -187,3 +187,33 @@ def test_extracted_text_budget_adds_a_warning(monkeypatch):
     text, warnings = asyncio.run(extract_cv_text(_data_url(_REAL_CV), build_deps()))
     assert len(text) == 30
     assert "truncated" in warnings[0]
+
+
+def test_pasted_text_has_the_same_prompt_budget(monkeypatch):
+    monkeypatch.setattr(cv_extract, "_MAX_EXTRACTED_CHARS", 30)
+    text, warnings = asyncio.run(extract_cv_text(_REAL_CV, build_deps()))
+    assert text == _REAL_CV[:30]
+    assert "truncated" in warnings[0]
+
+
+def test_unexpected_extraction_failure_never_forwards_binary_payload(monkeypatch, caplog):
+    async def broken(*args):
+        raise RuntimeError("sensitive candidate document")
+
+    monkeypatch.setattr("app.services.prep.nodes.extract_cv_text", broken)
+    result = asyncio.run(fetch_cv({"req": _prep_request(_data_url(_REAL_CV))}, build_deps()))
+    assert result == {"cv_text": ""}
+    assert "sensitive candidate document" not in caplog.text
+
+
+def test_failed_remote_read_does_not_log_signed_url(monkeypatch, caplog):
+    client_type = httpx.AsyncClient
+
+    def fail(req):
+        raise httpx.ConnectError(f"failed for {req.url}", request=req)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client_type(
+        transport=httpx.MockTransport(fail), **kwargs,
+    ))
+    assert asyncio.run(cv_extract._fetch_url_bytes("https://example.com/cv?token=secret")) is None
+    assert "token=secret" not in caplog.text

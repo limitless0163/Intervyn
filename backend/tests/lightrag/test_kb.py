@@ -207,3 +207,33 @@ def test_resolved_payload_overflow_does_not_partially_ingest(monkeypatch):
     with TestClient(create_app(backend)) as client:
         assert client.post("/kb/ingest", json={"user_id": "u", "files": ["a"]}).status_code == 413
     assert backend._stores == {}
+
+
+def test_resolved_overflow_cancels_pending_downloads_and_returns_without_waiting(monkeypatch):
+    monkeypatch.delenv("LIGHTRAG_API_SECRET", raising=False)
+    monkeypatch.setattr(app_module, "_MAX_INGEST_TOTAL_LEN", 5)
+    cancelled = []
+
+    async def resolve(ref, client):
+        if ref == "a":
+            await asyncio.sleep(0)  # 让另一条下载先开始。
+            return ref, "too large"
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.append(ref)
+
+    monkeypatch.setattr(app_module, "_resolve_file", resolve)
+    backend = NaiveRAG()
+
+    async def exercise():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(backend)),
+                                     base_url="http://test") as client:
+            response = await asyncio.wait_for(client.post(
+                "/kb/ingest", json={"user_id": "u", "files": ["a", "b"]},
+            ), timeout=1)
+            assert response.status_code == 413
+
+    _run(exercise())
+    assert cancelled == ["b"]
+    assert backend._stores == {}

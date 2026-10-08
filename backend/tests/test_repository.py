@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from app.core.adapters.mock import build_mock
 from app.repositories.repository import (
@@ -380,3 +383,134 @@ def test_supabase_concurrent_mutations_preserve_all_updates(monkeypatch) -> None
         assert loaded.answers == answers
 
     asyncio.run(run())
+
+
+def test_live_state_is_one_update_and_failed_write_keeps_previous_snapshot(monkeypatch):
+    from app.services.session import save_live_result
+
+    repo, fake = _supabase_repo()
+
+    async def exercise():
+        sid = await repo.create_session(_prep_request())
+        original = build_mock(InterviewContext).model_copy(update={"session_id": sid})
+        await repo.save_context(sid, original)
+        before = json.loads(json.dumps(fake.rows[sid]))
+        new_ctx = original.model_copy(update={"answers": [], "cursor": 1})
+        turns = [{"role": "user", "text": "new transcript"}]
+        real_update = repo._update
+
+        async def unavailable(session_id, values):
+            if "context" in values:
+                raise RuntimeError("write unavailable")
+            await real_update(session_id, values)
+
+        monkeypatch.setattr(repo, "_update", unavailable)
+        with pytest.raises(RuntimeError, match="write unavailable"):
+            await save_live_result(sid, new_ctx, turns, "no_answers", repo)
+        assert fake.rows[sid] == before
+
+        monkeypatch.setattr(repo, "_update", real_update)
+        fake.log.clear()
+        await save_live_result(sid, new_ctx, turns, "no_answers", repo)
+        writes = [entry for entry in fake.log if entry[0] == "update"]
+        assert writes == [("update", {
+            "context": new_ctx.model_dump(), "transcript": turns, "status": "no_answers",
+        }, sid)]
+
+    asyncio.run(exercise())
+
+
+def test_empty_live_transcript_preserves_previous_history_and_ignores_unknown_status():
+    from app.services.session import save_live_result
+
+    async def exercise(repo):
+        sid = await repo.create_session(_prep_request())
+        ctx = build_mock(InterviewContext).model_copy(update={"session_id": sid})
+        turns = [{"role": "user", "text": "retained"}]
+        await save_live_result(sid, ctx, turns, None, repo)
+        await save_live_result(sid, ctx, [], "complete", repo)
+        assert (await repo.get_session_view(sid)).status == "prep"
+        if isinstance(repo, MemoryRepository):
+            assert repo._rows[sid].transcript == turns
+        else:
+            assert repo._client.rows[sid]["transcript"] == turns
+
+    asyncio.run(exercise(MemoryRepository()))
+    asyncio.run(exercise(_supabase_repo()[0]))
+
+
+def test_cancelled_sdk_write_holds_session_lock_until_thread_exits(monkeypatch):
+    repo, fake = _supabase_repo()
+    thread_entered, thread_release = threading.Event(), threading.Event()
+
+    async def exercise():
+        sid = await repo.create_session(_prep_request())
+        first = build_mock(InterviewContext).model_copy(update={"session_id": sid, "cursor": 1})
+        second = first.model_copy(update={"cursor": 2})
+        real_update = repo._update
+        writes = []
+
+        async def controlled_update(session_id, values):
+            def execute():
+                writes.append(values["context"]["cursor"])
+                if values["context"]["cursor"] == 1:
+                    thread_entered.set()
+                    if not thread_release.wait(timeout=2):
+                        raise RuntimeError("test thread not released")
+                fake.rows[session_id].update(values)
+
+            await repo._exec(execute)
+
+        monkeypatch.setattr(repo, "_update", controlled_update)
+        task = asyncio.create_task(repo.save_context(sid, first))
+        try:
+            assert await asyncio.to_thread(thread_entered.wait, 1)
+            task.cancel()
+            next_task = asyncio.create_task(repo.save_context(sid, second))
+            await asyncio.sleep(0)
+            task.cancel()  # 再次取消也不能提前释放锁。
+            await asyncio.sleep(0)
+            assert not task.done()
+            assert writes == [1]
+        finally:
+            thread_release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await next_task
+        monkeypatch.setattr(repo, "_update", real_update)
+        assert writes == [1, 2]
+        assert (await repo.load_context(sid)).cursor == 2
+
+    asyncio.run(exercise())
+
+
+def test_supabase_lazy_client_initialization_is_thread_safe(monkeypatch):
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+
+    repo = SupabaseRepository("https://example.supabase.co", "key")
+    created = []
+    start = threading.Barrier(8)
+    constructing, release = threading.Event(), threading.Event()
+
+    def create_client(*args):
+        created.append(_FakeSupabaseClient())
+        constructing.set()
+        assert release.wait(timeout=2)
+        return created[-1]
+
+    def get_table():
+        start.wait(timeout=2)
+        return repo._table()
+
+    monkeypatch.setitem(sys.modules, "supabase", SimpleNamespace(create_client=create_client))
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(get_table) for _ in range(8)]
+        try:
+            assert constructing.wait(timeout=1)
+        finally:
+            release.set()
+        tables = [future.result(timeout=2) for future in futures]
+    assert len(created) == 1
+    assert all(table._store is created[0].rows for table in tables)

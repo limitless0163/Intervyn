@@ -38,8 +38,6 @@ async def save_live_result(
             raise SessionIdentityError("Context session_id must match the URL")
         if view.status in _CLOSED_FOR_LIVE_WRITES:
             raise SessionConflictError(f"Session already {view.status}")
-        if transcript:
-            await repo.save_transcript(session_id, transcript)
-        await repo.save_context(session_id, context)
-        if status in {"no_answers", "error"}:
-            await repo.update_status(session_id, status)
+        await repo.save_live_state(
+            session_id, context, transcript, status if status in {"no_answers", "error"} else None,
+        )

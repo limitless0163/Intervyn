@@ -132,15 +132,28 @@ def create_app(backend: RagBackend | None = None) -> FastAPI:
         ):
             raise HTTPException(status_code=413, detail="Ingest payload too large")
         semaphore = asyncio.Semaphore(_FETCH_CONCURRENCY)
+        resolved_chars = 0
         async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
             async def resolve(ref: str) -> tuple[str, str]:
+                nonlocal resolved_chars
                 async with semaphore:
-                    return await _resolve_file(ref, client)
+                    result = await _resolve_file(ref, client)
+                    # 边读取边计数，避免所有 URL 下载完才发现已累计几十 MB。
+                    resolved_chars += len(result[1])
+                    if resolved_chars > _MAX_INGEST_TOTAL_LEN:
+                        raise HTTPException(status_code=413, detail="Resolved documents too large")
+                    return result
 
-            resolved = await asyncio.gather(*(resolve(ref) for ref in req.files))
+            tasks = [asyncio.create_task(resolve(ref)) for ref in req.files]
+            try:
+                resolved = await asyncio.gather(*tasks)
+            finally:
+                # gather 首次异常不会取消兄弟任务；关闭客户端前必须收回在途下载。
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
         docs = [(source_id, text) for source_id, text in resolved if text]
-        if sum(len(text) for _, text in docs) > _MAX_INGEST_TOTAL_LEN:
-            raise HTTPException(status_code=413, detail="Resolved documents too large")
         track_id = await backend.ingest(req.user_id, docs)
         return KbIngestResponse(track_id=track_id)
 
