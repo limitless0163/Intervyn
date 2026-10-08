@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { LandingLanguageMenu } from "@/components/landing/language-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 import { cn } from "@/utils/cn";
@@ -32,6 +33,7 @@ export function AppHeader({ children }: { children?: ReactNode }) {
             <span>{t(messages, "setup.backHome")}</span>
           </Link>
           <LandingLanguageMenu />
+          <ThemeToggle />
         </div>
       </div>
     </header>

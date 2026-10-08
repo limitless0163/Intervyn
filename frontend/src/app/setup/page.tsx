@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { Button } from "@/components/ui/button";
 import { LandingLanguageMenu } from "@/components/landing/language-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { SetupForm } from "@/components/setup/setup-form";
 import { getMessages, t } from "@/lib/i18n";
 import "@/styles/landing.css";
@@ -51,6 +52,7 @@ export default async function SetupPage() {
               <span>{t(messages, "setup.backHome")}</span>
             </Link>
             <LandingLanguageMenu />
+            <ThemeToggle />
             {user && (
               <form action="/auth/signout" method="post">
                 <Button type="submit" variant="ghost" size="sm">

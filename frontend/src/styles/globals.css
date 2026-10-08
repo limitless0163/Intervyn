@@ -32,6 +32,102 @@ html[lang="zh-CN"] {
   --font-sans: var(--font-chinese);
 }
 
+/* GLM Coding Plan's cool white canvas, graphite type, quiet gray surfaces,
+   and blue accents. Dark values above remain the default for existing users. */
+html[data-theme="light"] {
+  color-scheme: light;
+  --color-paper: #f7f8fa;
+  --color-panel: #ffffff;
+  --color-field: #f7f8fa;
+  --color-ink: #131212;
+  --color-ink-soft: #4d4f54;
+  --color-muted: #62646b;
+  --color-faint: #71747c;
+  --color-line: #e2e4e9;
+  --color-line-2: #eceef2;
+  --color-accent: #315bdc;
+  --color-accent-soft: #edf1ff;
+  --color-ok: #237452;
+  --color-ok-soft: #eaf5ef;
+  --color-warning: #7753b1;
+  --color-warning-soft: #f2edfa;
+
+  --nav-background: #f7f8fae6;
+  --surface-tile: #f0f1f3;
+  --surface-raised: #ffffff;
+  --surface-hover: #eaecef;
+  --surface-preview: #ffffff;
+  --text-secondary: #4d4f54;
+  --text-subtle: #62646b;
+  --text-accent: #315bdc;
+  --text-caution: #906019;
+  --hero-accent: #131212;
+  --border-strong: #e0e3e9;
+  --border-subtle: #eceef2;
+  --border-accent: #b8c8f5;
+  --border-warning: #d6c6ed;
+  --border-ok: #b7d9c7;
+  --decoration-dot: #c4c8d0;
+  --primary-background: #131212;
+  --primary-hover-background: #303136;
+  --primary-foreground: #ffffff;
+  --shadow-color: #182b4d12;
+
+  --persona-anime-top: #e5e4f7;
+  --persona-anime-bottom: #f4f3fc;
+  --persona-anime-ink: #6556a2;
+  --persona-superhero-top: #f3e3ef;
+  --persona-superhero-bottom: #fcf4f9;
+  --persona-superhero-ink: #94527d;
+  --persona-recruiter-top: #dfeaf9;
+  --persona-recruiter-bottom: #f0f5fc;
+  --persona-recruiter-ink: #466a9d;
+  --persona-professor-top: #deeee5;
+  --persona-professor-bottom: #eff8f3;
+  --persona-professor-ink: #447b60;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-panel);
+  color: var(--color-ink-soft);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms,
+    border-color 150ms;
+}
+.theme-toggle:hover {
+  border-color: var(--color-faint);
+  background: var(--color-line-2);
+  color: var(--color-ink);
+}
+.theme-toggle svg {
+  flex-shrink: 0;
+}
+.theme-toggle span {
+  width: 32px;
+}
+@media (max-width: 639px) {
+  .theme-toggle {
+    padding: 0;
+  }
+  .theme-toggle span {
+    display: none;
+  }
+}
+
 @layer base {
   html {
     min-height: 100%;

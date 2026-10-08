@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { MobileMenu } from "@/components/landing/mobile-menu";
 import { LandingLanguageMenu } from "@/components/landing/language-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 
@@ -32,6 +33,7 @@ export function Nav() {
           </div>
         </div>
         <div className="landing-nav-actions">
+          <ThemeToggle />
           <div className="landing-nav-desktop-actions">
             <LandingLanguageMenu />
             <Link href="/setup" className="landing-nav-start">

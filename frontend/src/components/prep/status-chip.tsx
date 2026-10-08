@@ -26,17 +26,17 @@ export const MASTERY_COLORS: Record<
   learning: {
     bg: "var(--color-accent-soft)",
     fg: "var(--color-accent)",
-    border: "#3c456b",
+    border: "var(--border-accent, #3c456b)",
   },
   shaky: {
     bg: "var(--color-warning-soft)",
     fg: "var(--color-warning)",
-    border: "#4a3c64",
+    border: "var(--border-warning, #4a3c64)",
   },
   mastered: {
     bg: "var(--color-ok-soft)",
     fg: "var(--color-ok)",
-    border: "#2e5142",
+    border: "var(--border-ok, #2e5142)",
   },
 };
 

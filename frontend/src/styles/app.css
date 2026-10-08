@@ -53,7 +53,7 @@
   top: 0;
   z-index: 50;
   border-bottom: 1px solid var(--color-line-2);
-  background: #09090ae6;
+  background: var(--nav-background, #09090ae6);
   backdrop-filter: blur(16px);
 }
 .app-header-inner {

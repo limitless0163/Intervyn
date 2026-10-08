@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTheme } from "@/components/theme-provider";
 import {
   ReactFlow,
   Background,
@@ -116,13 +117,14 @@ export function MasteryFlow({
   graph: MasteryGraph;
   labels: Record<MasteryState, string>;
 }) {
+  const { theme } = useTheme();
   const { nodes, edges } = useMemo(
     () => toFlow(graph, labels),
     [graph, labels],
   );
   return (
     <ReactFlow
-      colorMode="dark"
+      colorMode={theme}
       style={{ background: "var(--color-panel)", fontFamily: "inherit" }}
       nodes={nodes}
       edges={edges}

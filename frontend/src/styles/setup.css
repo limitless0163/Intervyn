@@ -46,7 +46,7 @@
   box-shadow: none;
 }
 .setup-demo {
-  background: #151519;
+  background: var(--surface-tile, #151519);
 }
 .setup-page .setup-demo-content {
   display: flex;
@@ -65,7 +65,7 @@
 }
 .setup-sample {
   padding: 8px 12px;
-  border: 1px solid #34343c;
+  border: 1px solid var(--border-strong, #34343c);
   border-radius: 8px;
   color: var(--color-ink-soft);
   font-size: 12px;
@@ -117,22 +117,22 @@
   letter-spacing: -0.025em;
 }
 .setup-upload {
-  background: #17171c;
+  background: var(--surface-raised, #17171c);
 }
 .setup-upload:hover {
-  background: #1c1c24;
+  background: var(--surface-hover, #1c1c24);
 }
 .setup-upload > button:first-child > svg {
   box-sizing: content-box;
   padding: 12px;
-  border: 1px solid #343440;
+  border: 1px solid var(--border-strong, #343440);
   border-radius: 12px;
   color: var(--color-accent);
-  background: #21212b;
+  background: var(--surface-tile, #21212b);
 }
 .setup-page textarea,
 .setup-page input[type="text"] {
-  background: #0d0d10;
+  background: var(--color-field);
 }
 .setup-page textarea[aria-invalid="true"],
 .setup-page input[aria-invalid="true"] {
@@ -203,20 +203,36 @@
   place-items: center;
   overflow: hidden;
   border-radius: 6px;
-  background: linear-gradient(135deg, #2b2842, #181824);
-  color: #c4bded;
+  background: linear-gradient(
+    135deg,
+    var(--persona-anime-top, #2b2842),
+    var(--persona-anime-bottom, #181824)
+  );
+  color: var(--persona-anime-ink, #c4bded);
 }
 .setup-persona-poster[data-persona="superhero"] {
-  background: linear-gradient(135deg, #34303b, #1c1922);
-  color: #dec0d8;
+  background: linear-gradient(
+    135deg,
+    var(--persona-superhero-top, #34303b),
+    var(--persona-superhero-bottom, #1c1922)
+  );
+  color: var(--persona-superhero-ink, #dec0d8);
 }
 .setup-persona-poster[data-persona="recruiter"] {
-  background: linear-gradient(135deg, #253445, #171d29);
-  color: #bacce8;
+  background: linear-gradient(
+    135deg,
+    var(--persona-recruiter-top, #253445),
+    var(--persona-recruiter-bottom, #171d29)
+  );
+  color: var(--persona-recruiter-ink, #bacce8);
 }
 .setup-persona-poster[data-persona="professor"] {
-  background: linear-gradient(135deg, #293933, #18231f);
-  color: #c0d9ce;
+  background: linear-gradient(
+    135deg,
+    var(--persona-professor-top, #293933),
+    var(--persona-professor-bottom, #18231f)
+  );
+  color: var(--persona-professor-ink, #c0d9ce);
 }
 .setup-persona-poster > span:first-child {
   font-size: 24px;
@@ -241,7 +257,7 @@
   place-items: center;
   border-radius: 50%;
   background: var(--color-accent);
-  color: #121214;
+  color: var(--primary-foreground, #121214);
 }
 .setup-submit-bar {
   display: flex;
@@ -270,7 +286,7 @@
 }
 .setup-page .setup-start {
   flex-shrink: 0;
-  color: #141418;
+  color: var(--primary-foreground, #141418);
 }
 .setup-start:disabled {
   opacity: 0.4;

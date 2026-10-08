@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { LocaleProvider } from "@/components/locale-provider";
+import { ThemeProvider } from "@/components/theme-provider";
 import { getMessages, t } from "@/lib/i18n";
 import "@/styles/globals.css";
 
@@ -63,9 +64,11 @@ export default async function RootLayout({
   const store = await cookies();
   const locale = store.get("locale")?.value === "zh" ? "zh" : "en";
   const lang = locale === "zh" ? "zh-CN" : "en";
+  const theme = store.get("theme")?.value === "light" ? "light" : "dark";
   return (
     <html
       lang={lang}
+      data-theme={theme}
       data-scroll-behavior="smooth"
       className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable}`}
     >
@@ -83,7 +86,9 @@ export default async function RootLayout({
             }}
           />
         </noscript>
-        <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
+        <ThemeProvider initialTheme={theme}>
+          <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

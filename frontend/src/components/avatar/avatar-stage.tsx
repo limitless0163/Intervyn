@@ -32,30 +32,34 @@ export interface AvatarStageProps {
   className?: string;
 }
 
-/** Dark persona surfaces follow the setup picker, with distinct cool accents. */
+/** Persona surfaces follow the setup picker, with distinct cool accents. */
 const FALLBACK_STYLE: Record<
   Persona["id"],
   { gradient: string; glow: string; accent: string }
 > = {
   anime: {
-    gradient: "linear-gradient(165deg, #2b2842 0%, #181824 65%, #121214 100%)",
+    gradient:
+      "linear-gradient(165deg, var(--persona-anime-top, #2b2842) 0%, var(--persona-anime-bottom, #181824) 65%, var(--color-panel) 100%)",
     glow: "radial-gradient(120% 90% at 50% 18%, rgba(167,155,220,0.12), transparent 60%)",
-    accent: "#c4bded",
+    accent: "var(--persona-anime-ink, #c4bded)",
   },
   superhero: {
-    gradient: "linear-gradient(165deg, #34303b 0%, #1c1922 65%, #121214 100%)",
+    gradient:
+      "linear-gradient(165deg, var(--persona-superhero-top, #34303b) 0%, var(--persona-superhero-bottom, #1c1922) 65%, var(--color-panel) 100%)",
     glow: "radial-gradient(120% 90% at 50% 18%, rgba(175,149,185,0.12), transparent 60%)",
-    accent: "#dec0d8",
+    accent: "var(--persona-superhero-ink, #dec0d8)",
   },
   recruiter: {
-    gradient: "linear-gradient(165deg, #253445 0%, #171d29 65%, #121214 100%)",
+    gradient:
+      "linear-gradient(165deg, var(--persona-recruiter-top, #253445) 0%, var(--persona-recruiter-bottom, #171d29) 65%, var(--color-panel) 100%)",
     glow: "radial-gradient(120% 90% at 50% 18%, rgba(148,175,218,0.12), transparent 60%)",
-    accent: "#bacce8",
+    accent: "var(--persona-recruiter-ink, #bacce8)",
   },
   professor: {
-    gradient: "linear-gradient(165deg, #293933 0%, #18231f 65%, #121214 100%)",
+    gradient:
+      "linear-gradient(165deg, var(--persona-professor-top, #293933) 0%, var(--persona-professor-bottom, #18231f) 65%, var(--color-panel) 100%)",
     glow: "radial-gradient(120% 90% at 50% 18%, rgba(148,190,172,0.12), transparent 60%)",
-    accent: "#c0d9ce",
+    accent: "var(--persona-professor-ink, #c0d9ce)",
   },
 };
 
