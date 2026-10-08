@@ -3,7 +3,7 @@
 }
 .interview-page {
   display: flex;
-  height: 100svh;
+  height: 100dvh;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
@@ -14,6 +14,20 @@
 .interview-page > main {
   min-height: 0;
   flex: 1;
+}
+/* Short landscape screens and the software keyboard still need scroll access
+   to captions, notices and the answer controls. */
+@media (max-height: 600px) {
+  .interview-page {
+    min-height: 100dvh;
+    height: auto;
+    overflow: visible;
+  }
+  .interview-page > main {
+    height: 600px;
+    min-height: 600px;
+    flex: none;
+  }
 }
 .interview-stage-area {
   display: flex;

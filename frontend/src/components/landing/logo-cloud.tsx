@@ -25,12 +25,14 @@ export function LogoCloud() {
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
           {COMPANIES.map(({ name, file }) => (
             <div key={file} className="landing-company">
-              <div className="landing-company-logo">
+              <div
+                className={`landing-company-logo landing-company-logo-${file}`}
+              >
                 <Image
                   src={`/logos/companies/${file}.png`}
-                  alt={`${name} logo`}
-                  width={120}
-                  height={40}
+                  alt=""
+                  fill
+                  sizes="120px"
                   className={`landing-company-image landing-company-image-${file}`}
                 />
               </div>

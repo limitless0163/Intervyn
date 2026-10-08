@@ -156,6 +156,16 @@ html[lang="zh-CN"] {
   transform: none;
 }
 
+/* Keep native controls from zooming the viewport on iOS when focused.
+   Outside the base layer so component text-size utilities cannot override it. */
+@media (pointer: coarse) and (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -70,6 +70,8 @@ export const zh: Localized<Messages> = {
         "查看各项能力评分和示范答案，再让教练带你补齐薄弱环节，然后重新挑战。",
     },
     product: {
+      pause: "暂停预览",
+      resume: "继续预览",
       eyebrow: "产品功能",
       title: "真实对话，不是答题测验",
       languages: "面试语言",
@@ -404,6 +406,8 @@ export const zh: Localized<Messages> = {
   prep: {
     studyPath: "从差距到学习计划",
     studyPlan: "你的学习计划",
+    studyPlanLoading: "正在生成学习计划… 等待期间，你可以先向教练提问。",
+    studyPlanFallback: "示例学习计划：暂时无法获取个性化计划，请稍后重试。",
     studyPlanIntro: "根据上一场面试中的薄弱环节制定",
     modules: "个模块",
     about: "约",

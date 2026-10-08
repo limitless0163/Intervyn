@@ -196,23 +196,24 @@ html[lang="zh-CN"] .landing-hero-title span {
   font-size: 12px;
 }
 .landing-company-logo {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 40px;
-}
-.landing-company-image {
   width: 120px;
   max-width: 100%;
   height: 40px;
+}
+.landing-company-image {
   object-fit: contain;
 }
-.landing-company-image-jd {
+.landing-company-logo-jd {
   width: 86px;
 }
-.landing-company-image-meituan {
+.landing-company-logo-meituan {
   width: 104px;
+}
+.landing-company-image-meituan {
   padding: 4px 8px;
   border-radius: 6px;
   background: #f7f8fa;

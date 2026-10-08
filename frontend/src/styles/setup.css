@@ -27,6 +27,10 @@
   flex-direction: column;
   gap: 28px;
 }
+.setup-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 .setup-intro {
   padding-bottom: 4px;
 }

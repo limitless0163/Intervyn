@@ -141,7 +141,7 @@ export function TranscriptPanel({
               </span>
               <p
                 className={cn(
-                  "text-[14px] leading-relaxed",
+                  "break-words whitespace-pre-wrap text-[14px] leading-relaxed [overflow-wrap:anywhere]",
                   turn.role === "candidate" ? "text-ink" : "text-ink-soft",
                 )}
               >

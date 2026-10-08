@@ -1,14 +1,14 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { RefreshCw, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { AppShell } from "@/components/ui/app-shell";
-import type { StudyModule } from "@intervyn/shared";
 import { loadSession } from "@/services/session";
 import { SAMPLE_SCORECARD } from "@/features/report/sample-scorecard";
-import { requestCoachPlan } from "@/services/api";
-import { StudyPlan } from "@/components/prep/study-plan";
+import { StudyPlanLoader } from "@/components/prep/study-plan-loader";
+import { Spinner } from "@/components/ui/spinner";
 import { GroundedChat } from "@/components/prep/grounded-chat";
 import { Flashcards } from "@/components/prep/flashcards";
 import { MasteryGraphView } from "@/components/prep/mastery-graph";
@@ -57,17 +57,6 @@ export default async function PrepPage({
     : null;
   const scorecard = real ?? SAMPLE_SCORECARD;
   const isSample = real === null;
-  const weakAreas = scorecard.weak_competencies;
-
-  // Build the real study plan from the scorecard via the coach agent. Falls back
-  // to the StudyPlan component's sample modules if the agent is unreachable.
-  let studyModules: StudyModule[] | undefined;
-  try {
-    const plan = await requestCoachPlan(scorecard);
-    if (plan.modules.length > 0) studyModules = plan.modules;
-  } catch {
-    // Agent down / offline dev — StudyPlan renders its default sample modules.
-  }
 
   return (
     <AppShell
@@ -118,11 +107,22 @@ export default async function PrepPage({
 
       {/* Study plan + grounded chat side by side on wide screens */}
       <section className="mt-10 grid items-start gap-8 lg:grid-cols-[1.15fr_1fr]">
-        <StudyPlan
-          modules={studyModules}
-          weakAreas={weakAreas}
-          sessionId={sessionId}
-        />
+        <Suspense
+          fallback={
+            <div className="min-h-[320px] rounded-card border border-line bg-panel p-6">
+              <div className="flex items-start gap-3 text-sm text-muted">
+                <Spinner label={t(messages, "common.loading")} />
+                <p>{t(messages, "prep.studyPlanLoading")}</p>
+              </div>
+            </div>
+          }
+        >
+          <StudyPlanLoader
+            scorecard={scorecard}
+            sessionId={sessionId}
+            isSample={isSample}
+          />
+        </Suspense>
         <GroundedChat
           sessionId={sessionId}
           topic={typeof params.module === "string" ? params.module : null}

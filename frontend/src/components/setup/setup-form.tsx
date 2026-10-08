@@ -85,8 +85,8 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Surface inline field errors once the user has interacted with a field (or
-  // attempted submit) — not on first load. Decoupled from submit because the
-  // submit button is disabled while invalid, so it never fires onSubmit.
+  // attempted submit) — not on first load. The submit button stays disabled
+  // while invalid, so blur also exposes errors before a submit attempt.
   const [cvTouched, setCvTouched] = useState(false);
   const [jdTouched, setJdTouched] = useState(false);
 
@@ -138,6 +138,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragging(false);
+    if (submitting) return;
     const dropped = e.dataTransfer.files?.[0];
     if (dropped) selectFile(dropped);
   }
@@ -240,6 +241,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
               <button
                 key={s.id}
                 type="button"
+                disabled={submitting}
                 onClick={() => loadSample(s)}
                 className="setup-sample"
               >
@@ -267,6 +269,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
+                  if (submitting) return;
                   setDragging(true);
                 }}
                 onDragLeave={() => setDragging(false)}
@@ -280,6 +283,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
               >
                 <button
                   type="button"
+                  disabled={submitting}
                   onClick={() => fileInputRef.current?.click()}
                   aria-label={t(messages, "setup.cvDrop")}
                   aria-invalid={cvTouched && Boolean(cvError)}
@@ -308,6 +312,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                 {file && (
                   <button
                     type="button"
+                    disabled={submitting}
                     aria-label={t(messages, "setup.removeFile")}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -322,6 +327,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                 <input
                   ref={fileInputRef}
                   type="file"
+                  disabled={submitting}
                   accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
                   className="hidden"
                   onChange={(e) => selectFile(e.target.files?.[0] ?? null)}
@@ -342,6 +348,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                   rows={4}
                   placeholder={t(messages, "setup.cvPasteHint")}
                   value={cvText}
+                  readOnly={submitting}
                   onChange={(e) => setCvText(e.target.value)}
                   onBlur={() => setCvTouched(true)}
                   aria-invalid={cvTouched && Boolean(cvError)}
@@ -374,6 +381,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
               <Textarea
                 rows={6}
                 value={jdText}
+                readOnly={submitting}
                 onChange={(e) => setJdText(e.target.value)}
                 onBlur={() => setJdTouched(true)}
                 aria-label={t(messages, "setup.jdLabel")}
@@ -406,6 +414,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
             <CardContent className="pb-6">
               <Input
                 value={company}
+                readOnly={submitting}
                 onChange={(e) => setCompany(e.target.value)}
                 placeholder={t(messages, "setup.companyPlaceholder")}
                 aria-label={t(messages, "setup.companyLabel")}
@@ -430,6 +439,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                   <button
                     key={lang}
                     type="button"
+                    disabled={submitting}
                     onClick={() => {
                       setPrimary(lang);
                       if (lang === "en") setMixed(false);
@@ -455,7 +465,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                 <input
                   type="checkbox"
                   checked={mixed}
-                  disabled={primary === "en"}
+                  disabled={primary === "en" || submitting}
                   onChange={(e) => setMixed(e.target.checked)}
                   className="h-4 w-4 accent-[var(--color-accent)] disabled:cursor-not-allowed"
                 />
@@ -479,6 +489,7 @@ export function SetupForm({ r2Configured }: { r2Configured: boolean }) {
                 <button
                   key={p.id}
                   type="button"
+                  disabled={submitting}
                   onClick={() => setPersonaId(p.id)}
                   aria-pressed={personaId === p.id}
                   className={cn(

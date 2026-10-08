@@ -11,6 +11,7 @@ import { askCoach, type Citation } from "@/services/coach";
 import { useLocale, useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
 import { safeExternalUrl } from "@/utils/safe-url";
+import { isImeConfirm } from "@/utils/ime";
 
 interface ChatTurn {
   id: string;
@@ -295,7 +296,10 @@ export function GroundedChat({
             maxLength={8000}
             placeholder={t(messages, "prep.askWeakArea")}
             aria-label={t(messages, "prep.askCoachLabel")}
-            disabled={loading}
+            readOnly={loading}
+            onKeyDown={(event) => {
+              if (isImeConfirm(event.nativeEvent)) event.preventDefault();
+            }}
             className="min-w-0 flex-1 rounded-[10px] border border-line bg-panel px-3.5 py-2.5 text-[14px] text-ink placeholder:text-faint focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-paper disabled:opacity-50"
           />
           <Button

@@ -14,6 +14,7 @@ import { SendHorizontal } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useMessages } from "@/hooks/use-i18n";
 import { t } from "@/lib/i18n";
+import { isImeConfirm } from "@/utils/ime";
 
 export interface TextFallbackProps {
   onSend: (text: string) => void | Promise<void>;
@@ -29,12 +30,15 @@ export function TextFallback({
   const [value, setValue] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const inputId = React.useId();
+  const pending = React.useRef(false);
   const messages = useMessages();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const text = value.trim();
-    if (!text || disabled || sending) return;
+    if (!text || disabled || pending.current) return;
+    pending.current = true;
     setSending(true);
     setFailed(false);
     try {
@@ -43,6 +47,7 @@ export function TextFallback({
     } catch {
       setFailed(true);
     } finally {
+      pending.current = false;
       setSending(false);
     }
   }
@@ -50,18 +55,25 @@ export function TextFallback({
   return (
     <form
       onSubmit={(event) => void submit(event)}
-      className={cn("flex items-center gap-2", className)}
+      className={cn("flex flex-wrap items-center gap-2", className)}
       aria-label={t(messages, "interview.typeAnswerLabel")}
+      aria-busy={sending}
     >
-      <label htmlFor="di-text-fallback" className="sr-only">
+      <label htmlFor={inputId} className="sr-only">
         {t(messages, "interview.typeAnswer")}
       </label>
       <input
-        id="di-text-fallback"
+        id={inputId}
         type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        disabled={disabled || sending}
+        disabled={disabled}
+        readOnly={sending}
+        onKeyDown={(event) => {
+          if (isImeConfirm(event.nativeEvent)) event.preventDefault();
+        }}
+        aria-describedby={failed ? `${inputId}-error` : undefined}
+        aria-invalid={failed}
         placeholder={
           disabled
             ? t(messages, "interview.typePlaceholderOffline")
@@ -90,7 +102,11 @@ export function TextFallback({
         <SendHorizontal className="h-[18px] w-[18px]" aria-hidden />
       </button>
       {failed && (
-        <p role="alert" className="text-[13px] text-accent">
+        <p
+          id={`${inputId}-error`}
+          role="alert"
+          className="w-full text-[13px] text-accent"
+        >
           {t(messages, "interview.sendFailed")}
         </p>
       )}

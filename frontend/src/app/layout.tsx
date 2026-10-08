@@ -66,6 +66,7 @@ export default async function RootLayout({
   return (
     <html
       lang={lang}
+      data-scroll-behavior="smooth"
       className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable}`}
     >
       <body className="font-sans">

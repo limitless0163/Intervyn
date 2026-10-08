@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, ScanText } from "lucide-react";
+import { FileText, ScanText, Pause, Play } from "lucide-react";
 import { HeroMock } from "@/components/landing/hero-mock";
 import { PreviewFrame } from "@/components/landing/preview-frame";
 import { Container } from "@/components/ui/container";
@@ -94,10 +94,19 @@ export function Product() {
   const [visible, setVisible] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [documentHidden, setDocumentHidden] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
+  const [interacting, setInteracting] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const remaining = useRef(CYCLE_DURATION);
   const selection = useRef("");
-  const paused = !visible || reducedMotion || documentHidden;
+  const paused =
+    !visible ||
+    reducedMotion ||
+    documentHidden ||
+    userPaused ||
+    interacting ||
+    hovered;
 
   useEffect(() => {
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -107,13 +116,17 @@ export function Product() {
     syncVisibility();
     motion.addEventListener("change", syncMotion);
     document.addEventListener("visibilitychange", syncVisibility);
-    const observer = new IntersectionObserver(
-      ([entry]) => setVisible(!!entry?.isIntersecting),
-      { threshold: 0.2 },
-    );
-    if (root.current) observer.observe(root.current);
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(
+            ([entry]) => setVisible(!!entry?.isIntersecting),
+            { threshold: 0.2 },
+          );
+    if (observer && root.current) observer.observe(root.current);
+    else setVisible(true);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       motion.removeEventListener("change", syncMotion);
       document.removeEventListener("visibilitychange", syncVisibility);
     };
@@ -146,7 +159,35 @@ export function Product() {
         <h2 className="landing-section-title">
           {t(messages, "landing.product.title")}
         </h2>
-        <div ref={root} className="landing-features">
+        <div hidden={reducedMotion} className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setUserPaused((value) => !value)}
+            aria-controls="landing-feature-preview"
+            className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-[13px] text-muted hover:text-ink"
+          >
+            {userPaused ? (
+              <Play size={14} aria-hidden />
+            ) : (
+              <Pause size={14} aria-hidden />
+            )}
+            {t(
+              messages,
+              userPaused ? "landing.product.resume" : "landing.product.pause",
+            )}
+          </button>
+        </div>
+        <div
+          ref={root}
+          className="landing-features"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onFocusCapture={() => setInteracting(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget))
+              setInteracting(false);
+          }}
+        >
           <div className="landing-feature-points">
             {FEATURE_KEYS.map((key, index) => {
               const open = active === index;
@@ -193,7 +234,11 @@ export function Product() {
               );
             })}
           </div>
-          <div className="landing-feature-visual" key={active}>
+          <div
+            id="landing-feature-preview"
+            className="landing-feature-visual"
+            key={active}
+          >
             {active === 0 ? (
               <HeroMock />
             ) : active === 1 ? (

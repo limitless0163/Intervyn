@@ -15,7 +15,7 @@ import {
 
 /**
  * The gap → path view: an ordered list of study modules built from the last
- * interview's weak competencies. Server component (no interactivity) — each
+ * interview's weak competencies. Locale-aware client component — each
  * module is a card with its competency, mastery chip, "why it's here", and two
  * CTAs ("Start" to study, "Practice in a mock" to loop back into an interview).
  */
@@ -23,18 +23,23 @@ export function StudyPlan({
   modules = SAMPLE_STUDY_PLAN,
   weakAreas,
   sessionId,
+  unavailable = false,
 }: {
   modules?: StudyModule[];
   /** Weak competencies from the last interview, for the header tie-in. */
   weakAreas?: string[];
   sessionId?: string | null;
+  unavailable?: boolean;
 }) {
   const messages = useMessages();
   const totalMin = modules.reduce((sum, m) => sum + m.est_min, 0);
   const gaps = weakAreas?.length ? weakAreas : ["your weak areas"];
 
   return (
-    <section aria-labelledby="study-plan-heading">
+    <section
+      className="min-w-0 [overflow-wrap:anywhere]"
+      aria-labelledby="study-plan-heading"
+    >
       <header className="mb-4">
         <Eyebrow>{t(messages, "prep.studyPath")}</Eyebrow>
         <h2
@@ -55,6 +60,15 @@ export function StudyPlan({
           {t(messages, "prep.about")} {totalMin} {t(messages, "prep.min")}.
         </p>
       </header>
+
+      {unavailable && (
+        <p
+          role="status"
+          className="mb-4 rounded-md border border-line bg-accent-soft p-3 text-[13px] text-ink-soft"
+        >
+          {t(messages, "prep.studyPlanFallback")}
+        </p>
+      )}
 
       <ol className="space-y-3">
         {modules.map((m, i) => (

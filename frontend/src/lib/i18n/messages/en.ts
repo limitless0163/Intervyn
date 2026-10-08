@@ -68,6 +68,8 @@ export const en = {
         "A per-skill scorecard with model answers, and a coach that teaches your weak areas before you go again.",
     },
     product: {
+      pause: "Pause preview",
+      resume: "Resume preview",
       eyebrow: "The product",
       title: "A real conversation, not a quiz.",
       languages: "LANGUAGES",
@@ -417,6 +419,10 @@ export const en = {
   prep: {
     studyPath: "Gap → study path",
     studyPlan: "Your study plan",
+    studyPlanLoading:
+      "Building your study plan… You can ask the coach while you wait.",
+    studyPlanFallback:
+      "Sample study plan — your personalized plan is unavailable. Try again later.",
     studyPlanIntro: "Built from your last interview's weak areas",
     modules: "modules",
     about: "about",
